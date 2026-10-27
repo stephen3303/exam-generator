@@ -1,0 +1,93 @@
+# Builds the Exam Generator front end (build\ExamGenerator.accdb, next to this
+# script) straight from this folder: the kit's modules, forms and text-measure
+# adapter (kit\), and the app's own code, forms and help (src\).
+#
+#   build.ps1                     build a new front end with no data linked (UI work)
+#   build.ps1 -BackEnd <path>     build a new front end linked to that shared data file
+#   build.ps1 -UiOnly             rebuild code and forms inside the existing front end,
+#                                 keeping its links (also -FrontEndOnly)
+#   -OutDir <folder>              build somewhere else than .\build
+#   -NoLineNumbers                load the code without line numbers (see below)
+#
+# The code loaded into the front end gets line numbers (tools\VbaLineNumbers.ps1)
+# so the error log names the failing line; the files in git are not changed.
+# The build stops and reports any Visual Basic or Access dialog (a compile
+# error, an error message) instead of hanging behind it.
+# Requires Microsoft Access (2016+ / Microsoft 365). Python is only needed to
+# regenerate the palettes (python tools\make_themes.py src).
+param(
+    [Alias('FrontEndOnly')][switch]$UiOnly,
+    [string]$BackEnd = '',
+    [string]$OutDir = '',
+    [switch]$NoLineNumbers
+)
+$ErrorActionPreference = 'Stop'
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $OutDir) { $OutDir = Join-Path $here 'build' }
+New-Item -ItemType Directory -Force $OutDir | Out-Null
+$OutDir = (Resolve-Path $OutDir).Path
+$fe = Join-Path $OutDir 'ExamGenerator.accdb'
+if ($BackEnd) {
+    if (-not (Test-Path $BackEnd)) { throw "No shared data file at $BackEnd" }
+    $BackEnd = (Resolve-Path $BackEnd).Path
+}
+
+# SaveForm attaches <srcRoot>\forms\<name>.vba, so stage the app's forms and
+# the kit's forms (subGrid, dlgAppearance, dlgDatePick and the rest) in one
+# folder, with the help topics (LoadHelpTopics).
+$stage = Join-Path $env:TEMP 'ExamGenerator_src'
+Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force (Join-Path $stage 'forms') | Out-Null
+Copy-Item (Join-Path $here 'kit\forms\*.vba') (Join-Path $stage 'forms')
+Copy-Item (Join-Path $here 'src\forms\*.vba') (Join-Path $stage 'forms')
+Copy-Item (Join-Path $here 'src\help') $stage -Recurse
+. (Join-Path $here 'tools\VbaLineNumbers.ps1')
+if (-not $NoLineNumbers) { Add-VbaLineNumbersToFolder (Join-Path $stage 'forms') }
+
+. (Join-Path $here 'tools\AccessWatch.ps1')
+$acc = New-Object -ComObject Access.Application
+$watch = Start-AccessWatch $acc -TimeoutSec 600
+$failed = $false
+try {
+    $acc.Visible = $false
+    $acc.AutomationSecurity = 1   # let the build's own VBA run
+    if ($UiOnly) {
+        if (-not (Test-Path $fe)) { throw "No existing front end at $fe (build once without -UiOnly)" }
+        $acc.OpenCurrentDatabase($fe)
+    } else {
+        Remove-Item $fe -ErrorAction SilentlyContinue
+        $acc.NewCurrentDatabase($fe)
+    }
+
+    # The kit first, then its text-measure adapter, the app's modules and the
+    # build palette.
+    $files = @(Get-ChildItem (Join-Path $here 'kit\modules') -Filter *.bas) +
+             @(Get-Item (Join-Path $here 'kit\adapters\modTextMeasure.bas')) +
+             @(Get-ChildItem (Join-Path $here 'src\modules') -Filter *.bas) +
+             @(Get-Item (Join-Path $here 'src\themes\light\modTheme.bas'))
+    foreach ($f in $files) {
+        try { $acc.DoCmd.DeleteObject(5, $f.BaseName) } catch {}
+        # LoadFromText expects Windows line endings.
+        $tmp = Join-Path $env:TEMP ("examgen_" + $f.Name)
+        $text = [IO.File]::ReadAllText($f.FullName) -replace "`r?`n", "`r`n"
+        if (-not $NoLineNumbers) { $text = Add-VbaLineNumbers $text }
+        [IO.File]::WriteAllText($tmp, $text, [Text.Encoding]::ASCII)
+        $acc.LoadFromText(5, $f.BaseName, $tmp)
+        Remove-Item $tmp
+    }
+
+    $bad = Test-AccessCompiles $acc $watch
+    if ($bad) { Write-Host "Compile error: $bad"; throw 'compile failed' }
+
+    $a1 = [string]$stage; $a2 = [string]$OutDir; $a3 = [bool]$UiOnly; $a4 = [string]$BackEnd
+    $result = $acc.Run('BuildAll', [ref]$a1, [ref]$a2, [ref]$a3, [ref]$a4)
+    Write-Host "BuildAll: $result"
+    if ($result -ne 'OK') { $failed = $true }
+}
+catch { $failed = $true; if (-not $watch.Killed) { throw } }
+finally {
+    $dialogs = Stop-AccessWatch $watch $acc
+}
+if ($dialogs) { Write-Host "Build stopped: Access showed the dialog(s) above."; exit 1 }
+if ($failed) { exit 1 }
+Write-Host "Built: $fe"

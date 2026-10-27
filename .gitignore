@@ -1,0 +1,9 @@
+# Build outputs: the front end is rebuilt from the source in access\
+*.accdb
+*.accde
+*.laccdb
+*.ldb
+*.bmp
+access/build/
+access/designer/
+__pycache__/

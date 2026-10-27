@@ -1,0 +1,69 @@
+Exam Generator help topics. The build loads this file into the front end (LoadHelpTopics);
+rebuild the front end after editing it. Everything above the first topic is ignored.
+From build phase 3 the topics live in the shared data file, where the admin edits them in
+the app, and this file only seeds them the first time.
+
+Format:
+  === key | Title      starts a topic. A key with a dot (exams.new) is listed
+                       indented under its parent. Page keys match frmMain's page keys.
+  # Heading            a heading inside the topic
+  - text               a bullet point
+  **text**             bold
+  Other lines are paragraph text; a blank line ends a paragraph.
+
+These topics are stubs: each phase writes the full help for the pages it builds.
+
+=== start | Getting started
+The Exam Generator keeps an approved question bank and builds inspection exams from it. Each page in the sidebar is one part of that work.
+
+# Getting help
+Click **Help** in the sidebar, or press **F1**, to open help for the page you are on. Choose any other topic from the list on the left, or type in the search box to find the topics that mention a word. Press **Enter** in the search box to open the first match.
+
+# Go anywhere with Ctrl+K
+Press **Ctrl+K** and start typing the name of a page. Press **Enter** to go to the first match, or use the **Up** and **Down** arrows to choose another. **Esc** closes it.
+
+# Other things in the sidebar
+- **My settings** holds your colors (**Appearance**) and, later, your notification switches.
+- The **arrow** at the top folds the sidebar to icons, to give the page more room. Click it again to open it. Point at an icon to see its name.
+
+=== dash | Dashboard
+Your open reviews, the approvals waiting for you, your returned questions and the topics short of questions. This page comes in build phase 9.
+
+=== review | My reviews
+Each exam topic you review: check the questions drawn for it, swap any out and sign off. This page comes in build phase 7.
+
+=== approvals | Approvals
+Questions and exams waiting for your approval, one queue for each approver. This page comes in build phases 6 and 8.
+
+=== exams | Exams
+Every exam and where it stands. The department head starts a new exam here. This page comes in build phase 8.
+
+=== questions | Question bank
+Browse and find questions, and the references they cite. This page comes in build phase 5.
+
+=== qedit | Question editor
+Enter a question with its parts, portion markings and references. This page comes in build phase 5.
+
+=== stats | Statistics
+Questions given per topic and per reference over a period or exam series. This page comes in build phase 9.
+
+=== topics | Admin: Topics
+Topics, their default question count and their SMEs. This page comes in build phase 4.
+
+=== templates | Admin: Templates
+The exam templates: which topics each covers and how many questions each gets. This page comes in build phase 4.
+
+=== people | Admin: People and routing
+Who holds each Exam Generator role, and so who sees each approval queue. This page comes in build phase 4.
+
+=== rules | Admin: Rules and lists
+The overlap settings and the lookup lists. This page comes in build phase 4.
+
+=== helptopics | Admin: Help topics
+Edit the help for any page or dialog without a rebuild. This page comes in build phase 3.
+
+=== logs | Admin: Logs
+The audit trail and the error log. This page comes in build phase 10.
+
+=== settings | My settings
+Click **Appearance** to choose the colors the whole app uses on this computer. Your notification switches come in build phase 9.
