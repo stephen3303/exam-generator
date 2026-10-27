@@ -13,7 +13,10 @@ Option Explicit
 '   4. the person's Exam Generator roles (LoadRoles), from tblPeople and
 '      tblPersonRoles, into TempVars EGRoles (",SME,DH,"), EGIsAdmin,
 '      EGNotifyDash and EGNotifyEmail. A person with no role, or turned off,
-'      is told why and who to ask, and the app closes.
+'      is told why and who to ask, and the app closes;
+'   5. the help (KitHelpSync): topics new in this build's help.txt go into the
+'      data file's help_topic table, then that table, with the admin's edits,
+'      replaces the build's copy, so F1 shows the edited text.
 ' Then ShowPagesForRoles hides the sidebar pages they can't use, and
 ' frmMain.RoutePage sends any other way in (Ctrl+K) to the dashboard.
 '
@@ -60,8 +63,20 @@ Public Function AppStartUp() As Boolean
         KitMsgBox problem, vbExclamation, APP_NAME
         Exit Function
     End If
+    SplashStatus "Loading help" & ChrW(8230)
+    SyncHelp
     AppStartUp = True
 End Function
+
+' Start-up step 5. Help only helps: when it can't be read the error is logged
+' and the app opens with the help the build put in it.
+Private Sub SyncHelp()
+    On Error GoTo Fail
+    KitHelpSync
+    Exit Sub
+Fail:
+    LogError "modSignIn.SyncHelp"
+End Sub
 
 ' Hide the sidebar pages the signed-in person can't use.
 Public Sub ShowPagesForRoles(frm As Form)

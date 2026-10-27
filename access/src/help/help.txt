@@ -63,7 +63,22 @@ Who holds each Exam Generator role, and so who sees each approval queue. This pa
 The overlap settings and the lookup lists. This page comes in build phase 4.
 
 === helptopics | Admin: Help topics
-Edit the help for any page or dialog without a rebuild. This page comes in build phase 3.
+Change the help for any page or dialog, with no new copy of the app. What you save shows at once here, and for everyone else the next time they open the Exam Generator.
+
+# Changing a topic
+Click a topic in the list, or type in the search box to find the topics that mention a word. Change its title or text, then click **Save** (or press **Ctrl+S**). **Preview** opens the help window on the topic as it will look. **Undo changes** puts back the saved text.
+
+# Writing the text
+- A line starting **#** and a space is a heading.
+- A line starting **-** and a space is a bullet.
+- Put two stars on each side of a word to make it bold.
+- A blank line starts a new paragraph; other lines join into the paragraph above.
+
+# Adding a topic
+Click **New topic** (or press **Ctrl+N**). The key ties the topic to what it explains: a page's topic uses the page's key, such as **exams**, and F1 on that page opens it. A topic under another uses its key, a dot and a word, such as **exams.new**, and is listed under it. The key can't change once the topic is saved.
+
+# Where the help comes from
+Each new copy of the app brings its own wording for the topics, but only for topics the data file doesn't have yet. Once a topic is in the data file, your wording stays, even when a newer copy is installed.
 
 === logs | Admin: Logs
 The audit trail and the error log. This page comes in build phase 10.

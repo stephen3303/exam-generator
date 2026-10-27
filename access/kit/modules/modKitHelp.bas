@@ -27,8 +27,21 @@ Option Explicit
 '   5. The first topic in the file.
 ' So most apps only need topic keys that match their page keys; a dialog or
 ' a page with tabs adds a HelpTopic property to be more precise.
+'
+' Help an admin edits in the app, with no rebuild (optional): the app keeps
+' the topics in a table in its shared data file (help_topic, made with
+' HelpSharedTableSql) and links it. At start-up, once the data file is found,
+' KitHelpSync adds the build's topics the shared table lacks (all of them the
+' first time) and copies the shared table into zz_help, so F1 shows the
+' edited text. The app's help page saves a topic with KitHelpSave, which
+' writes the shared table and zz_help at once; other people see the edit at
+' their next start-up. help.txt only seeds a topic: once it is in the shared
+' table the admin's text wins, and a newer build's wording for it does not
+' replace it (delete the topic's row to take help.txt's again at the next
+' start-up). Without the linked table both only touch zz_help.
 
 Public Const HELP_TABLE As String = "zz_help"
+Public Const HELP_SHARED_TABLE As String = "help_topic"
 Private Const HELP_KEY_LEN As Long = 32
 Private Const HELP_TITLE_LEN As Long = 80
 
@@ -104,6 +117,113 @@ End Function
 Private Sub BadLine(ByVal i As Long, ByVal problem As String, ByVal s As String)
     Err.Raise 5, "modKitHelp.LoadHelpTopics", "Help file line " & (i + 1) & " " & problem & ": " & s
 End Sub
+
+' ---------------------------------------------------------------------------
+' Shared topics (help the admin edits in the app; see the top of the module)
+' ---------------------------------------------------------------------------
+
+' CREATE TABLE for the shared help table, for the app's data file script:
+' zz_help's columns, plus when and by whom a topic was last changed.
+Public Function HelpSharedTableSql(Optional ByVal tableName As String = HELP_SHARED_TABLE) As String
+    HelpSharedTableSql = "CREATE TABLE " & tableName & " (topic_key TEXT(" & HELP_KEY_LEN & ") CONSTRAINT pk_" & tableName & _
+        " PRIMARY KEY, title TEXT(" & HELP_TITLE_LEN & "), sort_order LONG, body MEMO, search_text MEMO, " & _
+        "updated_at DATETIME, updated_by TEXT(" & STAMP_USER_LEN & "))"
+End Function
+
+' Start-up, once the data file is found: add the topics zz_help has (the
+' build's help.txt) that the shared table lacks, then copy the shared table
+' into zz_help. Returns how many topics it added to the shared table; does
+' nothing and returns 0 when the app has no shared table or no zz_help.
+Public Function KitHelpSync(Optional ByVal tableName As String = HELP_SHARED_TABLE) As Long
+    Dim db As DAO.Database, n As Long, e As Long, d As String
+    Set db = CurrentDb
+    If Not HasHelpTable(db, tableName) Or Not HasHelpTable(db, HELP_TABLE) Then Exit Function
+    On Error Resume Next
+    db.Execute "INSERT INTO " & tableName & " (topic_key, title, sort_order, body, search_text, updated_at, updated_by) " & _
+        "SELECT h.topic_key, h.title, h.sort_order, h.body, h.search_text, Now(), 'help.txt' FROM " & HELP_TABLE & _
+        " AS h WHERE h.topic_key NOT IN (SELECT topic_key FROM " & tableName & ")", dbFailOnError
+    e = Err.Number: d = Err.Description
+    If e = 0 Then n = db.RecordsAffected
+    On Error GoTo 0
+    ' 3022: someone else's start-up added the same topics a moment earlier.
+    If e <> 0 And e <> 3022 Then Err.Raise e, "modKitHelp.KitHelpSync", d
+    db.Execute "DELETE FROM " & HELP_TABLE, dbFailOnError
+    db.Execute "INSERT INTO " & HELP_TABLE & " (topic_key, title, sort_order, body, search_text) " & _
+        "SELECT topic_key, title, sort_order, body, search_text FROM " & tableName, dbFailOnError
+    KitHelpSync = n
+End Function
+
+' Save topic key from the app's help page: its title and its text in the
+' help file's markup, in the shared table (stamped with KitUser and the
+' time) and in zz_help, so F1 shows it at once. A new key goes after the
+' last topic, or a new key with a dot (exams.new) after the last topic under
+' its parent, so the help window lists it there. Raises error 5 for an empty or over-32-character key or an
+' over-80-character title.
+Public Sub KitHelpSave(ByVal key As String, ByVal title As String, ByVal body As String, _
+        Optional ByVal tableName As String = HELP_SHARED_TABLE)
+    Dim db As DAO.Database
+    key = Trim$(key): title = Trim$(title)
+    If Len(key) = 0 Or Len(key) > HELP_KEY_LEN Then
+        Err.Raise 5, "modKitHelp.KitHelpSave", "A help topic's key must be 1 to " & HELP_KEY_LEN & " characters: " & key
+    End If
+    If Len(title) > HELP_TITLE_LEN Then
+        Err.Raise 5, "modKitHelp.KitHelpSave", "A help topic's title can be at most " & HELP_TITLE_LEN & " characters: " & title
+    End If
+    body = Replace(Replace(body, vbCrLf, vbLf), vbCr, vbLf)
+    Set db = CurrentDb
+    If HasHelpTable(db, tableName) Then SaveTopicRow db, tableName, key, title, body, True
+    If HasHelpTable(db, HELP_TABLE) Then SaveTopicRow db, HELP_TABLE, key, title, body, False
+End Sub
+
+Private Sub SaveTopicRow(db As DAO.Database, ByVal tbl As String, ByVal key As String, ByVal title As String, _
+        ByVal body As String, ByVal stamp As Boolean)
+    Dim rs As DAO.Recordset
+    Set rs = db.OpenRecordset("SELECT * FROM " & tbl & " WHERE topic_key=" & SqlText(key), dbOpenDynaset)
+    If rs.EOF Then
+        rs.AddNew
+        rs!topic_key = key
+        rs!sort_order = NewSortOrder(db, tbl, key)
+    Else
+        rs.Edit
+    End If
+    rs!title = title
+    rs!body = body
+    rs!search_text = PlainHelpText(body)
+    If stamp Then
+        rs!updated_at = Now()
+        rs!updated_by = KitUser()
+    End If
+    rs.Update
+    rs.Close
+End Sub
+
+' sort_order for new topic key in tbl: after the last topic, or for a key
+' with a dot, after its parent and the topics already under it (the topics
+' after them move down one).
+Private Function NewSortOrder(db As DAO.Database, ByVal tbl As String, ByVal key As String) As Long
+    Dim dot As Long, parent As String, after As Variant
+    after = Null
+    dot = InStr(key, ".")
+    If dot > 0 Then
+        parent = Left$(key, dot - 1)
+        after = DMax("sort_order", tbl, "topic_key=" & SqlText(parent) & " OR topic_key LIKE " & _
+            SqlText(LikeText(parent) & ".*"))
+    End If
+    If IsNull(after) Then
+        NewSortOrder = Nz(DMax("sort_order", tbl), 0) + 1
+    Else
+        db.Execute "UPDATE " & tbl & " SET sort_order=sort_order+1 WHERE sort_order>" & after, dbFailOnError
+        NewSortOrder = after + 1
+    End If
+End Function
+
+' True when the database has table nm (local or linked).
+Private Function HasHelpTable(db As DAO.Database, ByVal nm As String) As Boolean
+    Dim td As DAO.TableDef
+    For Each td In db.TableDefs
+        If StrComp(td.Name, nm, vbTextCompare) = 0 Then HasHelpTable = True: Exit Function
+    Next
+End Function
 
 ' Build step: the AutoKeys macro, so F1 opens the kit's help instead of
 ' Access's. It replaces any AutoKeys macro the database already has; an app

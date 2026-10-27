@@ -23,6 +23,7 @@ Public Const APP_VERSION As String = "0.1.0"
 Public Const PAGE_W As Long = 15840             ' the page area, 1056 px
 Public Const PAGE_H As Long = 9600              ' 640 px: the admin's sidebar (12 pages and 2 links) fits
 Public Const PAGE_PAD As Long = 480                   ' page padding, 32 px
+Private Const HELP_LIST_W As Long = 5100        ' Help topics: the list card, 340 px
 
 Private m_step As String
 
@@ -104,6 +105,7 @@ End Sub
 ' The pages, in sidebar order. Each phase swaps its placeholders for the
 ' real Build_<page>.
 Private Sub BuildPages()
+    BuildGrid "subGridHelp", HelpCols(), HELP_LIST_W - px(32)
     Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
     Build_Stub "pgReview", "My reviews", "Each exam topic you review: check the drawn questions, swap any out and sign off.", 7
     Build_Stub "pgApprovals", "Approvals", "Questions and exams waiting for your approval.", 6
@@ -115,7 +117,7 @@ Private Sub BuildPages()
     Build_Stub "pgAdmTemplates", "Admin: Templates", "The exam templates: which topics each covers and how many questions each gets.", 4
     Build_Stub "pgAdmPeople", "Admin: People and routing", "Who holds each Exam Generator role.", 4
     Build_Stub "pgAdmRules", "Admin: Rules and lists", "The overlap settings and the lookup lists.", 4
-    Build_Stub "pgAdmHelp", "Admin: Help topics", "Edit the help for any page or dialog without a rebuild.", 3
+    Build_pgAdmHelp
     Build_Stub "pgAdmLogs", "Admin: Logs", "The audit trail and the error log.", 10
     Build_pgMySettings
 End Sub
@@ -132,6 +134,66 @@ Private Sub Build_pgMySettings()
     Set c = Btn("btnAppearance", "Appearance", PAGE_PAD + px(16), px(164), px(120), px(28), "outline")
     c.OnClick = "=AppAppearance()"
     SaveForm "pgMySettings"
+End Sub
+
+' Help topics (pgAdmHelp): the topics on the left, the open topic's key,
+' title and text on the right, with Save, Preview (the help window on the
+' saved topic) and Undo changes. The fields are unbound: the page saves with
+' KitHelpSave, which writes the data file's help_topic and this front end's
+' zz_help at once.
+Private Sub Build_pgAdmHelp()
+    Dim c As Control, x As Long, y As Long, h As Long, dw As Long, fx As Long, fw As Long, btnY As Long
+    NewForm "", 0, PAGE_W, PAGE_H
+    Ev F, "OnLoad"
+    PageHeader "Admin: Help topics", "Edit the help for any page or dialog. A saved topic shows at once here, " & _
+        "and for everyone else the next time they open the app.", PAGE_PAD
+    Set c = Btn("btnNew", "New topic", PAGE_W - PAGE_PAD - px(112), px(24), px(112), px(32), "outline")
+    c.ControlTipText = "New topic (Ctrl+N)": Anchor c, 1, 0
+    SearchBox "txtSearch", PAGE_PAD, px(84), px(300), "SearchFor", "Search titles, keys and text...", px(28)
+    y = px(124): h = PAGE_H - y - px(16)
+    Card "List", "Topics", PAGE_PAD, y, HELP_LIST_W, h, , 0, 2
+    GridHeaders "hdrHelp", HelpCols(), PAGE_PAD + px(16), y + px(40), w:=HELP_LIST_W - px(32)
+    Set c = SubF("sfList", "subGridHelp", PAGE_PAD + px(16), y + px(62), HELP_LIST_W - px(32), h - px(78)): Anchor c, 0, 2
+    EmptyState "emptyList", PAGE_PAD + px(16), y + px(90), HELP_LIST_W - px(32), "E721", "No topics match", _
+        "No topic's title, key or text has those words.", "Clear search"
+    ' The open topic.
+    x = PAGE_PAD + HELP_LIST_W + px(12): dw = ContentW() - HELP_LIST_W - px(12)
+    fx = x + px(16): fw = dw - px(32)
+    Card "Detail", "Topic", x, y, dw, h, , 2, 2
+    FieldLbl "lblKey", "KEY", fx, y + px(44), px(220)
+    Set c = Txt("txtKey", "", fx, y + px(62), px(220), px(30))
+    c.ControlTipText = "A page's key (exams), or a parent's key, a dot and a word (exams.new) for a topic under it"
+    Ev c, "OnChange"
+    FieldLbl "lblTitle", "TITLE", fx + px(236), y + px(44), fw - px(236)
+    Set c = Txt("txtTitle", "", fx + px(236), y + px(62), fw - px(236), px(30)): Anchor c, 2, 0
+    Ev c, "OnChange"
+    FieldLbl "lblBody", "TEXT", fx, y + px(102), fw
+    Set c = Txt("txtBody", "", fx, y + px(120), fw, h - px(220)): Anchor c, 2, 2
+    c.EnterKeyBehavior = True               ' Enter starts a new line, as in the help file
+    c.ScrollBars = 2
+    c.TopMargin = px(6): c.BottomMargin = px(6)
+    Ev c, "OnChange"
+    btnY = y + h - px(48)
+    Set c = Lbl("lblMarkup", "A line starting # is a heading and - a bullet; **text** is bold; " & _
+        "a blank line starts a new paragraph.", fx, btnY - px(40), fw, px(32), 9, False, CLR_MUTED_FG)
+    Anchor c, 2, 1
+    Set c = Btn("btnSave", "Save", fx, btnY, px(88), px(32)): c.ControlTipText = "Save (Ctrl+S)": Anchor c, 0, 1
+    Set c = Btn("btnPreview", "Preview", fx + px(96), btnY, px(96), px(32), "outline"): Anchor c, 0, 1
+    c.ControlTipText = "Open the help window on this topic"
+    Set c = Btn("btnUndo", "Undo changes", fx + px(200), btnY, px(120), px(32), "ghost"): Anchor c, 0, 1
+    Set c = Lbl("lblStamp", "", fx + px(332), btnY, fw - px(332), px(32), 9, False, CLR_MUTED_FG)
+    c.TextAlign = 3: Anchor c, 2, 1
+    SaveForm "pgAdmHelp"
+End Sub
+
+' The topics table on pgAdmHelp: "field|caption|width px|options".
+Private Function HelpCols() As Variant
+    HelpCols = Array("topic|Topic|190|bs", "topic_key|Key|118|ms")
+End Function
+
+' 8pt bold muted uppercase caption above a field.
+Private Sub FieldLbl(ByVal nm As String, ByVal cap As String, ByVal x As Long, ByVal y As Long, ByVal w As Long)
+    Lbl nm, cap, x, y, w, px(16), 8, True, CLR_MUTED_FG
 End Sub
 
 ' A placeholder page: the page's header and an empty state naming the build
