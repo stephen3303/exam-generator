@@ -40,7 +40,11 @@ Public Function SettingLong(ByVal key As String, ByVal dflt As Long) As Long
     If IsNumeric(s) Then SettingLong = CLng(s) Else SettingLong = dflt
 End Function
 
+' Save setting key as value (adds the row when it isn't there yet).
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now
+'   (RequireExamAdmin); KitExecute's lock and write errors pass up.
 Public Sub SetSetting(ByVal key As String, ByVal value As String)
+    RequireExamAdmin
     If DCount("*", "tblSettings", "SettingKey=" & Q(key)) = 0 Then
         KitExecute "INSERT INTO tblSettings (SettingKey, SettingValue) VALUES (" & Q(key) & ", " & Q(value) & ")"
     Else
@@ -116,7 +120,9 @@ End Function
 ' Give pid a row in tblPeople if they have none (active, dashboard notices
 ' on), and access to the Exam Generator in the Personnel file, so a role
 ' given to them lets them sign in.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now.
 Public Sub EnsurePerson(ByVal pid As Long)
+    RequireExamAdmin
     If DCount("*", "tblPeople", "PersonID=" & pid) = 0 Then
         KitExecute "INSERT INTO tblPeople (PersonID, IsAdmin, IsActive, NotifyDashboard, NotifyEmail) " & _
             "VALUES (" & pid & ", False, True, True, False)"
@@ -125,8 +131,11 @@ Public Sub EnsurePerson(ByVal pid As Long)
 End Sub
 
 ' Give pid role code, or take it away.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now; 5
+'   when the data file has no role code.
 Public Sub SetPersonRole(ByVal pid As Long, ByVal code As String, ByVal hasIt As Boolean)
     Dim rid As Long
+    RequireExamAdmin
     rid = RoleID(code)
     If rid = 0 Then Err.Raise 5, "modAdmin.SetPersonRole", "There is no role " & code & " in the data file."
     If hasIt Then

@@ -12,6 +12,7 @@ Private Const REQUIRED As String = "txtName=Template"
 Private Sub Form_BeforeUpdate(Cancel As Integer)
     Dim problem As String
     On Error GoTo Err_Handler
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If Not CheckRequired(Me, REQUIRED) Then Cancel = True: Exit Sub
     problem = NameProblem(Nz(Me.txtName, ""), 100, "tblTemplates", "TemplateName", "template", _
         "TemplateID=" & Nz(Me!TemplateID, 0))

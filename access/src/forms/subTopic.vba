@@ -12,6 +12,7 @@ Private Const REQUIRED As String = "txtName=Topic;txtCount=Questions per exam"
 Private Sub Form_BeforeUpdate(Cancel As Integer)
     Dim problem As String
     On Error GoTo Err_Handler
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If Not CheckRequired(Me, REQUIRED) Then Cancel = True: Exit Sub
     problem = TopicProblem()
     If Len(problem) > 0 Then

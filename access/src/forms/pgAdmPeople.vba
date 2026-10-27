@@ -94,6 +94,7 @@ Public Sub ActiveChanged()
     Dim v As Boolean
     On Error GoTo Err_Handler
     If m_loading Or m_pid = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     v = SwitchOn("tgActive")
     If Not v Then
         If m_pid = SignedInPersonID() Then
@@ -113,12 +114,14 @@ Public Sub ActiveChanged()
     Exit Sub
 Err_Handler:
     HandleError "pgAdmPeople.ActiveChanged", m_pid
+    ShowSaved
 End Sub
 
 Public Sub AdminChanged()
     Dim v As Boolean
     On Error GoTo Err_Handler
     If m_loading Or m_pid = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     v = SwitchOn("tgAdmin")
     If Not v Then
         If m_pid = SignedInPersonID() Then
@@ -135,6 +138,7 @@ Public Sub AdminChanged()
     Exit Sub
 Err_Handler:
     HandleError "pgAdmPeople.AdminChanged", m_pid
+    ShowSaved
 End Sub
 
 Public Sub SMEChanged()
@@ -159,6 +163,7 @@ Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
     Dim v As Boolean, topics As String
     On Error GoTo Err_Handler
     If m_loading Or m_pid = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     v = SwitchOn(nm)
     If code = "SME" And Not v Then
         topics = PersonTopicsText(m_pid)
@@ -177,6 +182,7 @@ Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
     Exit Sub
 Err_Handler:
     HandleError "pgAdmPeople.RoleChanged", code & " " & m_pid
+    ShowSaved
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -194,6 +200,13 @@ Private Sub Changed()
 End Sub
 
 ' Put a switch back and say why.
+' After a switch's save failed or was refused: show the person as the data
+' file has them, so no switch is left showing a change that wasn't saved.
+Private Sub ShowSaved()
+    On Error Resume Next                    ' already in a handler: the error has been shown
+    If m_pid <> 0 Then ShowPerson m_pid
+End Sub
+
 Private Sub Refuse(ByVal nm As String, ByVal why As String)
     SetSwitch nm, True
     KitMsgBox why, vbInformation, MSG_TITLE

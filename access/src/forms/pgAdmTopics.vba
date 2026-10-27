@@ -176,6 +176,7 @@ End Sub
 Private Sub NewTopic()
     Dim v As Variant, problem As String, id As Long
     If Not DataLinked() Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If Not SaveDetail(Me, "sfDetail") Then Exit Sub
     v = KitInputBox("Name of the new topic:", "New topic")
     If IsNull(v) Then Exit Sub
@@ -200,6 +201,7 @@ Private Sub TopicActions(ByVal atPointer As Boolean)
     a(1) = "-"
     a(2) = "del|!Delete topic|E74D"
     If atPointer Then k = KitMenuAt(a(0), a(1), a(2)) Else k = KitMenu(Me.btnMore, a(0), a(1), a(2))
+    If Len(k) > 0 Then RequireExamAdmin    ' the right is checked now, not as of sign-in
     Select Case k
         Case "onoff"
             KitExecute "UPDATE tblTopics SET IsActive=" & IIf(isOn, "False", "True") & " WHERE TopicID=" & m_id
@@ -240,6 +242,7 @@ End Function
 Private Sub AddSME()
     Dim pid As Long
     If m_id = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     pid = Nz(Me.txtSMEKey, 0)
     If pid = 0 Then
         KitMsgBox "Type part of a name in the box, then pick the person from the list under it.", vbInformation, MSG_TITLE
@@ -263,6 +266,7 @@ Private Sub RemoveSME()
     Dim pid As Long
     pid = Nz(Me.sfSMEs.Form.txtSel, 0)
     If m_id = 0 Or pid = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     KitExecute "DELETE FROM tblTopicSMEs WHERE TopicID=" & m_id & " AND PersonID=" & pid
     SMEsChanged 0
     KitToast "Taken off this topic. They keep the SME role for any other topic.", "success"

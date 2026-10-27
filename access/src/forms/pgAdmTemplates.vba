@@ -204,6 +204,7 @@ End Sub
 Private Sub NewTemplate()
     Dim v As Variant, problem As String, id As Long
     If Not DataLinked() Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If Not SaveDetail(Me, "sfDetail") Then Exit Sub
     v = KitInputBox("Name of the new template:", "New template")
     If IsNull(v) Then Exit Sub
@@ -226,6 +227,7 @@ Private Sub TemplateActions(ByVal atPointer As Boolean)
     a(1) = "-"
     a(2) = "del|!Delete template|E74D"
     If atPointer Then k = KitMenuAt(a(0), a(1), a(2)) Else k = KitMenu(Me.btnMore, a(0), a(1), a(2))
+    If Len(k) > 0 Then RequireExamAdmin    ' the right is checked now, not as of sign-in
     Select Case k
         Case "copy"
             v = KitInputBox("Name of the copy:", "Copy template", Left$("Copy of " & nm, 100))
@@ -271,6 +273,7 @@ Private Sub MoveTopic(ByVal delta As Long)
     Dim tid As Long
     tid = Nz(Me.sfTopics.Form.txtSel, 0)
     If m_id = 0 Or tid = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If MoveRow("tblTemplateTopics", "TopicID", "SortOrder", tid, delta, "TemplateID=" & m_id) Then TopicsChanged tid
 End Sub
 
@@ -279,6 +282,7 @@ Private Sub RemoveTopic()
     Dim tid As Long, nm As String
     tid = Nz(Me.sfTopics.Form.txtSel, 0)
     If m_id = 0 Or tid = 0 Then Exit Sub
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     nm = Nz(DLookup("TopicName", "tblTopics", "TopicID=" & tid), "")
     If KitMsgBox("Take """ & nm & """ off this template? Exams already made keep it; new ones won't have it.", _
         vbYesNo + vbQuestion + vbDefaultButton2, MSG_TITLE) <> vbYes Then Exit Sub

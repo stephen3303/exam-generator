@@ -25,8 +25,19 @@ Option Explicit
 '
 ' A front end built with no data file (build.ps1 with no -BackEnd, for UI work)
 ' has no tblSettings: it skips all of this and shows every page.
+'
+' The TempVars above only decide what the sidebar shows. Every write that
+' needs a right checks it again in the data file at the moment of the write
+' (RequireExamAdmin here, modQuestions.RequireQuestionWriter), so a right
+' taken away since sign-in counts at once, and a way in that skips the page
+' is still checked. They raise ERR_NOT_ALLOWED, which HandleError shows as
+' the plain reason, not as a fault.
 
 Public Const DATA_VERSION As Long = 1            ' the tblSettings SchemaVersion this copy reads
+
+' Raised by the checks made at the point of a write when the signed-in person
+' may not make it. Err.Description is the reason, written for the user.
+Public Const ERR_NOT_ALLOWED As Long = vbObjectError + 70
 
 Private Const PROBE_TABLE As String = "tblSettings"
 
@@ -148,6 +159,30 @@ Public Function HasRole(ByVal code As String) As Boolean
     On Error Resume Next                    ' TempVars may be unset
     HasRole = (InStr(Nz(TempVars("EGRoles"), ""), "," & code & ",") > 0)
 End Function
+
+' Raise ERR_NOT_ALLOWED unless the signed-in person is an active Exam
+' Generator admin now: their tblPeople row is admin and active, and the
+' Personnel file still lets them use the app. Reads the data file, not the
+' TempVars set at sign-in, so admin rights taken away since then count at
+' once. Every admin write goes through this, as the kit's changes to people
+' go through PersonnelRequireAdmin: the modAdmin writers call it, and so does
+' each admin page before its own writes.
+' Errors: ERR_NOT_ALLOWED with the reason for the user.
+' Side effects: sets TempVars EGIsAdmin to the answer, so the sidebar
+'   follows on the next page change.
+' A front end with no data file has nothing to protect and passes.
+Public Sub RequireExamAdmin()
+    Dim pid As Long, ok As Boolean
+    If Not DataLinked() Then Exit Sub
+    pid = SignedInPersonID()
+    If pid <> 0 Then
+        ok = DCount("*", "tblPeople", "PersonID=" & pid & " AND IsAdmin AND IsActive") > 0
+        If ok Then ok = PersonCanUse(pid, APP_CODE)
+    End If
+    TempVars("EGIsAdmin") = ok
+    If Not ok Then Err.Raise ERR_NOT_ALLOWED, "modSignIn.RequireExamAdmin", _
+        "Only an active Exam Generator admin can make this change. Your admin rights may have been taken away since you signed in."
+End Sub
 
 ' True when the signed-in person is the Exam Generator admin.
 Public Function IsExamAdmin() As Boolean

@@ -87,6 +87,10 @@ Public Sub HandleError(ByVal source As String, Optional ByVal context As String 
     id = LogError(source, context)
     DoCmd.Hourglass False
     If g_Silent Then Err.Raise num, errSrc, desc
+    If num = ERR_NOT_ALLOWED Then           ' a right checked at the write (modSignIn): say why, it isn't a fault
+        KitMsgBox desc, vbExclamation, APP_NAME
+        Exit Sub
+    End If
     If Len(intro) = 0 Then intro = "Something went wrong, so that action didn't finish."
     msg = intro & vbCrLf & vbCrLf & desc & " (error " & num & ")" & vbCrLf & vbCrLf
     If id > 0 Then
@@ -242,7 +246,9 @@ Public Function ExportErrorLogCsv(ByVal path As String) As Long
 End Function
 
 ' Delete every entry. Returns how many were deleted.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now.
 Public Function ClearErrorLog() As Long
+    RequireExamAdmin
     ClearErrorLog = DCount("*", "error_log")
     CurrentDb.Execute "DELETE FROM error_log", dbFailOnError
 End Function

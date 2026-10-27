@@ -157,6 +157,7 @@ End Sub
 ' number from 1 to 50 (the admin is told).
 Private Function SaveRule() As Boolean
     Dim t As String
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     t = Trim$(FieldText(Me.txtDefault))
     If Not IsWhole(t, 1, 50) Then
         KitMsgBox "Questions per topic to start with must be a whole number from 1 to 50.", vbExclamation, MSG_TITLE
@@ -196,6 +197,7 @@ End Function
 Private Sub btnDiffAdd_Click()
     Dim v As Variant, problem As String
     On Error GoTo Err_Handler
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     v = KitInputBox("Name of the new difficulty level:", "Difficulty levels")
     If IsNull(v) Then Exit Sub
     problem = NameProblem(v, 30, "tblDifficultyLevels", "LevelName", "difficulty level")
@@ -212,6 +214,7 @@ End Sub
 Private Sub btnClassAdd_Click()
     Dim m As Variant, pm As Variant, problem As String
     On Error GoTo Err_Handler
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     m = KitInputBox("Marking of the new classification level (as an exam's banner shows it):", "Classification levels")
     If IsNull(m) Then Exit Sub
     problem = NameProblem(m, 30, "tblClassLevels", "Marking", "classification level")
@@ -273,6 +276,7 @@ Private Sub DiffActions(ByVal atPointer As Boolean)
     a(4) = "-"
     a(5) = "del|!Delete|E74D"
     If atPointer Then k = KitMenuAt(a(0), a(1), a(2), a(3), a(4), a(5)) Else k = KitMenu(Me.btnDiffMore, a(0), a(1), a(2), a(3), a(4), a(5))
+    If Len(k) > 0 Then RequireExamAdmin    ' the right is checked now, not as of sign-in
     Select Case k
         Case "ren"
             v = KitInputBox("New name for """ & nm & """:", "Difficulty levels", nm)
@@ -319,6 +323,7 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
     a(4) = "-"
     a(5) = "del|!Delete|E74D"
     If atPointer Then k = KitMenuAt(a(0), a(1), a(2), a(3), a(4), a(5)) Else k = KitMenu(Me.btnClassMore, a(0), a(1), a(2), a(3), a(4), a(5))
+    If Len(k) > 0 Then RequireExamAdmin    ' the right is checked now, not as of sign-in
     Select Case k
         Case "ren"
             v = KitInputBox("New marking for """ & nm & """:", "Classification levels", nm)

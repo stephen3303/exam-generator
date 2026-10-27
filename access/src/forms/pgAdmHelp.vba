@@ -206,6 +206,7 @@ End Function
 ' admin is told what to fix.
 Private Function SaveTopic() As Boolean
     Dim key As String, title As String, body As String, problem As String
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     key = LCase$(Trim$(FieldText(Me.txtKey)))
     title = Trim$(FieldText(Me.txtTitle))
     body = FieldText(Me.txtBody)

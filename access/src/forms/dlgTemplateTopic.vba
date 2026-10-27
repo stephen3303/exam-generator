@@ -103,6 +103,7 @@ Private Sub btnOK_Click()
         Me.txtTopic.SetFocus
         Exit Sub
     End If
+    RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If m_topic = 0 Then
         If DCount("*", "tblTemplateTopics", "TemplateID=" & m_tpl & " AND TopicID=" & tid) > 0 Then
             KitMsgBox "That topic is already on this template. Close this and use Change to set its count.", vbInformation, MSG_TITLE
