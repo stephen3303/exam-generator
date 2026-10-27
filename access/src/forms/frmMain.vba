@@ -3,16 +3,28 @@ Option Explicit
 
 ' Exam Generator shell: the sidebar and the page host sfPage (ShellBuild).
 ' Its events go to the kit's modKitShell, which swaps pages from the timer
-' (QueueNav), never while one of their own events is running.
+' (QueueNav), never while one of their own events is running. The splash
+' opens it and stays over it while Form_Load finds the data file, signs the
+' user in and reads their roles (AppStartUp, modSignIn); a user who can't
+' use the app is told why and it closes.
 
 Private Sub Form_Load()
+    Dim stage As String
     On Error GoTo Err_Handler
     DoCmd.Maximize
+    stage = "start up"
+    If Not AppStartUp() Then
+        DoCmd.Quit acQuitSaveNone
+        Exit Sub
+    End If
+    stage = "open the shell"
     SplashStatus "Opening the dashboard" & ChrW(8230)
     ShellLoad Me
+    ShowPagesForRoles Me
     Exit Sub
 Err_Handler:
-    HandleError "frmMain.Form_Load"
+    HandleError "frmMain.Form_Load", stage
+    If stage = "start up" Then DoCmd.Quit acQuitSaveNone
 End Sub
 
 ' A resize doesn't fire a table's OnCurrent, so recheck which tables need a
@@ -45,6 +57,17 @@ End Sub
 ' True when the current page can be swapped or closed.
 Public Function CanLeavePage() As Boolean
     CanLeavePage = ShellCanLeave(Me)
+End Function
+
+' The page to show for key (the shell's RoutePage hook): a page the signed-in
+' person's roles don't allow (Ctrl+K, a link) goes to the dashboard.
+Public Function RoutePage(ByVal key As String) As String
+    On Error GoTo Err_Handler
+    If PageAllowed(key) Then RoutePage = key Else RoutePage = "dash"
+    Exit Function
+Err_Handler:
+    HandleError "frmMain.RoutePage", key
+    RoutePage = "dash"
 End Function
 
 ' The form for a page no sidebar item opens (the shell's PageForm hook):

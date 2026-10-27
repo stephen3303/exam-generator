@@ -96,6 +96,7 @@ Private Sub BuildUserInterface()
     BuildPickDialog                ' dlgPick, for PickBox and PersonPickBox
     BuildHelpDialog                ' dlgHelp, for KitHelp (Help in the sidebar and F1)
     BuildPaletteDialog             ' dlgPalette, for Ctrl+K (KitPalette)
+    BuildPersonnelDialogs          ' dlgPersonnelSetup, dlgSignIn, dlgPersonnel, dlgPerson (KitPersonnelStart)
     BuildSplash "frmMain", "Question bank and exams", ChrW(&HE82D)
     Build_frmMain
 End Sub
@@ -143,8 +144,8 @@ Private Sub Build_Stub(ByVal formName As String, ByVal title As String, ByVal ti
     SaveForm formName
 End Sub
 
-' The shell: the sidebar of pages and the page host sfPage. The admin pages
-' are hidden from everyone but the admin at sign-in (ShellShowItem, phase 2).
+' The shell: the sidebar of pages and the page host sfPage. At sign-in the
+' pages a person's roles don't allow are hidden (ShowPagesForRoles).
 ' My settings is a bottom link; it and the question editor, which no sidebar
 ' item opens, come from frmMain's PageForm.
 Private Sub Build_frmMain()
