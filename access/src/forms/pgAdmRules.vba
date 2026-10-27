@@ -226,7 +226,9 @@ Private Sub btnClassAdd_Click()
     KitExecute "INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & Q(Trim$(m)) & ", " & _
         Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"
     ListChanged Me.sfClass, DLookup("ClassLevelID", "tblClassLevels", "Marking=" & Q(Trim$(m)))
-    KitToast "Level added at the top. Move it down if it ranks lower.", "success"
+    ' A new level gets the next LevelRank, so it ranks highest and sits last in
+    ' this lowest-first list; Move up makes it rank lower.
+    KitToast "Added as the highest level, at the bottom of the list. Move it up if it ranks lower.", "success"
     Exit Sub
 Err_Handler:
     HandleError "pgAdmRules.btnClassAdd_Click"

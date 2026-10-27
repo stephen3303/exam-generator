@@ -203,7 +203,7 @@ If an exam takes n questions from a topic, at least n minus the repeats allowed 
 # Difficulty and classification levels
 Click **Add** to add a level. Select a level and click **More**, or right-click it, to rename it, move it, or delete it.
 - A difficulty level in use can't be deleted: **turn it off** instead. Questions that have it keep it; new ones can't pick it.
-- Classification levels are listed lowest first. An exam's overall marking is the highest level of its questions, so keep the order right. A level in use can't be deleted, but its marking and portion mark can be changed.
+- Classification levels are listed lowest first. An exam's overall marking is the highest level of its questions, so keep the order right. A new level is added as the highest, at the bottom of the list: use **Move up** until it sits above the levels that rank higher. A level in use can't be deleted, but its marking and portion mark can be changed.
 
 === helptopics | Admin: Help topics
 Change the help for any page or dialog, with no new copy of the app. What you save shows at once here, and for everyone else the next time they open the Exam Generator.
