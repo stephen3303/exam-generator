@@ -293,14 +293,15 @@ End Sub
 
 ' The shown question's actions (More, or a right-click on its row).
 Private Sub QuestionActions(ByVal atPointer As Boolean)
-    Dim sme As Boolean, st As String, canNew As Boolean, canDel As Boolean, a(5) As String, k As String
+    Dim sme As Boolean, canEdit As Boolean, st As String, canNew As Boolean, canDel As Boolean, a(5) As String, k As String
     Dim problem As String, shown As Long, nm As String
     If m_qid = 0 Then Exit Sub
     sme = HasRole("SME")
     st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & m_qid), 0))
-    canNew = sme And st = QS_APPROVED And Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & m_qid), False)
-    canDel = sme And Len(DeleteProblem(m_qid)) = 0
-    a(0) = IIf(sme, "", "~") & "open|" & IIf(StatusEditable(st), "Edit", "Open") & "|E70F"
+    If sme Then canEdit = CanWriteQuestion(m_qid)   ' its author or an SME on its topic
+    canNew = canEdit And st = QS_APPROVED And Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & m_qid), False)
+    canDel = canEdit And Len(DeleteProblem(m_qid)) = 0
+    a(0) = IIf(sme, "", "~") & "open|" & IIf(StatusEditable(st) And canEdit, "Edit", "Open") & "|E70F"
     a(1) = IIf(canNew, "", "~") & "newver|Edit as new version|E8C8"
     a(2) = "hist|History|E81C"
     a(3) = "copy|Copy question text|E8C8"
@@ -469,7 +470,7 @@ Private Sub ShowQuestion(ByVal qid As Long)
             Me.lblQParts.Caption = PartsText(qid)
             Me.lblQRefs.Caption = RefsText(qid)
             sme = HasRole("SME")
-            Me.btnOpen.Caption = IIf(StatusEditable(st), "Edit", "Open")
+            Me.btnOpen.Caption = IIf(StatusEditable(st) And sme, IIf(CanWriteQuestion(qid), "Edit", "Open"), "Open")
             SetEnabled Me.btnOpen, sme
             SetEnabled Me.btnMore, True
         End If
@@ -609,6 +610,7 @@ Private Function SaveRef() As Boolean
                 "the change. Correcting a typo or a revision is fine; a different document should be a new reference." & vbCrLf & vbCrLf & _
                 "Save the change?", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Function
     End If
+    RequireReferenceWriter                  ' the right is checked now, not as of sign-in
     KitExecute "UPDATE tblSourceRefs SET RefTitle=" & Q(Trim$(Me.txtRefTitle)) & ", RefNumber=" & _
         IIf(IsNull(NullIfEmpty(Me.txtRefNumber)), "Null", Q(NullIfEmpty(Me.txtRefNumber))) & ", Revision=" & _
         IIf(IsNull(NullIfEmpty(Me.txtRefRev)), "Null", Q(NullIfEmpty(Me.txtRefRev))) & " WHERE RefID=" & m_rid
@@ -639,6 +641,7 @@ Private Sub RefActions(ByVal atPointer As Boolean)
     a(3) = IIf(nAll = 0, "", "~") & "del|!Delete reference|E74D"
     If atPointer Then k = KitMenuAt(a(0), a(1), a(2), a(3)) Else k = KitMenu(Me.btnRefMore, a(0), a(1), a(2), a(3))
     nm = Nz(DLookup("RefTitle", "tblSourceRefs", "RefID=" & m_rid), "")
+    If k = "onoff" Or k = "del" Then RequireReferenceWriter
     Select Case k
         Case "onoff"
             KitExecute "UPDATE tblSourceRefs SET IsActive=" & IIf(isOn, "False", "True") & " WHERE RefID=" & m_rid

@@ -244,7 +244,7 @@ Public Sub Build_pgQuestionEdit()
     ' The question's own fields.
     x = PAGE_PAD: y = FIELD_Y
     FieldLbl "capTopic", "TOPIC", x, y, px(260)
-    Set c = PickBox("txtTopic", "", "SELECT TopicID, TopicName FROM tblTopics WHERE IsActive", x, y + px(18), px(260), px(30), _
+    Set c = PickBox("txtTopic", "", "SELECT TopicID, TopicName FROM tblTopics WHERE IsActive AND TopicWritable(TopicID)", x, y + px(18), px(260), px(30), _
         "Type part of a topic's name")
     Ev c, "OnKeyDown"
     x = x + px(271)

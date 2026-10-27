@@ -54,6 +54,7 @@ Every question in the bank, and the references they cite. Everyone can look; SME
 Pick a row to see the question: its status and who last acted on it, its text, topic, type, difficulty, points, portion marking, parts and references. **History** shows every version and who wrote, changed, submitted, approved or rejected it.
 
 # Writing and changing questions (SMEs)
+- SMEs write questions in the topics the admin made them an SME of (the **Topics** page). A question can be changed by its author or by any SME on its topic; anyone else opens it read-only.
 - **New question** opens the editor on a blank question.
 - **Edit**, or a double-click on the row, opens the question. A draft or a rejected question can be changed; one in review, approved or retired opens read-only.
 - To change an approved question, use **More** > **Edit as new version**. The new version goes through the whole approval again.
@@ -82,7 +83,7 @@ Click **Copy** to put the history on the clipboard as text, to paste into an ema
 Write a question with its parts, portion markings, answer options and references. Nothing reaches the bank until you click **Save**, so no one else sees a half-written question.
 
 # The question's own fields
-- **Topic**: type part of its name and pick it from the list.
+- **Topic**: type part of its name and pick it from the list. The list shows the topics you are an SME of.
 - **Type**: multiple choice, true/false or short answer. Only multiple choice questions have answer options.
 - **Difficulty** and **Points**. Points go in whole or half points, from 0.5 to 100.
 - **Portion marking**: the question's classification marking. Once a question has parts, it is set from them: the highest part's marking.

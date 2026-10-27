@@ -25,6 +25,14 @@ Option Explicit
 '
 ' The statuses are the data file's own names (tblStatuses): Draft,
 ' In Review, Approved, Rejected and Retired.
+'
+' Who may change a question is checked in the data file at the moment of
+' every write (RequireQuestionWriter), not from the roles read at sign-in:
+' an active SME who wrote the question, or who is an SME on its topic, and
+' only into a topic they are an SME on. The pages grey out what the person
+' can't do (CanWriteQuestion), but the check at the write is the one that
+' counts. References are shared by every question: any active SME, or the
+' admin, may add or correct them (RequireReferenceWriter).
 
 Public Const QS_DRAFT As String = "Draft"
 Public Const QS_REVIEW As String = "In Review"
@@ -108,6 +116,91 @@ End Function
 ' True when a question in status nm may be changed in place.
 Public Function StatusEditable(ByVal nm As String) As Boolean
     StatusEditable = (nm = QS_DRAFT Or nm = QS_REJECTED)
+End Function
+
+' ---------------------------------------------------------------------------
+' Who may change what (checked at the write)
+' ---------------------------------------------------------------------------
+
+' Why the signed-in person may not change question qid now, or "" when
+' they may. Reads the data file, so a role or topic taken away since sign-in
+' counts at once.
+'   qid      the question being changed; for a new version, the approved
+'            version it starts from; 0 for a new question.
+'   topicId  the topic it is being saved under (0: leave the topic out of
+'            the check).
+' Allowed: an active SME (tblPeople, tblPersonRoles, and the Personnel file
+' still letting them use the app) who wrote qid or is an SME on its topic;
+' and, when topicId is another topic than qid's, an SME on topicId.
+' A front end with no data file has nothing to protect: "".
+Public Function QuestionWriteProblem(ByVal qid As Long, Optional ByVal topicId As Long = 0) As String
+    Dim pid As Long, author As Long, ownTopic As Long
+    If Not DataLinked() Then Exit Function
+    pid = SignedInPersonID()
+    If Not IsActiveSME(pid) Then
+        QuestionWriteProblem = "Only an active SME can change questions. Your SME role may have been taken away since you signed in."
+        Exit Function
+    End If
+    If qid <> 0 Then
+        author = Nz(DLookup("AuthorPersonID", "tblQuestions", "QuestionID=" & qid), 0)
+        ownTopic = Nz(DLookup("TopicID", "tblQuestions", "QuestionID=" & qid), 0)
+        If author <> pid And Not IsTopicSME(pid, ownTopic) Then
+            QuestionWriteProblem = "Only the question's author or an SME on its topic can change it."
+            Exit Function
+        End If
+    End If
+    If topicId <> 0 And topicId <> ownTopic Then
+        If Not IsTopicSME(pid, topicId) Then
+            QuestionWriteProblem = "You aren't an SME on " & Nz(DLookup("TopicName", "tblTopics", "TopicID=" & topicId), "that topic") & _
+                ", so you can't put a question in it. The admin adds SMEs to topics on the Topics page."
+        End If
+    End If
+End Function
+
+' Raise ERR_NOT_ALLOWED unless the signed-in person may change question qid
+' now (QuestionWriteProblem; same arguments). Called first by every write to
+' a question: SaveQuestion, SubmitQuestion, DeleteDraft.
+' Errors: ERR_NOT_ALLOWED with the reason for the user. No side effects.
+Public Sub RequireQuestionWriter(ByVal qid As Long, Optional ByVal topicId As Long = 0)
+    Dim problem As String
+    problem = QuestionWriteProblem(qid, topicId)
+    If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modQuestions.RequireQuestionWriter", problem
+End Sub
+
+' True when the signed-in person may change question qid now: for the
+' pages, to grey out what they can't do.
+Public Function CanWriteQuestion(ByVal qid As Long) As Boolean
+    CanWriteQuestion = (Len(QuestionWriteProblem(qid)) = 0)
+End Function
+
+' True when the signed-in person is an SME on topic topicId: the editor's
+' topic picker lists only these. True in a front end with no data file.
+Public Function TopicWritable(ByVal topicId As Variant) As Boolean
+    If Not DataLinked() Then TopicWritable = True: Exit Function
+    If IsNull(topicId) Then Exit Function
+    TopicWritable = IsTopicSME(SignedInPersonID(), CLng(topicId))
+End Function
+
+' Raise ERR_NOT_ALLOWED unless the signed-in person is an active SME or the
+' admin now. Called before every write to the shared reference list.
+' Errors: ERR_NOT_ALLOWED with the reason for the user.
+Public Sub RequireReferenceWriter()
+    If Not DataLinked() Then Exit Sub
+    If IsActiveSME(SignedInPersonID()) Then Exit Sub
+    RequireExamAdmin                        ' raises when they aren't the admin either
+End Sub
+
+' pid is active here, holds the SME role, and may still use the app.
+Private Function IsActiveSME(ByVal pid As Long) As Boolean
+    If pid = 0 Then Exit Function
+    If Not Nz(DLookup("IsActive", "tblPeople", "PersonID=" & pid), False) Then Exit Function
+    If Not PersonHasRole(pid, "SME") Then Exit Function
+    IsActiveSME = PersonCanUse(pid, APP_CODE)
+End Function
+
+Private Function IsTopicSME(ByVal pid As Long, ByVal topicId As Long) As Boolean
+    If pid = 0 Or topicId = 0 Then Exit Function
+    IsTopicSME = DCount("*", "tblTopicSMEs", "TopicID=" & topicId & " AND PersonID=" & pid) > 0
 End Function
 
 ' ---------------------------------------------------------------------------
@@ -508,6 +601,7 @@ Public Function SaveQuestion(ByVal qid As Long, ByVal baseId As Long, ByVal topi
     Dim ws As DAO.Workspace, db As DAO.Database, rs As DAO.Recordset, inTrans As Boolean
     Dim st As String, key As Long, ver As Long, action As String, oldVer As Long, mark As Variant
     Dim num As Long, desc As String, src As String
+    RequireQuestionWriter IIf(qid <> 0, qid, baseId), topicId
     Set ws = DBEngine.Workspaces(0)
     Set db = CurrentDb
     savedId = 0
@@ -636,6 +730,7 @@ End Sub
 ' Its rules must already pass for submission. Returns "" or why not.
 Public Function SubmitQuestion(ByVal qid As Long) As String
     Dim st As String, dh As Long, ver As Long
+    RequireQuestionWriter qid
     st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & qid), 0))
     If Not StatusEditable(st) Then SubmitQuestion = "It is " & LCase$(st) & ", so it can't be submitted.": Exit Function
     dh = RoleID("DH")
@@ -665,6 +760,7 @@ End Function
 Public Function DeleteDraft(ByVal qid As Long) As Long
     Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long, baseVer As Long
     Dim num As Long, desc As String, src As String
+    RequireQuestionWriter qid
     Set ws = DBEngine.Workspaces(0)
     baseId = Nz(DLookup("ReplacesQuestionID", "tblQuestions", "QuestionID=" & qid), 0)
     ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid), 0)
@@ -715,8 +811,10 @@ Public Function RefProblem(ByVal title As Variant, ByVal number As Variant, ByVa
 End Function
 
 ' Add a reference (its fields must pass RefProblem) and return its id.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin now.
 Public Function AddReference(ByVal title As Variant, ByVal number As Variant, ByVal rev As Variant) As Long
     Dim rs As DAO.Recordset
+    RequireReferenceWriter
     Set rs = CurrentDb.OpenRecordset("SELECT * FROM tblSourceRefs WHERE False", dbOpenDynaset)
     rs.AddNew
     rs!RefTitle = Trim$(Nz(title, ""))

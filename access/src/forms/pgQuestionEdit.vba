@@ -24,7 +24,8 @@ Private m_baseId As Long        ' the approved question a new version replaces (
 Private m_key As Long           ' its QuestionKey (0 for a new question)
 Private m_ver As Long           ' its version number
 Private m_status As String      ' its status name
-Private m_readOnly As Boolean   ' it can't be changed (in review, approved, retired)
+Private m_readOnly As Boolean   ' it can't be changed (in review, approved, retired), or m_noRight
+Private m_noRight As Boolean    ' this person may not change it (not its author, nor an SME on its topic)
 Private m_stamp As Long         ' the newest audit row of the question when it was loaded
 Private m_snap As String        ' the page's own fields when loaded or saved (IsDirty)
 Private m_workDirty As Boolean  ' parts, options or references changed since
@@ -144,6 +145,9 @@ Private Sub btnMore_Click()
     canNew = (m_id <> 0 And m_status = QS_APPROVED)
     If canNew Then canNew = Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & m_id), False)
     If m_id <> 0 Then canDel = (Len(DeleteProblem(m_id)) = 0)
+    If canNew Or canDel Then
+        If Not CanWriteQuestion(m_id) Then canNew = False: canDel = False
+    End If
     Select Case KitMenu(Me.btnMore, IIf(IsDirty() And Not m_readOnly, "", "~") & "undo|Undo changes|E7A7", _
             IIf(canNew, "", "~") & "newver|Edit as new version|E70F", "new|New question|E710", _
             IIf(m_key <> 0, "", "~") & "hist|History|E81C", "-", _
@@ -646,6 +650,11 @@ Private Sub LoadQuestion(ByVal qid As Long, ByVal asNewVersion As Boolean)
                 LCase$(st) & ", so it opens as it is.", vbInformation, MSG_TITLE
             asNewVersion = False
         End If
+        If asNewVersion And Not CanWriteQuestion(qid) Then
+            KitMsgBox "Only the question's author or an SME on its topic can start a new version of it, so it opens as it is.", _
+                vbInformation, MSG_TITLE
+            asNewVersion = False
+        End If
         m_key = Nz(rs!QuestionKey, 0)
         If asNewVersion Then
             m_baseId = qid
@@ -667,7 +676,11 @@ Private Sub LoadQuestion(ByVal qid As Long, ByVal asNewVersion As Boolean)
     End If
     ShowTopic
     m_type = SegmentValue(Me, "segType")
-    m_readOnly = (m_id <> 0 And Not StatusEditable(m_status))
+    ' Read only while it can't be changed, or when this person may not change
+    ' it (not its author, nor an SME on its topic). Save checks again.
+    m_noRight = False
+    If m_id <> 0 And StatusEditable(m_status) Then m_noRight = Not CanWriteQuestion(m_id)
+    m_readOnly = (m_id <> 0 And Not StatusEditable(m_status)) Or m_noRight
     m_stamp = LastQuestionAudit(m_key)
     m_workDirty = False
     TempVars("EditQuestionID") = IIf(m_id <> 0, m_id, m_baseId)
@@ -687,8 +700,11 @@ End Sub
 ' The topic's name in the picker; a topic turned off since is shown with (off).
 Private Sub ShowTopic()
     KitPickShow Me.txtTopic
+    ' The picker lists only active topics this person is an SME on; any other
+    ' topic is named here, with (off) when it is turned off.
     If IsNull(Me.txtTopic) And Not IsNull(Me.txtTopicKey) Then
-        Me.txtTopic = Nz(DLookup("TopicName", "tblTopics", "TopicID=" & Me.txtTopicKey), "?") & " (off)"
+        Me.txtTopic = Nz(DLookup("TopicName", "tblTopics", "TopicID=" & Me.txtTopicKey), "?") & _
+            IIf(Nz(DLookup("IsActive", "tblTopics", "TopicID=" & Me.txtTopicKey), False), "", " (off)")
     End If
 End Sub
 
@@ -701,6 +717,10 @@ End Sub
 
 Private Sub SaveClicked()
     Dim wasNew As Boolean, oldVer As Long
+    If m_noRight Then
+        KitMsgBox "Only its author or an SME on its topic can change " & Called() & ".", vbInformation, MSG_TITLE
+        Exit Sub
+    End If
     If m_readOnly Then
         KitMsgBox Called() & " is " & LCase$(m_status) & ", so it can't be changed." & _
             IIf(m_status = QS_APPROVED, " To change it, use More > Edit as new version.", ""), vbInformation, MSG_TITLE
@@ -837,6 +857,7 @@ Private Sub ShowState()
             Case QS_REJECTED
                 s = s & " See History for why; change it and submit it again."
         End Select
+        If m_noRight Then s = s & " Only its author or an SME on its topic can change it."
     End If
     If Not m_readOnly And IsDirty() Then s = s & "  Unsaved changes."
     Me.lblSubtitle.Caption = s
