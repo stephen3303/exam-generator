@@ -42,10 +42,89 @@ Questions and exams waiting for your approval, one queue for each approver. This
 Every exam and where it stands. The department head starts a new exam here. This page comes in build phase 8.
 
 === questions | Question bank
-Browse and find questions, and the references they cite. This page comes in build phase 5.
+Every question in the bank, and the references they cite. Everyone can look; SMEs write and change questions.
+
+# Finding a question
+- Type in the **search box** to find questions by their words, their topic or their number (Q12).
+- The **chips** show questions by status. **All** shows the current version of each question; **Retired** shows the versions a newer version replaced.
+- The **funnel** on a column header shows only the rows with the values you tick. The chips' counts follow the search and the funnels.
+- **Export** saves the rows shown as a CSV file or an Excel workbook.
+
+# The question on the right
+Pick a row to see the question: its status and who last acted on it, its text, topic, type, difficulty, points, portion marking, parts and references. **History** shows every version and who wrote, changed, submitted, approved or rejected it.
+
+# Writing and changing questions (SMEs)
+- **New question** opens the editor on a blank question.
+- **Edit**, or a double-click on the row, opens the question. A draft or a rejected question can be changed; one in review, approved or retired opens read-only.
+- To change an approved question, use **More** > **Edit as new version**. The new version goes through the whole approval again.
+- **More** > **Delete draft** deletes a draft that was never submitted and is on no exam.
+
+# Statuses
+- **Draft**: being written. Only drafts and rejected questions can be changed.
+- **In Review**: submitted, waiting on the DH, then the XO, then the senior member.
+- **Approved**: can be drawn for exams.
+- **Rejected**: sent back with the approver's comments (see History). Change it and submit it again.
+- **Retired**: replaced by a newer version. It is kept for the record and never drawn.
+
+# References
+The **References** tab lists the documents questions cite, with how many current questions cite each. SMEs and the admin can:
+- Correct a reference's title, number or revision and click **Save**. Every question citing it shows the change, so a different document should be a new reference instead.
+- Click **New reference** to add one to the list.
+- Use **More** to turn a reference off (it can't be cited again; questions citing it keep it), or to delete one that no question cites.
+- Click **Show in the question list** to see only the questions citing it. **Show all questions** goes back to all of them.
+
+=== questions.history | A question's history
+Every version of one question, newest first: who wrote, changed, submitted, approved, rejected and retired it, when, at which approval step, and any comments. The rows are never changed or deleted.
+
+Click **Copy** to put the history on the clipboard as text, to paste into an email or a report.
 
 === qedit | Question editor
-Enter a question with its parts, portion markings and references. This page comes in build phase 5.
+Write a question with its parts, portion markings, answer options and references. Nothing reaches the bank until you click **Save**, so no one else sees a half-written question.
+
+# The question's own fields
+- **Topic**: type part of its name and pick it from the list.
+- **Type**: multiple choice, true/false or short answer. Only multiple choice questions have answer options.
+- **Difficulty** and **Points**. Points go in whole or half points, from 0.5 to 100.
+- **Portion marking**: the question's classification marking. Once a question has parts, it is set from them: the highest part's marking.
+
+# The tabs
+- **Question**: the text as it will print. Extra spaces and blank lines are tidied when you save.
+- **Parts**: a question with parts (A, B...) needs at least two. Each part has its own text, points, portion marking and reference answer, and the parts' points must add up to the question's. Parts are lettered by their order; the arrows move a part.
+- **Answer options**: the choices of a multiple choice question, lettered A, B... in their order. With parts, each part has its own options: pick the part in the box beside the buttons before you click **Add option**. Select an option and click **Mark correct**; each question or part has one correct option.
+- **References**: the documents the answer comes from, with the paragraph. **Cite a reference** picks one from the shared list or adds a new one.
+- **Reference answer**: the answer key for the command. It is never printed on the exam.
+- **History**: every version's audit rows.
+
+# Saving and submitting
+- **Save** (Ctrl+S) checks the question and keeps it as a draft. If something is missing, it says what and takes you to it.
+- **Submit for approval** saves it, checks that it has references and, for multiple choice, at least two options with one correct in each group, then sends it to the department head. You can't change it while it is in review.
+- If someone else saved the question while you had it open, Save says who and asks before saving over their changes.
+- Leaving with unsaved changes asks whether to save them.
+
+# Versions
+An approved question is changed by starting a new version (**More** > **Edit as new version**). Saving the new version retires the approved one, so it can't be drawn for new exams until the new version is approved. Deleting the new version's draft before it is submitted puts the approved version back.
+
+# More
+- **Undo changes** drops your changes since the last save.
+- **New question** starts a blank one.
+- **Delete draft** deletes a draft that was never submitted and is on no exam.
+
+=== qedit.part | A question's part
+A part (A, B...) of a multipart question.
+- **Label**: set by the part's place. Move the part to change it.
+- **Points**: whole or half points. The line under the fields says what the question's points leave for this part.
+- **Portion marking**: the part's own classification marking. The question takes the highest of its parts'.
+- **Text**: the part as it will print.
+- **Reference answer**: the part's answer key, never printed.
+
+Click **OK** to keep the part in the question. It is saved to the bank with the question, when you click **Save** in the editor.
+
+=== qedit.reference | Citing a reference
+- **Cite one already listed**: type part of its title or number and pick it from the list. Only references turned on are listed.
+- **Add a new reference**: give its title, number and revision as the document shows them. OK adds it to the shared list at once, so other SMEs can cite it too, even if you don't save the question.
+- **Paragraph**: where in the reference the answer is, such as 3.2.1 or Table 4. It is optional.
+
+To cite a different reference, remove the citation and cite the other one.
 
 === stats | Statistics
 Questions given per topic and per reference over a period or exam series. This page comes in build phase 9.

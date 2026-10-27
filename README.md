@@ -9,6 +9,7 @@ The front end is built in code with the [access-modern-ui](https://github.com/st
 ```
 access/build.ps1              builds the front end (access\build\ExamGenerator.accdb)
 access/backend/               the shared data file's script (modBuildBackEnd.bas) and new-backend.ps1
+review/                       review prompts and the review task for Stephen's review VMs
 access/kit/                   the kit, copied unchanged (KIT_VERSION.txt says from which commit)
 access/tools/                 the kit's build tools (palettes, line numbers, dialog watch)
 access/src/modules/           the app's code: modBuild (BuildAll and every form), modGlobals, modUI,
@@ -46,7 +47,7 @@ The front end is built in the ten phases of the front-end plan. Pages a later ph
 | 2 | Sign-in from the shared Personnel file, roles, linking the shared data file |
 | 3 | Help topics edited in the app (Admin: Help topics); the help is kept in the data file's `help_topic` table and read at start-up |
 | 4 | Admin: topics with their SMEs, templates with their topics (`dlgTemplateTopic`), people and routing (roles and the DH, XO and SM steps), rules and lists (the overlap rule and the difficulty and classification lists). Built by `modBuildAdmin`; shared lookups in `modAdmin` |
-| 5 | Question bank and question editor |
+| 5 | Question bank (search, status chips, column filters, references and the questions citing each) and the question editor (parts with points and portion markings, answer options, references, reference answer, history; versions and audit rows), with `dlgPart`, `dlgReference` and `dlgHistory`. Built by `modBuildQuestions`; the save and submit rules and the editor's working copy in `modQuestions` |
 | 6 | Question approvals |
 | 7 | Exam topic reviews |
 | 8 | Exams and exam approvals |

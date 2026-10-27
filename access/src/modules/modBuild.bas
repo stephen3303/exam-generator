@@ -10,8 +10,9 @@ Option Explicit
 ' this front end to it when build.ps1 is given its path, so UI work never
 ' touches data.
 '
-' Steps, in order: link, user interface (subforms, then pages, then dialogs,
-' then the shell last), help, startup. A failed build returns
+' Steps, in order: link, local tables (the question editor's working copy),
+' user interface (subforms, then pages, then dialogs, then the shell last),
+' help, startup. A failed build returns
 ' "ERROR during <step>: <number> <description> [<last form traced>]".
 '
 ' Phase 1 builds every page as a placeholder (its header and an empty state
@@ -44,6 +45,7 @@ Public Function BuildAll(ByVal srcRoot As String, ByVal outDir As String, ByVal 
     If Not uiOnly And Len(bePath) > 0 Then
         m_step = "link": LinkBackEnd bePath
     End If
+    m_step = "local tables": EnsureWorkTables      ' the question editor's working copy (modQuestions)
     m_step = "user interface": BuildUserInterface
     m_step = "help": LoadHelpTopics srcRoot & "\help\help.txt"
     m_step = "startup": SetStartupOptions
@@ -85,6 +87,9 @@ Private Sub BuildUserInterface()
     BuildPages
     Build_dlgAppearance            ' palette picker (modBuildAppearance)
     Build_dlgTemplateTopic         ' a template's topic and count (modBuildAdmin)
+    Build_dlgPart                  ' a question's part (modBuildQuestions)
+    Build_dlgReference             ' cite or add a reference
+    Build_dlgHistory               ' a question's history
     BuildMessageDialog             ' the kit's dlgMessage, for KitMsgBox
     BuildInputDialog               ' dlgInput, for KitInputBox
     BuildConfirmDialog             ' dlgConfirm, for KitConfirmTyped
@@ -108,12 +113,13 @@ End Sub
 Private Sub BuildPages()
     BuildGrid "subGridHelp", HelpCols(), HELP_LIST_W - px(32)
     BuildAdminGrids                ' the admin pages' tables and detail forms (modBuildAdmin)
+    BuildQuestionGrids             ' the question pages' and dialogs' tables (modBuildQuestions)
     Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
     Build_Stub "pgReview", "My reviews", "Each exam topic you review: check the drawn questions, swap any out and sign off.", 7
     Build_Stub "pgApprovals", "Approvals", "Questions and exams waiting for your approval.", 6
     Build_Stub "pgExams", "Exams", "Every exam and where it stands in review and approval.", 8
-    Build_Stub "pgQuestions", "Question bank", "Browse and find questions, and the references they cite.", 5
-    Build_Stub "pgQuestionEdit", "Question editor", "Enter and check a question, its parts, markings and references.", 5
+    Build_pgQuestions
+    Build_pgQuestionEdit
     Build_Stub "pgStats", "Statistics", "Questions given per topic and per reference over a period or series.", 9
     Build_pgAdmTopics
     Build_pgAdmTemplates
