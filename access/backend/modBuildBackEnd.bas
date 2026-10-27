@@ -85,7 +85,7 @@ Private Sub CreateTables()
     X "CREATE TABLE tblPersonRoles (PersonID LONG NOT NULL, RoleID LONG NOT NULL, CONSTRAINT pkPersonRoles PRIMARY KEY (PersonID, RoleID))"
 
     ' ---- Topics & templates ----
-    X "CREATE TABLE tblTopics (TopicID AUTOINCREMENT PRIMARY KEY, TopicName TEXT(100) NOT NULL, Description MEMO, IsActive YESNO)"
+    X "CREATE TABLE tblTopics (TopicID AUTOINCREMENT PRIMARY KEY, TopicName TEXT(100) NOT NULL, DefaultCount INTEGER, Description MEMO, IsActive YESNO)"
     X "CREATE TABLE tblTopicSMEs (TopicID LONG NOT NULL, PersonID LONG NOT NULL, CONSTRAINT pkTopicSMEs PRIMARY KEY (TopicID, PersonID))"
     X "CREATE TABLE tblTemplates (TemplateID AUTOINCREMENT PRIMARY KEY, TemplateName TEXT(100) NOT NULL, Description MEMO, IsActive YESNO)"
     X "CREATE TABLE tblTemplateTopics (TemplateID LONG NOT NULL, TopicID LONG NOT NULL, QuestionCount INTEGER NOT NULL, SortOrder INTEGER, " & _

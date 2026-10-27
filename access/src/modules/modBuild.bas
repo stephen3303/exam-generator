@@ -84,6 +84,7 @@ End Sub
 Private Sub BuildUserInterface()
     BuildPages
     Build_dlgAppearance            ' palette picker (modBuildAppearance)
+    Build_dlgTemplateTopic         ' a template's topic and count (modBuildAdmin)
     BuildMessageDialog             ' the kit's dlgMessage, for KitMsgBox
     BuildInputDialog               ' dlgInput, for KitInputBox
     BuildConfirmDialog             ' dlgConfirm, for KitConfirmTyped
@@ -106,6 +107,7 @@ End Sub
 ' real Build_<page>.
 Private Sub BuildPages()
     BuildGrid "subGridHelp", HelpCols(), HELP_LIST_W - px(32)
+    BuildAdminGrids                ' the admin pages' tables and detail forms (modBuildAdmin)
     Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
     Build_Stub "pgReview", "My reviews", "Each exam topic you review: check the drawn questions, swap any out and sign off.", 7
     Build_Stub "pgApprovals", "Approvals", "Questions and exams waiting for your approval.", 6
@@ -113,10 +115,10 @@ Private Sub BuildPages()
     Build_Stub "pgQuestions", "Question bank", "Browse and find questions, and the references they cite.", 5
     Build_Stub "pgQuestionEdit", "Question editor", "Enter and check a question, its parts, markings and references.", 5
     Build_Stub "pgStats", "Statistics", "Questions given per topic and per reference over a period or series.", 9
-    Build_Stub "pgAdmTopics", "Admin: Topics", "Topics, their default question count and their SMEs.", 4
-    Build_Stub "pgAdmTemplates", "Admin: Templates", "The exam templates: which topics each covers and how many questions each gets.", 4
-    Build_Stub "pgAdmPeople", "Admin: People and routing", "Who holds each Exam Generator role.", 4
-    Build_Stub "pgAdmRules", "Admin: Rules and lists", "The overlap settings and the lookup lists.", 4
+    Build_pgAdmTopics
+    Build_pgAdmTemplates
+    Build_pgAdmPeople
+    Build_pgAdmRules
     Build_pgAdmHelp
     Build_Stub "pgAdmLogs", "Admin: Logs", "The audit trail and the error log.", 10
     Build_pgMySettings
@@ -192,7 +194,7 @@ Private Function HelpCols() As Variant
 End Function
 
 ' 8pt bold muted uppercase caption above a field.
-Private Sub FieldLbl(ByVal nm As String, ByVal cap As String, ByVal x As Long, ByVal y As Long, ByVal w As Long)
+Public Sub FieldLbl(ByVal nm As String, ByVal cap As String, ByVal x As Long, ByVal y As Long, ByVal w As Long)
     Lbl nm, cap, x, y, w, px(16), 8, True, CLR_MUTED_FG
 End Sub
 

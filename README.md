@@ -45,7 +45,7 @@ The front end is built in the ten phases of the front-end plan. Pages a later ph
 | 1 | Repo, kit, shell with every page as a placeholder, palettes, help, error log |
 | 2 | Sign-in from the shared Personnel file, roles, linking the shared data file |
 | 3 | Help topics edited in the app (Admin: Help topics); the help is kept in the data file's `help_topic` table and read at start-up |
-| 4 | Admin: topics, templates, people and routing, rules and lists |
+| 4 | Admin: topics with their SMEs, templates with their topics (`dlgTemplateTopic`), people and routing (roles and the DH, XO and SM steps), rules and lists (the overlap rule and the difficulty and classification lists). Built by `modBuildAdmin`; shared lookups in `modAdmin` |
 | 5 | Question bank and question editor |
 | 6 | Question approvals |
 | 7 | Exam topic reviews |

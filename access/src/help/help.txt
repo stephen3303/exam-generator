@@ -51,16 +51,80 @@ Enter a question with its parts, portion markings and references. This page come
 Questions given per topic and per reference over a period or exam series. This page comes in build phase 9.
 
 === topics | Admin: Topics
-Topics, their default question count and their SMEs. This page comes in build phase 4.
+Topics are the subjects questions are written in. Each has a number of questions it starts with on a template, and the SMEs who review its questions and exams.
+
+# The list
+Each row shows the topic, its SMEs, how many **approved** questions it has, and its status:
+- **Active**: in use, with enough approved questions.
+- **Short**: in use, but with fewer approved questions than the overlap rule needs for the most questions any active template gives it. New exams may not be able to keep to the rule for it.
+- **Off**: turned off. Templates can't add it.
+
+Type in the search box to find topics by name or description. Click a column caption to sort by it.
+
+# Adding and changing a topic
+Click **New topic** (or press **Ctrl+N**) and type its name. It starts active, with the questions per topic set under **Rules and lists**. Change its name, **Questions per exam** or description on the right and click **Save** (or press **Ctrl+S**). The **Active** switch saves as soon as you flip it.
+
+# SMEs
+Type part of a name in the box under **SMEs**, pick the person and click **Add**. Anyone in the Personnel file can be picked: adding them gives them the SME role, and access to the Exam Generator, if they don't have it yet. Select an SME and click **Remove** (or right-click them) to take them off this topic; they keep the SME role.
+
+# Questions on hand
+The panel at the bottom compares the topic's approved questions with what the overlap rule needs. See **Rules and lists** for how that number is worked out.
+
+# Turning off and deleting
+Click **More** (or right-click the topic's row) to turn the topic off or on, or to delete it. A topic can be deleted only while no question, template or exam uses it; otherwise turn it off.
 
 === templates | Admin: Templates
-The exam templates: which topics each covers and how many questions each gets. This page comes in build phase 4.
+A template is one kind of exam: the topics it covers, in the order the exam shows them, and how many questions each topic gives.
+
+# Adding and changing a template
+Click **New template** (or press **Ctrl+N**) and type its name. Change its name or description on the right and click **Save** (or press **Ctrl+S**). The **Active** switch saves as soon as you flip it; only active templates can be used for a new exam.
+
+# Its topics
+- **Add topic** opens a window to pick a topic and set how many questions it gives. The count starts at the topic's own questions per exam, and the window says whether the topic has the approved questions the overlap rule needs for that count.
+- **Change** (or double-click a topic) sets the selected topic's count.
+- The **arrows** move the selected topic up or down. Exams list their topics in this order.
+- **Remove** takes the selected topic off the template. The topic itself stays, and exams already made keep it.
+
+Right-click a topic for the same choices. The line above the topics adds up the topics and questions an exam from this template has.
+
+# Copying and deleting
+Click **More** (or right-click the template's row) to copy the template with its topics, or to delete it. A template can be deleted only while no exam has been made from it; otherwise turn it off.
 
 === people | Admin: People and routing
-Who holds each Exam Generator role, and so who sees each approval queue. This page comes in build phase 4.
+Who can use the Exam Generator, who holds each role, and so who each step of an exam's approval goes to.
+
+# The approval route
+The three cards across the top name who holds **Department head (DH)**, **Executive officer (XO)** and **Senior member (SM)**, the steps an exam goes through after its SMEs sign off. A step nobody holds says so: exams can't pass it until someone does.
+
+# Adding a person
+Type part of a name in the box, pick the person and click **Add person**. Only people in the shared Personnel file can be picked. Anyone missing has to be added there first: a Personnel admin can click **Personnel** to do it. Adding someone gives them access to the Exam Generator; give them a role on the right so they have something to open.
+
+# Roles
+Click a person in the list, then flip their switches on the right. Each switch saves as soon as you flip it.
+- **Can use the Exam Generator**: off stops them signing in to this app.
+- **Exam Generator admin**: the Admin pages.
+- **Subject matter expert (SME)**: writes questions and reviews the topics they are an SME of (set on the **Topics** page).
+- **Department head**, **Executive officer** and **Senior member**: approve questions and exams at their step.
+
+Nobody can turn off their own access or their own admin, and the app always keeps one admin. Taking SME away from someone who is an SME of topics takes them off those topics too, once you agree.
 
 === rules | Admin: Rules and lists
-The overlap settings and the lookup lists. This page comes in build phase 4.
+The overlap rule that limits how far a new exam may repeat recent exams, and the lists questions choose their difficulty and classification from.
+
+# The overlap rule
+- **Most of a topic's questions that may repeat**: of the questions a topic gives an exam, at most this share may have been on any of the recent exams. 0% means all must be fresh.
+- **Recent exams checked**: how many of the latest exams count as recent.
+- **Questions per topic to start with**: what a new topic, and a topic added to a template, starts with.
+
+Moving a slider lists the topics that would be short of approved questions under the new values, before anything is saved. Click **Save** (or press **Ctrl+S**) to use them, or **Undo changes** to go back. Use the **Left** and **Right** arrow keys on a slider to move it a step.
+
+# How many questions a topic needs
+If an exam takes n questions from a topic, at least n minus the repeats allowed must be fresh, and those stay recent for the next exams checked. So a topic needs at least (exams checked + 1) x (fresh questions an exam) approved questions to meet the rule exam after exam, using the most questions any active template gives it. For example, 4 questions an exam, 25% may repeat and 10 exams checked: 3 must be fresh, so it needs 11 x 3 = 33.
+
+# Difficulty and classification levels
+Click **Add** to add a level. Select a level and click **More**, or right-click it, to rename it, move it, or delete it.
+- A difficulty level in use can't be deleted: **turn it off** instead. Questions that have it keep it; new ones can't pick it.
+- Classification levels are listed lowest first. An exam's overall marking is the highest level of its questions, so keep the order right. A level in use can't be deleted, but its marking and portion mark can be changed.
 
 === helptopics | Admin: Help topics
 Change the help for any page or dialog, with no new copy of the app. What you save shows at once here, and for everyone else the next time they open the Exam Generator.
