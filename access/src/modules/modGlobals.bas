@@ -9,7 +9,7 @@ Option Explicit
 
 Public Const APP_NAME As String = "Exam Generator"
 Public Const APP_CODE As String = "EXAMGEN"      ' this app's code in the shared Personnel file (kit_person_app)
-Public Const BE_FILE As String = "ExamGenerator_be.accdb"   ' the shared data file's usual name
+Public Const BE_FILE As String = "ExamGen_BE.accdb"   ' the shared data file's usual name
 Public g_Silent As Boolean                       ' True during the build: nothing may block
 
 ' Message to the user. During the build it is printed instead; warnings and

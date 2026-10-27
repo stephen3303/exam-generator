@@ -7,9 +7,11 @@ Option Explicit
 ' BandCF needs to compile (the app shows no bands).
 '
 ' Status words are mapped to pill variants here, never to colors, so every
-' palette keeps them readable. Questions: Draft, In review, Approved,
-' Returned, Invalid. Exams: SME review, In review, Approved, Returned.
-' Review tasks: Open, Done, Closed.
+' palette keeps them readable. The data file's tblStatuses names them
+' (questions: Draft, In Review, Approved, Rejected, Retired; exams: SME Review,
+' In Review, Approved, Rejected); the plan's words (Returned, Invalid) are
+' mapped too. Review tasks: Open, Done, Closed. Matching ignores case
+' (Option Compare Database).
 
 ' Click on a "?" help mark (TitleTip): show its full explanation.
 Public Function ShowTip(frm As Form, ByVal nm As String)
@@ -41,9 +43,9 @@ Public Function StatusVariant(ByVal status As Variant) As String
     Select Case Nz(status, "")
         Case "Approved", "Done": StatusVariant = "success"
         Case "In review", "SME review", "Open": StatusVariant = "info"
-        Case "Returned": StatusVariant = "warning"
+        Case "Returned", "Rejected": StatusVariant = "warning"
         Case "Invalid": StatusVariant = "destructive"
-        Case "Draft", "Closed": StatusVariant = "secondary"
+        Case "Draft", "Closed", "Retired": StatusVariant = "secondary"
     End Select
     Exit Function
 Gone:

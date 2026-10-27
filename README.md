@@ -8,6 +8,7 @@ The front end is built in code with the [access-modern-ui](https://github.com/st
 
 ```
 access/build.ps1              builds the front end (access\build\ExamGenerator.accdb)
+access/backend/               the shared data file's script (modBuildBackEnd.bas) and new-backend.ps1
 access/kit/                   the kit, copied unchanged (KIT_VERSION.txt says from which commit)
 access/tools/                 the kit's build tools (palettes, line numbers, dialog watch)
 access/src/modules/           the app's code: modBuild (BuildAll and every form), modGlobals, modUI,
@@ -23,10 +24,13 @@ Requires Microsoft Access 2016 or later (Microsoft 365) on Windows.
 
 ```powershell
 cd access
+.\backend\new-backend.ps1                    # a new, empty data file at build\ExamGen_BE.accdb (never overwrites)
+.\build.ps1 -BackEnd .\build\ExamGen_BE.accdb   # front end linked to that data file
 .\build.ps1                                  # front end with no data linked, for UI work
-.\build.ps1 -BackEnd D:\Data\ExamGenerator_be.accdb   # front end linked to the shared data file
 .\build.ps1 -UiOnly                          # rebuild code and forms, keep the links
 ```
+
+The data file holds the question bank, exams, each person's Exam Generator roles and switches (keyed on the shared Personnel file's `person_id`; names and accounts stay in the Personnel file), the editable help topics and the error log. `new-backend.ps1 -Path <file>` makes it somewhere else; `BuildBackEnd` in `modBuildBackEnd.bas` still works by hand from any Access database.
 
 Then open `access\build\ExamGenerator.accdb`. The build stops and prints any Visual Basic or Access dialog it meets (a compile error, an error message) instead of hanging. The code loaded into the front end has line numbers so the error log names the failing line (`-NoLineNumbers` leaves them out).
 
