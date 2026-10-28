@@ -610,14 +610,16 @@ Private Function RefOf(ByVal qid As Long) As String
     RefOf = QuestionRef(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid))
 End Function
 
-' Sign off exam topic etId as the signed-in SME: the topic is complete, the
-' person's task is Done and the other SMEs' tasks on it are Closed. When it
-' was the exam's last topic, the exam goes to the DH for approval. Returns
-' "" with doneText for the toast, or why it wasn't signed off (another SME
-' signed it off a moment ago).
+' Sign off exam topic etId as the signed-in SME, while it still has change
+' number stamp (the TopicChangeNo the page showed, so the sign-off covers
+' exactly the questions the SME saw): the topic is complete, the person's
+' task is Done and the other SMEs' tasks on it are Closed. When it was the
+' exam's last topic, the exam goes to the DH for approval. Returns "" with
+' doneText for the toast, or why it wasn't signed off (another SME swapped
+' a question or signed it off since).
 ' Errors: ERR_NOT_ALLOWED when the person may not sign it off now
 '   (RequireReviewer); a data error rolls back and passes up.
-Public Function SignOffTopic(ByVal etId As Long, ByRef doneText As String) As String
+Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef doneText As String) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, pid As Long, examId As Long, n As Long, nLeft As Long, ver As Variant
     Dim topic As String, num As Long, desc As String, src As String
     RequireReviewer etId
@@ -629,12 +631,14 @@ Public Function SignOffTopic(ByVal etId As Long, ByRef doneText As String) As St
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
-    ' One sign-off wins: only while no one has signed it off.
-    n = KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=" & pid & ", SignedOffOn=Now() WHERE ExamTopicID=" & etId & _
-        " AND SignedOffByPersonID Is Null")
+    ' One sign-off wins, and only on the questions shown: only while no one
+    ' has signed it off or swapped a question since the page loaded it.
+    n = KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=" & pid & ", SignedOffOn=Now(), ChangeNo=Nz(ChangeNo,0)+1 " & _
+        "WHERE ExamTopicID=" & etId & " AND SignedOffByPersonID Is Null AND Nz(ChangeNo,0)=" & stamp)
     If n = 0 Then
         ws.Rollback: inTrans = False
-        SignOffTopic = "Another SME signed off this topic a moment ago, so your review of it is closed."
+        SignOffTopic = "Another SME swapped a question on this topic or signed it off a moment ago. The list now shows where " & _
+            "it stands; check the questions before you sign off."
         Exit Function
     End If
     KitExecute "UPDATE tblTasks SET TaskStatus=IIf(AssignedPersonID=" & pid & "," & Q(TS_DONE) & "," & Q(TS_CLOSED) & "), " & _

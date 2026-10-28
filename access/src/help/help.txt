@@ -47,7 +47,7 @@ Pick a review to see it on the right: the exam it is on, the questions drawn for
 - **Sign off** says the questions are right. The topic is then complete: its questions are settled for this exam, your review moves to **Done** and the other SMEs' reviews of it close. The app asks first, because it can't be undone.
 - When the exam's last topic is signed off, the exam goes to the **DH** for approval.
 
-Who may swap and sign off is checked again when you click: you must still be an SME of the topic with an open review of it. If another SME signed off or swapped the same question first, the app says so and shows where it stands now.
+Who may swap and sign off is checked again when you click: you must still be an SME of the topic with an open review of it. If another SME swapped a question on the topic or signed it off since you opened it, your swap or sign-off doesn't go through: the app says so and shows the topic as it stands now, so you only sign off the questions you have seen.
 
 === review.swap | Swapping a question
 **Swap** opens a window listing the approved questions of the topic that aren't on the exam, those given lately last. Type in the search box to find one by its words or its number (Q12). Pick one to read it in full.

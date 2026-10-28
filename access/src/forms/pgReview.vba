@@ -164,7 +164,7 @@ Private Sub SignOffClicked()
     If KitMsgBox("Sign off " & ExamTopicName(m_et) & "? Its " & n & IIf(n = 1, " question is", " questions are") & _
             " then settled for this exam, and the topic's other SMEs' reviews close. It can't be undone.", _
             vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
-    problem = SignOffTopic(m_et, done)
+    problem = SignOffTopic(m_et, m_stamp, done)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_task: Exit Sub
     KitToast done, "success"
     RefreshList 0                           ' it moves to Done
