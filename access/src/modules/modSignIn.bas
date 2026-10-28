@@ -217,7 +217,8 @@ End Function
 ' Returns 0 when it finished, else the number of the error that stopped it.
 '   2: tblExamTopics.ChangeNo (0 for the topics already there).
 '   3: the unique indexes and relationships new data files have (UpgradeTo3).
-'   4: ixAuditOn, the audit trail by date (Admin: Logs searches it by day).
+'   4: ixAuditOn, the audit trail by date (Admin: Logs searches it by day),
+'      and ixAuditPerson, by person and item (the Dashboard's recent activity).
 Private Function UpgradeData(ByVal v As Long) As Long
     Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean, n As Long, d As String
     On Error GoTo Fail
@@ -239,7 +240,10 @@ Private Function UpgradeData(ByVal v As Long) As Long
         CurrentDb.TableDefs("tblExamTopics").RefreshLink        ' the link shows the new column
     End If
     If v < 3 Then UpgradeTo3 db
-    If v < 4 Then AddIndexIfMissing db, "ixAuditOn", "tblAuditTrail", "ActionOn", False
+    If v < 4 Then
+        AddIndexIfMissing db, "ixAuditOn", "tblAuditTrail", "ActionOn", False
+        AddIndexIfMissing db, "ixAuditPerson", "tblAuditTrail", "PersonID, ItemType, ItemID", False
+    End If
     db.Execute "UPDATE tblSettings SET SettingValue='" & DATA_VERSION & "' WHERE SettingKey='SchemaVersion'", dbFailOnError
     db.Close
     Exit Function
