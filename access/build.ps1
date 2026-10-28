@@ -99,6 +99,14 @@ try {
     Write-Host "BuildAll: $result"
     if ($result -ne 'OK') { $failed = $true }
 
+    # The forms' code-behind goes in during BuildAll, after the compile above, and
+    # Access compiles a form module only when the form first opens. Compile again so
+    # an error there (a reserved word as a name, say) stops the build here instead.
+    if (-not $failed) {
+        $bad = Test-AccessCompiles $acc $watch
+        if ($bad) { Write-Host "Compile error after the forms were built: $bad"; throw 'compile failed' }
+    }
+
     # The locked release copy (-Release, see the top of the file). SysCmd 603
     # needs the source closed and no file where the .accde goes.
     if ($Release -and -not $failed) {

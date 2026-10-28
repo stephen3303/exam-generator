@@ -363,12 +363,12 @@ End Sub
 ' After the rows shown changed: the empty state, and the shown question
 ' kept when still listed (else the first).
 Private Sub AfterFilter()
-    Dim g As Form, n As Long, any As Boolean
+    Dim g As Form, n As Long, hasAny As Boolean
     Set g = Me.sfList.Form
     n = g.RecordsetClone.RecordCount
-    any = DCount("*", "tblQuestions") > 0
+    hasAny = DCount("*", "tblQuestions") > 0
     If m_tab = "q" Then
-        If Not any Then
+        If Not hasAny Then
             ShowEmpty Me, "emptyList", n = 0, "No questions yet", "SMEs add the first one with New question."
             SetVisible Me.emptyList_b, False
         Else
