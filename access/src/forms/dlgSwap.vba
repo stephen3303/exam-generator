@@ -148,9 +148,10 @@ Private Sub ShowPick()
         w = SettingLong(SET_OVERLAP_WINDOW, 10)
         key = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & m_pick)
         If InKeyList(m_keys, key) Then
-            ShowAlert Me, "alSwap", "It was on one of the last " & w & " exams, but the topic stays within the overlap rule with it.", "info"
+            ShowAlert Me, "alSwap", "It was on one of the " & w & " exams generated before this one, but the topic stays within " & _
+                "the overlap rule with it.", "info"
         Else
-            ShowAlert Me, "alSwap", "It wasn't on any of the last " & w & " exams.", "success"
+            ShowAlert Me, "alSwap", "It wasn't on any of the " & w & " exams generated before this one.", "success"
         End If
     End If
     SetEnabled Me.btnSwap, Len(problem) = 0

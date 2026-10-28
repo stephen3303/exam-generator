@@ -12,9 +12,11 @@ Option Explicit
 '
 ' The overlap rule (see the top of modAdmin): of the n questions a topic
 ' gets, at most Int(n * OverlapMaxPct / 100) may have been on any of the
-' last OverlapWindowExams exams generated, whatever their template or
-' recipient. A question counts by its QuestionKey, so a new version of a
-' question given lately counts as given. The draw takes questions not given
+' OverlapWindowExams exams generated before it (for a new exam, the last
+' ones), whatever their template or recipient; that is "given lately". The
+' order is ExamID's (the autonumber goes up), not CreatedOn, which each
+' copy takes from its own PC's clock. A question counts by its QuestionKey,
+' so a new version of a question given lately counts as given. The draw takes questions not given
 ' lately first, at random, and fills the rest from the ones given lately; a
 ' topic that can only be filled by going over the limit is drawn that way
 ' only when the DH says so (allowRepeats).
@@ -76,15 +78,18 @@ Public Function RepeatsAllowed(ByVal n As Long) As Long
     RepeatsAllowed = Int(n * SettingLong(SET_OVERLAP_PCT, 30) / 100)
 End Function
 
-' The QuestionKeys of the questions on the last OverlapWindowExams exams
-' generated, leaving out exam notExamId, as a list for IN (...): "12,15,40",
-' or "0" when there are none.
-Public Function RecentKeysList(Optional ByVal notExamId As Long = 0) As String
+' The QuestionKeys of the questions given lately for exam forExamId: those on
+' the OverlapWindowExams exams generated before it (0, for a new exam: the
+' last ones generated), as a list for IN (...): "12,15,40", or "0" when there
+' are none. Exams generated after it don't count against it: their own
+' windows hold it (see LaterExamProblem).
+' Errors: none of its own; a data error passes up.
+Public Function RecentKeysList(Optional ByVal forExamId As Long = 0) As String
     Dim w As Long, ids As String, keys As String
     w = SettingLong(SET_OVERLAP_WINDOW, 10)
     If w > 0 Then
-        ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams WHERE ExamID<>" & notExamId & _
-            " ORDER BY CreatedOn DESC, ExamID DESC")
+        ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams" & IIf(forExamId <> 0, " WHERE ExamID<" & forExamId, "") & _
+            " ORDER BY ExamID DESC")
         If Len(ids) > 0 Then
             keys = ColumnList("SELECT DISTINCT q.QuestionKey FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
                 "ON eq.QuestionID=q.QuestionID WHERE eq.ExamID IN (" & ids & ") AND q.QuestionKey Is Not Null")
@@ -543,10 +548,47 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     after = have - IIf(InKeyList(keys, oldKey), 1, 0) + IIf(InKeyList(keys, newKey), 1, 0)
     allowed = RepeatsAllowed(n)
     If after > allowed And after > have Then
-        SwapProblem = "That question was on one of the last " & SettingLong(SET_OVERLAP_WINDOW, 10) & " exams. With it, " & after & _
-            " of this topic's " & n & " questions would have been given lately; the overlap rule allows " & allowed & _
-            ". Pick one that wasn't given lately, or swap out one that was."
+        SwapProblem = "That question was on one of the " & SettingLong(SET_OVERLAP_WINDOW, 10) & " exams generated before this " & _
+            "one. With it, " & after & " of this topic's " & n & " questions would have been given lately; the overlap rule " & _
+            "allows " & allowed & ". Pick one that wasn't given lately, or swap out one that was."
+        Exit Function
     End If
+    SwapProblem = LaterExamProblem(examId, newKey)
+End Function
+
+' Why putting question key newKey on exam examId would take a topic of an
+' exam generated after it over the overlap rule, or "". The next
+' OverlapWindowExams exams count this one in their window, so a question one
+' of them holds becomes given lately for it (unless it was already). The
+' question this swap takes out is still counted for them: that can only
+' refuse a swap, never let one through over the rule.
+' Errors: none of its own; a data error passes up.
+Private Function LaterExamProblem(ByVal examId As Long, ByVal newKey As Variant) As String
+    Dim rs As DAO.Recordset, w As Long, ids As String, keys As String, have As Long, n As Long, allowed As Long
+    w = SettingLong(SET_OVERLAP_WINDOW, 10)
+    If w <= 0 Or IsNull(newKey) Then Exit Function
+    ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams WHERE ExamID>" & examId & " ORDER BY ExamID")
+    If Len(ids) = 0 Then Exit Function
+    Set rs = CurrentDb.OpenRecordset("SELECT eq.ExamID, eq.ExamTopicID, et.QuestionCount, e.RecipientName " & _
+        "FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
+        "INNER JOIN tblExamTopics AS et ON eq.ExamTopicID=et.ExamTopicID) INNER JOIN tblExams AS e ON eq.ExamID=e.ExamID " & _
+        "WHERE q.QuestionKey=" & CLng(newKey) & " AND eq.ExamID IN (" & ids & ") ORDER BY eq.ExamID", dbOpenSnapshot)
+    Do While Not rs.EOF
+        keys = RecentKeysList(rs!ExamID)
+        If Not InKeyList(keys, newKey) Then
+            have = GivenLatelyCount(rs!ExamTopicID, keys)
+            n = rs!QuestionCount
+            allowed = RepeatsAllowed(n)
+            If have + 1 > allowed Then
+                LaterExamProblem = "That question is on the exam for " & rs!RecipientName & ", generated after this one. With it " & _
+                    "here too, " & (have + 1) & " of that exam's " & n & " questions in this topic would have been given lately; " & _
+                    "the overlap rule allows " & allowed & ". Pick another question."
+                Exit Do
+            End If
+        End If
+        rs.MoveNext
+    Loop
+    rs.Close
 End Function
 
 ' Put question newQid on the exam in place of exam question eqId, as the

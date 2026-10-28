@@ -6,7 +6,8 @@ Option Explicit
 ' first (signed off by them, or Closed by another SME's sign-off), filtered
 ' by the search box and the column funnels. The picked one shows on the
 ' right: the exam and where the topic stands, the questions drawn for it
-' (Swapped, or Given lately when they were on one of the last exams), and
+' (Swapped, or Given lately when they were on one of the exams generated
+' before this one), and
 ' the picked question in full. Swap opens dlgSwap; Sign off completes the
 ' topic for every SME on it. Both are checked again in the data file when
 ' clicked (RequireReviewer).
@@ -259,7 +260,7 @@ Private Sub ShowTask(ByVal taskId As Long)
             If Len(problem) = 0 Then
                 given = GivenLatelyCount(m_et, m_keys)
                 s = "Check each question and swap any that aren't right, then sign off. One sign-off completes the topic for all its SMEs."
-                If given > 0 Then s = s & " " & given & " of them " & IIf(given = 1, "was", "were") & " on a recent exam; the " & _
+                If given > 0 Then s = s & " " & given & " of them " & IIf(given = 1, "was", "were") & " on an exam generated before this one; the " & _
                     "overlap rule allows " & RepeatsAllowed(n) & "."
                 ShowAlert Me, "alReview", s, "info"
             ElseIf rs!TaskStatus = TS_OPEN Then
