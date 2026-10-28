@@ -39,6 +39,7 @@ Private m_qstep As Long         ' its step when shown: approve and reject act on
 Private m_xsearch As String
 Private m_xid As Long           ' the exam shown on the right (0: none)
 Private m_xstep As Long         ' its step when shown, as m_qstep
+Private m_xver As Long          ' its version when shown: approve and send back act on that version only
 Private m_xprev As String       ' "ExamID|VersionNo" whose preview txtXPreview holds
 
 Public Property Get HelpTopic() As String
@@ -308,7 +309,7 @@ Private Sub XApproveClicked()
         If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
         mk = LevelMarking(OverallLevelID(m_xid))
         nR = ExamReplacedCount(m_xid)
-        If KitMsgBox("Give " & ExamRef(m_xid, DLookup("VersionNo", "tblExams", "ExamID=" & m_xid)) & " final approval? " & _
+        If KitMsgBox("Give " & ExamRef(m_xid, m_xver) & " final approval? " & _
                 IIf(Len(mk) > 0, "It is marked " & mk & " overall, its highest portion marking. ", "") & _
                 IIf(nR > 0, nR & IIf(nR = 1, " of its questions was", " of its questions were") & " replaced or retired since the " & _
                     "draw and will print as drawn; send it back instead to have them swapped. ", "") & _
@@ -316,7 +317,7 @@ Private Sub XApproveClicked()
                 vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     End If
     StartNotices                            ' the toast reports this approval's emails only
-    problem = ApproveExam(m_xid, done, isFinal, m_xstep)
+    problem = ApproveExam(m_xid, done, isFinal, m_xstep, m_xver)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     SendQueuedNotices                       ' the next step's emails (a final approval sends none)
     If isFinal Then
@@ -340,7 +341,7 @@ Private Sub XRejectClicked()
     problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     StartNotices                            ' the toast reports this send-back's emails only
-    ok = RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep)
+    ok = RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep & ";ver=" & m_xver)
     SendQueuedNotices                       ' the SMEs' emails, now the dialog has closed
     If ok Then
         KitToast WithNoticeNote("Sent back to its SMEs with your reason. They find it under My reviews."), "info"
@@ -475,7 +476,7 @@ End Sub
 Private Sub ShowExam(ByVal examId As Long)
     Dim rs As DAO.Recordset, isOpen As Boolean, nm As Variant, c As Control, s As String, problem As String
     Dim nQ As Long, nT As Long, mk As String, by As String, k As String, nR As Long, unm As String
-    m_xid = examId: m_xstep = 0
+    m_xid = examId: m_xstep = 0: m_xver = 0
     isOpen = (examId <> 0)
     If isOpen Then
         Set rs = CurrentDb.OpenRecordset("SELECT e.VersionNo, e.RecipientName, e.CreatedByPersonID, e.CreatedOn, e.CurrentStepRoleID, " & _
@@ -492,6 +493,7 @@ Private Sub ShowExam(ByVal examId As Long)
                 IIf(Len(by) > 0, by, "someone no longer listed") & " on " & Format$(rs!CreatedOn, "d mmm yyyy") & ". " & _
                 nQ & IIf(nQ = 1, " question", " questions") & " in " & nT & IIf(nT = 1, " topic", " topics") & "."
             m_xstep = Nz(rs!CurrentStepRoleID, 0)
+            m_xver = Nz(rs!VersionNo, 1)
             problem = ExamApproveProblem(examId, m_xstep)
             ' The final approval refuses an exam it can't mark; it can still be sent back.
             If Len(problem) = 0 And NextStepRoleID(m_xstep) = 0 Then unm = UnmarkedProblem(examId)

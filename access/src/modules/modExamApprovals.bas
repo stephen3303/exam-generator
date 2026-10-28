@@ -143,12 +143,13 @@ End Sub
 ' caller makes the Word document (modExamDoc.MakeExamDocument). Returns ""
 ' and what happened, for the toast, in doneText; or why it can't be
 ' approved now (someone else acted on it first).
-' expectStep is the step the person saw (0: as it stands); moved on since,
-' it returns why instead.
+' expectStep and expectVer are the step and version the person saw (0: as
+' it stands); moved on or sent back and resubmitted since, it returns why
+' instead, so nobody approves a version they haven't seen.
 ' Errors: ERR_NOT_ALLOWED when the person may not approve it.
 Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRef isFinal As Boolean, _
-        Optional ByVal expectStep As Long = 0) As String
-    Dim ws As DAO.Workspace, inTrans As Boolean, stepId As Long, nextId As Long, ver As Variant, n As Long, lvl As Long
+        Optional ByVal expectStep As Long = 0, Optional ByVal expectVer As Long = 0) As String
+    Dim ws As DAO.Workspace, inTrans As Boolean, stepId As Long, nextId As Long, ver As Long, n As Long, lvl As Long
     Dim num As Long, desc As String, src As String
     doneText = "": isFinal = False
     ' One step for the rights check and the guarded write: the one shown.
@@ -160,16 +161,17 @@ Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRe
         ApproveExam = UnmarkedProblem(examId)
         If Len(ApproveExam) > 0 Then Exit Function
     End If
-    ver = DLookup("VersionNo", "tblExams", "ExamID=" & examId)
+    ver = Nz(DLookup("VersionNo", "tblExams", "ExamID=" & examId), 1)
+    If expectVer <> 0 And ver <> expectVer Then ApproveExam = MOVED_ON_X: Exit Function
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
     If nextId <> 0 Then
-        n = KitExecute("UPDATE tblExams SET CurrentStepRoleID=" & nextId & StillAtStep(examId, stepId))
+        n = KitExecute("UPDATE tblExams SET CurrentStepRoleID=" & nextId & StillAtStep(examId, stepId, ver))
     Else
         lvl = OverallLevelID(examId)
         n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_APPROVED) & ", CurrentStepRoleID=Null, " & _
-            "FinalApprovedOn=Now(), OverallClassLevelID=" & IIf(lvl = 0, "Null", lvl) & StillAtStep(examId, stepId))
+            "FinalApprovedOn=Now(), OverallClassLevelID=" & IIf(lvl = 0, "Null", lvl) & StillAtStep(examId, stepId, ver))
     End If
     If n = 0 Then
         ws.Rollback: inTrans = False
@@ -199,17 +201,22 @@ End Function
 ' active SMEs get a new open review; the exam is Rejected at the SME step,
 ' its version one higher. Returns "" or why it can't be sent back now (no
 ' reason, a topic with no SME to review it, or someone else acted first).
-' expectStep is the step the person saw (0: as it stands); moved on since,
-' it returns why instead.
+' expectStep and expectVer are the step and version the person saw (0: as
+' it stands); moved on or sent back and resubmitted since, it returns why
+' instead.
 ' Errors: ERR_NOT_ALLOWED when the person may not reject it.
 Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal etId As Long, _
-        Optional ByVal expectStep As Long = 0) As String
+        Optional ByVal expectStep As Long = 0, Optional ByVal expectVer As Long = 0) As String
     Dim ws As DAO.Workspace, rs As DAO.Recordset, inTrans As Boolean, stepId As Long, ver As Long, n As Long
     Dim r As String, where As String, topics As String, noSme As String, ids As Variant, v As Variant, sql As String
     Dim plan As Collection, p As Variant, num As Long, desc As String, src As String
     ' One step for the rights check and the guarded write: the one shown.
     stepId = Nz(DLookup("CurrentStepRoleID", "tblExams", "ExamID=" & examId), 0)
     If expectStep <> 0 And stepId <> expectStep Then RejectExam = MOVED_ON_X: Exit Function
+    If expectVer <> 0 And Nz(DLookup("VersionNo", "tblExams", "ExamID=" & examId), 1) <> expectVer Then
+        RejectExam = MOVED_ON_X
+        Exit Function
+    End If
     RequireExamApprover examId, stepId
     RejectExam = ReasonProblem(reason, EXAM_REASON_WHO)
     If Len(RejectExam) > 0 Then Exit Function
@@ -240,11 +247,12 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
         Exit Function
     End If
     ver = Nz(DLookup("VersionNo", "tblExams", "ExamID=" & examId), 1)
+    If expectVer <> 0 And ver <> expectVer Then RejectExam = MOVED_ON_X: Exit Function
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REJECTED) & ", CurrentStepRoleID=" & RoleID("SME") & _
-        ", VersionNo=" & ver + 1 & StillAtStep(examId, stepId))
+        ", VersionNo=" & ver + 1 & StillAtStep(examId, stepId, ver))
     If n = 0 Then
         ws.Rollback: inTrans = False
         RejectExam = "Someone else approved or sent back this exam a moment ago, so it wasn't sent back."
@@ -294,8 +302,9 @@ End Function
 
 ' " WHERE" for an update that only touches exam examId while it is still in
 ' review at step stepId.
-Private Function StillAtStep(ByVal examId As Long, ByVal stepId As Long) As String
-    StillAtStep = " WHERE ExamID=" & examId & " AND StatusID=" & ExamStatusID(ES_REVIEW) & " AND CurrentStepRoleID=" & stepId
+Private Function StillAtStep(ByVal examId As Long, ByVal stepId As Long, Optional ByVal ver As Long = 0) As String
+    StillAtStep = " WHERE ExamID=" & examId & " AND StatusID=" & ExamStatusID(ES_REVIEW) & " AND CurrentStepRoleID=" & stepId & _
+        IIf(ver <> 0, " AND VersionNo=" & ver, "")
 End Function
 
 ' The classification level with the highest LevelRank of any question or

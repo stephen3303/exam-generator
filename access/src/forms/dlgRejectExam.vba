@@ -14,6 +14,7 @@ Private Const MSG_TITLE As String = "Send back"
 
 Private m_id As Long
 Private m_step As Long          ' the step the page showed: sends back from that step only
+Private m_ver As Long           ' the version the page showed: sends back that version only
 
 Public Property Get HelpTopic() As String
     HelpTopic = "approvals.exams"
@@ -24,7 +25,8 @@ Private Sub Form_Load()
     On Error GoTo Err_Handler
     m_id = OpenArgLong(Me, "id")
     m_step = OpenArgLong(Me, "step")
-    ref = ExamRef(m_id, DLookup("VersionNo", "tblExams", "ExamID=" & m_id))
+    m_ver = OpenArgLong(Me, "ver")
+    ref = ExamRef(m_id, IIf(m_ver <> 0, m_ver, DLookup("VersionNo", "tblExams", "ExamID=" & m_id)))
     Me.Caption = "Send back " & ref
     Me.lblHead.Caption = "Send " & ref & " back to its SMEs?"
     Me.lblSub.Caption = "The topics you send back lose their sign-off and their SMEs review them again. Once every topic is " & _
@@ -59,10 +61,14 @@ Private Sub btnReject_Click()
         Me.txtReason.SetFocus
         Exit Sub
     End If
-    problem = RejectExam(m_id, Me.txtReason, Nz(Me.cboTopic, 0), m_step)
+    problem = RejectExam(m_id, Me.txtReason, Nz(Me.cboTopic, 0), m_step, m_ver)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbInformation, MSG_TITLE
-        If Len(ExamApproveProblem(m_id, m_step)) > 0 Then DoCmd.Close acForm, Me.Name, acSaveNo   ' acted on first: nothing to fix here
+        ' Acted on first (moved on, or sent back and resubmitted): nothing to fix here.
+        If Len(ExamApproveProblem(m_id, m_step)) > 0 Or _
+                (m_ver <> 0 And Nz(DLookup("VersionNo", "tblExams", "ExamID=" & m_id), 0) <> m_ver) Then
+            DoCmd.Close acForm, Me.Name, acSaveNo
+        End If
         Exit Sub
     End If
     TempVars("DialogResult") = "ok"

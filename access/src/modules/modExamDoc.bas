@@ -341,7 +341,8 @@ Private Function OneParagraph(ByVal t As String) As String
     t = Replace(Replace(Replace(t, vbCrLf, Chr(11)), vbCr, Chr(11)), vbLf, Chr(11))
     For i = 1 To Len(t)
         ch = Mid$(t, i, 1)
-        If AscW(ch) < 32 And ch <> Chr(11) And ch <> vbTab Then ch = " "
+        ' AscW is signed: characters from U+8000 up come back negative.
+        If (AscW(ch) And &HFFFF&) < 32 And ch <> Chr(11) And ch <> vbTab Then ch = " "
         s = s & ch
     Next
     OneParagraph = s
