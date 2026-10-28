@@ -58,8 +58,13 @@ Public Const AU_SUBMITTED As String = "Submitted"
 Public Const AU_RETIRED As String = "Retired"
 Public Const AU_RESTORED As String = "Restored"
 Public Const AU_DELETED As String = "Deleted"
+Public Const AU_ADDED As String = "Added"               ' a reference added to the shared list
+Public Const AU_CHANGED As String = "Changed"           ' a reference's title, number or revision
+Public Const AU_TURNED_OFF As String = "Turned off"
+Public Const AU_TURNED_ON As String = "Turned on"
 
 Public Const ITEM_QUESTION As String = "Question"
+Public Const ITEM_REFERENCE As String = "Reference"     ' tblAuditTrail.ItemID is then the RefID
 
 Public Const MAX_POINTS As Long = 100           ' most points one question (or part) may carry
 Public Const MAX_TEXT As Long = 4000            ' longest question, part or option text
@@ -888,9 +893,13 @@ End Function
 
 ' Add a reference (its fields must pass RefProblem) and return its id.
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin now.
+' The new reference and its Added audit row are one transaction.
 Public Function AddReference(ByVal title As Variant, ByVal number As Variant, ByVal rev As Variant) As Long
-    Dim rs As DAO.Recordset
+    Dim rs As DAO.Recordset, ws As DAO.Workspace, inTrans As Boolean, id As Long
     RequireReferenceWriter
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
     Set rs = CurrentDb.OpenRecordset("SELECT * FROM tblSourceRefs WHERE False", dbOpenDynaset)
     rs.AddNew
     rs!RefTitle = Trim$(Nz(title, ""))
@@ -899,8 +908,83 @@ Public Function AddReference(ByVal title As Variant, ByVal number As Variant, By
     rs!IsActive = True
     rs.Update
     rs.Bookmark = rs.LastModified
-    AddReference = rs!RefID
-    rs.Close
+    id = rs!RefID
+    rs.Close: Set rs = Nothing
+    AddAudit ITEM_REFERENCE, id, Null, AU_ADDED, , RefText(id)
+    ws.CommitTrans: inTrans = False
+    AddReference = id
+    Exit Function
+Fail:
+    If Not rs Is Nothing Then rs.Close
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modQuestions.AddReference"
+End Function
+
+' Correct reference refId's title, number and revision (they must pass
+' RefProblem with exceptId refId). Every question citing it shows the change,
+' approved ones included, so the change and an audit row with the old and
+' new text ("Was: ...; now: ...") are one transaction.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin
+'   now; 3022 when another reference already has this title and number.
+Public Sub ChangeReference(ByVal refId As Long, ByVal title As Variant, ByVal number As Variant, ByVal rev As Variant)
+    Dim ws As DAO.Workspace, inTrans As Boolean, was As String
+    RequireReferenceWriter
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    was = RefText(refId)
+    KitExecute "UPDATE tblSourceRefs SET RefTitle=" & Q(Trim$(Nz(title, ""))) & ", RefNumber=" & SqlOrNull(number) & _
+        ", Revision=" & SqlOrNull(rev) & " WHERE RefID=" & refId
+    AddAudit ITEM_REFERENCE, refId, Null, AU_CHANGED, , "Was: " & was & "; now: " & RefText(refId)
+    ws.CommitTrans: inTrans = False
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modQuestions.ChangeReference", refId
+End Sub
+
+' Turn reference refId on (it can be cited) or off (it can't be cited
+' again; questions citing it keep it), with an audit row, in one
+' transaction.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin now.
+Public Sub SetReferenceActive(ByVal refId As Long, ByVal isOn As Boolean)
+    Dim ws As DAO.Workspace, inTrans As Boolean
+    RequireReferenceWriter
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    KitExecute "UPDATE tblSourceRefs SET IsActive=" & IIf(isOn, "True", "False") & " WHERE RefID=" & refId
+    AddAudit ITEM_REFERENCE, refId, Null, IIf(isOn, AU_TURNED_ON, AU_TURNED_OFF), , RefText(refId)
+    ws.CommitTrans: inTrans = False
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modQuestions.SetReferenceActive", refId
+End Sub
+
+' Delete reference refId, which no question may cite, with an audit row
+' that keeps its text, in one transaction.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin
+'   now; 3200 when a question cites it (the rQR_R relationship).
+Public Sub DeleteReference(ByVal refId As Long)
+    Dim ws As DAO.Workspace, inTrans As Boolean, was As String
+    RequireReferenceWriter
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    was = RefText(refId)
+    KitExecute "DELETE FROM tblSourceRefs WHERE RefID=" & refId
+    AddAudit ITEM_REFERENCE, refId, Null, AU_DELETED, , was
+    ws.CommitTrans: inTrans = False
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modQuestions.DeleteReference", refId
+End Sub
+
+' v as SQL: Q of its trimmed text, or Null when it is empty.
+Private Function SqlOrNull(ByVal v As Variant) As String
+    If IsNull(NullIfEmpty(v)) Then SqlOrNull = "Null" Else SqlOrNull = Q(NullIfEmpty(v))
 End Function
 
 Public Function NullIfEmpty(ByVal v As Variant) As Variant

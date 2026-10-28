@@ -611,11 +611,8 @@ Private Function SaveRef() As Boolean
                 "the change. Correcting a typo or a revision is fine; a different document should be a new reference." & vbCrLf & vbCrLf & _
                 "Save the change?", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Function
     End If
-    RequireReferenceWriter                  ' the right is checked now, not as of sign-in
     On Error GoTo Fail
-    KitExecute "UPDATE tblSourceRefs SET RefTitle=" & Q(Trim$(Me.txtRefTitle)) & ", RefNumber=" & _
-        IIf(IsNull(NullIfEmpty(Me.txtRefNumber)), "Null", Q(NullIfEmpty(Me.txtRefNumber))) & ", Revision=" & _
-        IIf(IsNull(NullIfEmpty(Me.txtRefRev)), "Null", Q(NullIfEmpty(Me.txtRefRev))) & " WHERE RefID=" & m_rid
+    ChangeReference m_rid, Me.txtRefTitle, Me.txtRefNumber, Me.txtRefRev     ' checks the right now, and writes the audit row
     On Error GoTo 0
     RefreshRefs m_rid
     Me.lblRefState.Caption = "Saved."
@@ -633,7 +630,7 @@ End Function
 ' before the confirm (error 3200 on the rQR_R relationship): the user is told.
 Private Function DeleteRef(ByVal rid As Long) As Boolean
     On Error GoTo Fail
-    KitExecute "DELETE FROM tblSourceRefs WHERE RefID=" & rid
+    DeleteReference rid
     DeleteRef = True
     Exit Function
 Fail:
@@ -669,7 +666,7 @@ Private Sub RefActions(ByVal atPointer As Boolean)
     If k = "onoff" Or k = "del" Then RequireReferenceWriter
     Select Case k
         Case "onoff"
-            KitExecute "UPDATE tblSourceRefs SET IsActive=" & IIf(isOn, "False", "True") & " WHERE RefID=" & m_rid
+            SetReferenceActive m_rid, Not isOn
             RefreshRefs m_rid
             KitToast IIf(isOn, "Turned off. Questions citing it keep it; no new citations.", "Turned on."), "success"
         Case "citing"

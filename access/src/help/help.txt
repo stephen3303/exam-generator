@@ -94,6 +94,8 @@ The **References** tab lists the documents questions cite, with how many current
 - Use **More** to turn a reference off (it can't be cited again; questions citing it keep it), or to delete one that no question cites.
 - Click **Show in the question list** to see only the questions citing it. **Show all questions** goes back to all of them.
 
+Each addition, correction, turn off or on and deletion is kept in the audit record with who made it and when; a correction keeps the old title, number and revision too.
+
 === questions.history | A question's history
 Every version of one question, newest first: who wrote, changed, submitted, approved, rejected and retired it, when, at which approval step, and any comments. The rows are never changed or deleted.
 
