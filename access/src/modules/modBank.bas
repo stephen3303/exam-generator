@@ -389,6 +389,7 @@ End Function
 Private Function PointsCell(ByVal v As Variant) As String
     If IsNull(v) Then Exit Function
     PointsCell = Trim$(Str$(CDbl(v)))
+    If Left$(PointsCell, 1) = "." Then PointsCell = "0" & PointsCell     ' Str$(0.5) is " .5"
 End Function
 
 ' Add a sheet after the others and fill it: the captions in row 1 (white on
@@ -427,10 +428,8 @@ Private Function WriteSheet(wb As Object, ByVal nm As String, ByVal cols As Vari
             Next
         Next
         ws.Range(ws.Cells(2, 1), ws.Cells(n + 1, nc)).Value = out
-        For Each c In longCols
-            ws.Range(ws.Cells(2, c), ws.Cells(n + 1, c)).NumberFormat = "General"
-        Next
-        ' Read it all back. A cell whose leading apostrophe Excel kept
+        ' Read it all back, exactly (case and every character), while every
+        ' cell is still text. A cell whose leading apostrophe Excel kept
         ' (instead of taking it as "this is text") is written again without
         ' the doubled one.
         back = ws.Range(ws.Cells(2, 1), ws.Cells(n + 1, nc)).Value2
@@ -438,17 +437,21 @@ Private Function WriteSheet(wb As Object, ByVal nm As String, ByVal cols As Vari
             For i = 1 To nc
                 want = CellExpected(data(r, i))
                 got = BackText(back(r, i))
-                If got <> want And Left$(want, 1) = "'" And got = "'" & want Then
+                If StrComp(got, want, vbBinaryCompare) <> 0 And Left$(want, 1) = "'" And _
+                        StrComp(got, "'" & want, vbBinaryCompare) = 0 Then
                     ws.Cells(r + 1, i).Value = want
                     got = BackText(ws.Cells(r + 1, i).Value2)
                 End If
-                If got <> want Then
+                If StrComp(got, want, vbBinaryCompare) <> 0 Then
                     WriteSheet = "Excel didn't keep the " & cols(i - 1) & " cell of " & nm & " row " & (r + 1) & " as written " & _
                         "(it should start """ & ClipText(Replace(want, vbLf, " "), 40) & """), so the bank wasn't exported. " & _
                         "The error log has no entry for this; tell whoever looks after the app."
                     Exit Function
                 End If
             Next
+        Next
+        For Each c In longCols
+            ws.Range(ws.Cells(2, c), ws.Cells(n + 1, c)).NumberFormat = "General"
         Next
     End If
     On Error Resume Next                    ' cosmetic: a failure here doesn't stop the export
@@ -534,7 +537,8 @@ Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String
         "Text", _
         "Commas, quotes and line breaks (Alt+Enter in Excel) are kept as typed. A question, part or option text can be at most " & _
             MAX_TEXT & " characters. Points use a dot for a half point (1.5). In the long text columns, type an apostrophe " & _
-            "before a text that starts with = so Excel keeps it as text.", _
+            "before a text that starts with = so Excel keeps it as text; Excel reads a long text again when you edit its cell, so " & _
+            "the same goes for a text there that looks like a number (0800).", _
         "", _
         "Import", _
         "Import checks the whole file first and lists every problem with its sheet and row; nothing is added until the file has " & _
@@ -780,7 +784,11 @@ End Function
 Private Function CellValue(ByVal v As Variant) As String
     If IsEmpty(v) Or IsNull(v) Then Exit Function
     If IsError(v) Then CellValue = "#ERROR": Exit Function
-    If VarType(v) = vbDouble Then CellValue = Trim$(Str$(v)): Exit Function
+    If VarType(v) = vbDouble Then
+        CellValue = Trim$(Str$(v))
+        If Left$(CellValue, 1) = "." Then CellValue = "0" & CellValue
+        Exit Function
+    End If
     CellValue = Replace(Replace(Replace(CStr(v), vbCrLf, vbLf), vbCr, vbLf), vbLf, vbCrLf)
 End Function
 
@@ -1169,13 +1177,15 @@ Private Function YesText(ByVal v As String) As Variant
 End Function
 
 ' A points cell for PointsProblem: Null when empty; the number when it is
-' digits with at most one dot or comma for the decimals (4, 1.5, 1,5),
-' read the same on any computer; else the text, which PointsProblem names
-' as not a number ("1e400", "$5" and "&H10" are text here).
+' digits with at most one dot, or a comma followed by one or two digits,
+' for the decimals (4, 1.5, 1,5), read the same on any computer; else the
+' text, which PointsProblem names as not a number ("1e400", "$5", "&H10"
+' and "1,000" are text here).
 Private Function NumberOrNull(ByVal v As String) As Variant
     Dim t As String
     v = Trim$(v)
-    t = Replace(v, ",", ".")
+    t = v
+    If t Like "*,#" Or t Like "*,##" Then t = Replace(t, ",", ".")
     If Len(v) = 0 Then
         NumberOrNull = Null
     ElseIf Len(t) <= 12 And Not t Like "*[!0-9.]*" And Len(t) - Len(Replace(t, ".", "")) <= 1 And t Like "*[0-9]*" Then
@@ -1280,15 +1290,15 @@ Private Function BankTexts(qs As Collection) As Object
     rs.Close
     Set rs = CurrentDb.OpenRecordset("SELECT p.QuestionID, p.PartText FROM tblQuestionParts AS p INNER JOIN tblQuestions AS q " & _
         "ON p.QuestionID=q.QuestionID WHERE " & where & " ORDER BY p.QuestionID, p.SortOrder, p.PartLabel", dbOpenSnapshot)
-    Do While Not rs.EOF
-        parts(CLng(rs!QuestionID)).Add rs!PartText.Value
+    Do While Not rs.EOF                     ' a question saved since the first query isn't in info: left out
+        If parts.Exists(CLng(rs!QuestionID)) Then parts(CLng(rs!QuestionID)).Add rs!PartText.Value
         rs.MoveNext
     Loop
     rs.Close
     Set rs = CurrentDb.OpenRecordset("SELECT o.QuestionID, o.OptionText FROM tblMCOptions AS o INNER JOIN tblQuestions AS q " & _
         "ON o.QuestionID=q.QuestionID WHERE " & where, dbOpenSnapshot)
     Do While Not rs.EOF
-        opts(CLng(rs!QuestionID)).Add rs!OptionText.Value
+        If opts.Exists(CLng(rs!QuestionID)) Then opts(CLng(rs!QuestionID)).Add rs!OptionText.Value
         rs.MoveNext
     Loop
     rs.Close
