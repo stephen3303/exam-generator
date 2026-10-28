@@ -2,7 +2,7 @@
 
 Requested by Stephen, 2026-10-26. Review only: make no code changes and push nothing except the reports below.
 
-Review the branch `phase-10-logs-release`: it holds all 10 build phases (only Phase 6 is on `main` so far). Check it out on each VM before you start.
+Review the branch `phase-10-logs-release`: it holds all 10 build phases (`main` has Phases 1 to 6 so far). Check it out on each VM before you start.
 
 Run on the Windows review VMs:
 
