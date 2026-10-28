@@ -3,14 +3,15 @@ Option Explicit
 
 ' Exam Generator (Access edition) - app constants, build-time silence and the
 ' small helpers every module uses: Notify (messages), Q (SQL text), NavTo,
-' and at the end FieldText, Plural, TableExists, InsertRow and
+' AppAppearance and AppSignOut (My settings), and at the end FieldText, Plural, TableExists, InsertRow and
 ' RollbackKeepingError.
 ' The names the kit calls on the app (README, "What the app must provide")
 ' are here and in modUI; MeasureText comes from the kit's modTextMeasure
 ' adapter (kit\adapters), which build.ps1 loads with the kit.
 '
-' Owner: the app core (build phase 1). Depends on: modErrors; the kit's
-' modDarkMode, modKitLocks, modKitShell, modKitUI, modKitUtil.
+' Owner: the app core (build phase 1). Depends on: modErrors, modSignIn
+' (DataLinked); the kit's modDarkMode, modKitLocks, modKitShell, modKitUI,
+' modKitUtil, modPersonnelUI (KitPersonnelSignOut).
 
 Public Const APP_NAME As String = "Exam Generator"
 Public Const APP_CODE As String = "EXAMGEN"      ' this app's code in the shared Personnel file (kit_person_app)
@@ -67,6 +68,36 @@ Public Function AppAppearance()
     Exit Function
 Err_Handler:
     HandleError "modGlobals.AppAppearance"
+End Function
+
+' Sign out and show the sign-in screen, so someone else can use this copy
+' without closing Access (My settings' Sign out). Only with a data file, and
+' only while the current page can be left. Closing the sign-in screen closes
+' the app, as at start-up. Signing in reopens the main window on the
+' Dashboard, and its Form_Load reads the new person's roles (AppStartUp); a
+' person without a role is told why and the app closes, as at start-up.
+Public Function AppSignOut()
+    Dim v As Variant
+    On Error GoTo Err_Handler
+    If Not DataLinked() Then Exit Function
+    If IsFormOpen("frmMain") Then
+        If Not Forms("frmMain").CanLeavePage() Then Exit Function
+    End If
+    ' The pages' hand-offs name the last person's items: drop them.
+    On Error Resume Next                    ' one that was never set
+    For Each v In Array("BankQuestionID", "EditQuestionID", "EditMode", "ExamsExamID", _
+            "ApprovalsExamID", "ApprovalsQuestionID", "ReviewTaskID")
+        TempVars.Remove v
+    Next
+    On Error GoTo Err_Handler
+    If Not KitPersonnelSignOut(APP_CODE) Then
+        DoCmd.Quit acQuitSaveNone
+        Exit Function
+    End If
+    If IsFormOpen("frmMain") Then Forms("frmMain").Reopen "dash"
+    Exit Function
+Err_Handler:
+    HandleError "modGlobals.AppSignOut"
 End Function
 
 ' A text box's text: what is typed so far while it has the focus (Ctrl+S

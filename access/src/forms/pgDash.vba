@@ -96,7 +96,7 @@ Private Sub OpenPicked()
     End Select
     If Not PageAllowed(key) Then
         If Len(tv) > 0 Then TempVars(tv) = Null
-        KitMsgBox "Your roles changed since you signed in. Sign out and sign in again.", vbInformation, "Dashboard"
+        KitMsgBox "Your roles changed since you signed in. Sign out under My settings, then sign in again.", vbInformation, "Dashboard"
         Exit Sub
     End If
     If Len(tv) > 0 Then

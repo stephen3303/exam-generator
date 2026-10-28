@@ -26,7 +26,7 @@ Click **Help** in the sidebar, or press **F1**, to open help for the page you ar
 Press **Ctrl+K** and start typing the name of a page. Press **Enter** to go to the first match, or use the **Up** and **Down** arrows to choose another. **Esc** closes it.
 
 # Other things in the sidebar
-- **My settings** holds your notice switches and your colors (**Appearance**).
+- **My settings** holds your notice switches, your colors (**Appearance**) and **Sign out**.
 - The **arrow** at the top folds the sidebar to icons, to give the page more room. Click it again to open it. Point at an icon to see its name.
 
 === dash | Dashboard
@@ -363,7 +363,7 @@ Every error anyone's copy of the app has hit, newest first, with the page, the p
 **Export** saves the list you see as an Excel or CSV file.
 
 === settings | My settings
-Your notices and your colors. Each switch saves as soon as you click it, and changes only your own settings.
+Your notices, your colors and signing out. Each switch saves as soon as you click it, and changes only your own settings.
 
 # Notices
 - **Dashboard list**: the reviews, approvals and questions sent back that wait on you, on the Dashboard. On for everyone to start.
@@ -375,6 +375,10 @@ The app sends its emails once your step is saved, from your computer's Outlook. 
 
 # Colors
 Click **Appearance** to choose the colors the whole app uses on this computer.
+
+# Sign out
+Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app.
+- Someone signing in on a computer that isn't theirs should leave **Use my Windows sign-in next time** unticked, or this Windows account will sign them in from then on.
 
 === directory | Personnel
 One shared Personnel file holds everyone who can use the Navy apps built on
@@ -406,7 +410,7 @@ An app password is only needed on the sign-in screen, after Sign out or on a com
 - Passwords need 8 or more characters, and capitals count.
 
 === directory.signin | Signing in
-Exam Generator signs you in with your Windows account when it is saved in Personnel and has access to Exam Generator. This screen shows when it isn't, when it has no access to Exam Generator or is turned off, or after **Sign out**. It names the Personnel admins to ask.
+Exam Generator signs you in with your Windows account when it is saved in Personnel and has access to Exam Generator. This screen shows when it isn't, when it has no access to Exam Generator or is turned off, or after **Sign out** (under **My settings**). It names the Personnel admins to ask.
 - Type your sign-in name and app password, then **Sign in**.
 - Tick **Use my Windows sign-in next time** to skip this screen on this account.
 - No password yet? If this is your own Windows account, you can choose one now. Otherwise ask a Personnel admin to set one.

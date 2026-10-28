@@ -8,12 +8,14 @@ Option Explicit
 '   Dashboard list  the Dashboard's queue tiles and list (pgDash)
 '   Emails          an Outlook email when something waits on them (modNotify)
 ' Under them the address emails go to (the Personnel file's) and Send me a
-' test email. Then Colors, the palette picker. With no data file linked,
-' nobody signed in, or no row for them in tblPeople, the switches are off
-' and locked, and the line under them says which.
+' test email. Then Colors, the palette picker, and Sign out (AppSignOut,
+' modGlobals), which lets someone else sign in without closing Access.
+' With no data file linked, nobody signed in, or no row for them in
+' tblPeople, the switches are off and locked, and the line under them says
+' which; Sign out is off with no data file or nobody signed in.
 '
-' Depends on: modNotify, modSignIn; the kit's modKitLocks, modKitUI,
-' modKitUtil, modPersonnel.
+' Depends on: modGlobals, modNotify, modSignIn; the kit's modKitLocks,
+' modKitUI, modKitUtil, modPersonnel.
 
 Private Const MSG_TITLE As String = "My settings"
 
@@ -27,6 +29,7 @@ Private Sub Form_Load()
     Dim rs As DAO.Recordset, why As String
     On Error GoTo Err_Handler
     m_pid = 0
+    ShowSignedIn
     If Not DataLinked() Then
         why = "This copy was built without the data file, so there are no notices to set."
     Else
@@ -56,6 +59,18 @@ Private Sub Form_Load()
     Exit Sub
 Err_Handler:
     HandleError "pgMySettings.Form_Load"
+End Sub
+
+' The Sign out card: who is signed in, and the button only when there is
+' someone to sign out.
+Private Sub ShowSignedIn()
+    If DataLinked() And SignedInPersonID() <> 0 Then
+        Me.lblSignedIn.Caption = "You're signed in as " & Nz(TempVars("PersonName"), Nz(TempVars("Username"), "you")) & _
+            ". Sign out to let someone else sign in on this copy."
+    Else
+        Me.lblSignedIn.Caption = "Nobody is signed in on this copy."
+        SetEnabled Me.btnSignOut, False
+    End If
 End Sub
 
 ' ---------------------------------------------------------------------------

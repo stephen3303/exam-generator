@@ -162,7 +162,7 @@ Public Sub Build_pgMySettings()
     Dim c As Control, x As Long, y As Long, w As Long, fw As Long
     NewForm "", 0, PAGE_W, PAGE_H
     Ev F, "OnLoad"
-    PageHeader "My settings", "Your notices and your colors. They change only your own settings.", PAGE_PAD
+    PageHeader "My settings", "Your notices, your colors and signing out. They change only your own settings.", PAGE_PAD
     x = PAGE_PAD: y = px(84): w = px(480): fw = w - px(32)
     Card "Notices", "Notices", x, y, w, px(248)
     Toggle "tgDash", "", x + px(20), y + px(52), px(36), px(20), "DashChanged"
@@ -183,5 +183,12 @@ Public Sub Build_pgMySettings()
         x + px(16), y + px(40), fw, px(36), 9, False, CLR_MUTED_FG
     Set c = Btn("btnAppearance", "Appearance", x + px(16), y + px(80), px(120), px(28), "outline")
     c.OnClick = "=AppAppearance()"
+
+    y = y + px(120) + px(12)
+    Card "SignOut", "Sign out", x, y, w, px(120)
+    Lbl "lblSignedIn", "", x + px(16), y + px(40), fw, px(36), 9, False, CLR_MUTED_FG   ' who is signed in (Form_Load)
+    Set c = Btn("btnSignOut", "Sign out", x + px(16), y + px(80), px(120), px(28), "outline")
+    c.ControlTipText = "Sign out so someone else can sign in on this copy"
+    c.OnClick = "=AppSignOut()"
     SaveForm "pgMySettings"
 End Sub
