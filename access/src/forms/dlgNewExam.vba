@@ -13,10 +13,11 @@ Option Explicit
 
 Private Const MSG_TITLE As String = "New exam"
 
-Private m_keys As String        ' RecentKeysList(), read when the window opened
+Private m_keys As String        ' RecentKeysList(), read when the window opened and again at Generate
 Private m_tpl As Long           ' the template picked (0: none)
 Private m_ready As Boolean      ' every topic can be drawn
-Private m_repeats As String     ' the topics over the overlap rule, "" for none
+Private m_repeats As String     ' the topics over the overlap rule, by name, "" for none
+Private m_repeatIds As String   ' the same topics' TopicIDs, joined with commas
 
 Public Property Get HelpTopic() As String
     HelpTopic = "exams.new"
@@ -47,7 +48,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
 End Sub
 
 Private Sub btnGenerate_Click()
-    Dim problem As String, examId As Long, allow As Boolean, r As String, nQ As Long, nT As Long
+    Dim problem As String, examId As Long, allow As String, r As String, nQ As Long, nT As Long
     Dim num As Long, desc As String, src As String
     On Error GoTo Err_Handler
     problem = ExamMakerProblem()
@@ -64,6 +65,7 @@ Private Sub btnGenerate_Click()
         Me.txtRecipient.SetFocus
         Exit Sub
     End If
+    m_keys = RecentKeysList()               ' an exam generated since the window opened counts
     ShowPlan                                ' the bank as it stands now
     If Not m_ready Then KitMsgBox "The exam can't be drawn as things stand. The note under the topics says why.", _
         vbInformation, MSG_TITLE: Exit Sub
@@ -71,7 +73,7 @@ Private Sub btnGenerate_Click()
         If KitMsgBox("Generate anyway? " & m_repeats & " can only be filled with more questions from the last " & _
                 SettingLong(SET_OVERLAP_WINDOW, 10) & " exams than the overlap rule allows. Their SMEs can swap some out " & _
                 "if other approved questions come in.", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
-        allow = True
+        allow = m_repeatIds                 ' only these topics: another that goes over since is refused
     End If
     KitBusy "Drawing the questions..."
     On Error GoTo Busy_Fail
@@ -111,7 +113,7 @@ Private Sub ShowPlan()
     Dim rs As DAO.Recordset, nTopics As Long, nQ As Long, noSME As String, shortOnes As String, off As Long
     Dim s As String, c As Control, w As Long
     m_tpl = Nz(Me.cboTemplate, 0)
-    m_ready = False: m_repeats = ""
+    m_ready = False: m_repeats = "": m_repeatIds = ""
     If m_tpl <> 0 Then
         Me.sfPlan.Form.RecordSource = DrawPlanSql(m_tpl, m_keys)
         Set rs = Me.sfPlan.Form.RecordsetClone
@@ -122,7 +124,9 @@ Private Sub ShowPlan()
             Select Case rs!state
                 Case "No SME": noSME = noSME & IIf(Len(noSME) > 0, ", ", "") & rs!TopicName
                 Case "Short": shortOnes = shortOnes & IIf(Len(shortOnes) > 0, ", ", "") & rs!TopicName
-                Case "Repeats": m_repeats = m_repeats & IIf(Len(m_repeats) > 0, ", ", "") & rs!TopicName
+                Case "Repeats"
+                    m_repeats = m_repeats & IIf(Len(m_repeats) > 0, ", ", "") & rs!TopicName
+                    m_repeatIds = m_repeatIds & IIf(Len(m_repeatIds) > 0, ",", "") & rs!id
             End Select
             rs.MoveNext
         Loop

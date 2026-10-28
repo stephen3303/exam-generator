@@ -19,7 +19,7 @@ Option Explicit
 ' so a new version of a question given lately counts as given. The draw takes questions not given
 ' lately first, at random, and fills the rest from the ones given lately; a
 ' topic that can only be filled by going over the limit is drawn that way
-' only when the DH says so (allowRepeats).
+' only when the DH says so (repeatTopics).
 '
 ' Review: an SME with an open task checks the questions drawn for the
 ' topic, swaps any for another approved question of the topic (a swap may
@@ -188,21 +188,31 @@ End Function
 ' The topics template tplId draws from, in its order, for the new exam
 ' window's table: id (TopicID), TopicName, per_exam, on_hand (approved
 ' questions in use), fresh (of those, not given lately; keys is
-' RecentKeysList()), smes (active SMEs) and state: No SME, Short (fewer
-' approved questions than it gets), Repeats (it can only be filled with more
+' RecentKeysList()), smes (1 when an SME may review it now, as TopicReviewers
+' counts them for the draw, else 0) and state: No SME, Short (fewer approved
+' questions than it gets), Repeats (it can only be filled with more
 ' questions given lately than the overlap rule allows) or Ready. Topics
 ' turned off are left out, as the draw leaves them out.
+' Errors: none of its own; a data error passes up.
 Public Function DrawPlanSql(ByVal tplId As Long, ByVal keys As String) As String
-    Dim ap As Long
+    Dim ap As Long, rs As DAO.Recordset, withSME As String
     ap = ApprovedStatusID()
+    ' The topics with a reviewer, by the same check as the draw (Personnel included).
+    Set rs = CurrentDb.OpenRecordset("SELECT t.TopicID FROM tblTemplateTopics AS tt INNER JOIN tblTopics AS t " & _
+        "ON tt.TopicID=t.TopicID WHERE tt.TemplateID=" & tplId & " AND t.IsActive", dbOpenSnapshot)
+    Do While Not rs.EOF
+        If Len(TopicReviewers(rs!TopicID)) > 0 Then withSME = withSME & IIf(Len(withSME) > 0, ",", "") & rs!TopicID
+        rs.MoveNext
+    Loop
+    rs.Close
+    If Len(withSME) = 0 Then withSME = "0"
     DrawPlanSql = "SELECT x.*, IIf(x.smes=0,'No SME',IIf(x.on_hand<x.per_exam,'Short'," & _
         "IIf(x.fresh+Int(x.per_exam*" & SettingLong(SET_OVERLAP_PCT, 30) & "/100)<x.per_exam,'Repeats','Ready'))) AS state FROM (" & _
         "SELECT t.TopicID AS id, t.TopicName, tt.QuestionCount AS per_exam, tt.SortOrder, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ap & ") AS on_hand, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ap & _
         " AND q.QuestionKey NOT IN (" & keys & ")) AS fresh, " & _
-        "(SELECT Count(*) FROM tblTopicSMEs AS s INNER JOIN tblPeople AS pp ON s.PersonID=pp.PersonID WHERE s.TopicID=t.TopicID " & _
-        "AND pp.IsActive AND s.PersonID IN (SELECT PersonID FROM tblPersonRoles WHERE RoleID=" & RoleID("SME") & ")) AS smes " & _
+        "IIf(t.TopicID IN (" & withSME & "),1,0) AS smes " & _
         "FROM tblTemplateTopics AS tt INNER JOIN tblTopics AS t ON tt.TopicID=t.TopicID " & _
         "WHERE tt.TemplateID=" & tplId & " AND t.IsActive) AS x ORDER BY x.SortOrder, x.TopicName"
 End Function
@@ -214,15 +224,16 @@ Public Function TopicsOffCount(ByVal tplId As Long) As Long
 End Function
 
 ' Draw template tplId for recipient, as the signed-in DH, and give each
-' topic's SMEs a review task, all in one transaction. allowRepeats lets a
-' topic that can't meet the overlap rule take more questions given lately
-' than the rule allows (the DH was asked). Returns "" with the new exam's id
+' topic's SMEs a review task, all in one transaction. repeatTopics lists the
+' TopicIDs (joined with commas, "" for none) the DH agreed may take more
+' questions given lately than the overlap rule allows, because they can't be
+' filled otherwise; any other topic over the rule stops the draw. Returns "" with the new exam's id
 ' in examId, or why it can't be generated (who it is for, the template, or
 ' a topic short of questions, of SMEs, or over the rule); then nothing is
 ' written.
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an active DH now
 '   (RequireExamMaker); a data error rolls back and passes up.
-Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, ByVal allowRepeats As Boolean, _
+Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, ByVal repeatTopics As String, _
         ByRef examId As Long) As String
     Dim ws As DAO.Workspace, db As DAO.Database, rs As DAO.Recordset, plan As Collection, p As Variant, v As Variant
     Dim r As String, tplName As String, problem As String, inTrans As Boolean, etId As Long, i As Long
@@ -237,7 +248,7 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
         GenerateExam = "Pick a template. Only templates that are turned on can be used."
         Exit Function
     End If
-    Set plan = DrawPlan(tplId, RecentKeysList(), allowRepeats, problem)
+    Set plan = DrawPlan(tplId, RecentKeysList(), repeatTopics, problem)
     If Len(problem) > 0 Then GenerateExam = problem: Exit Function
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
@@ -293,8 +304,9 @@ End Function
 ' The draw for template tplId (keys: RecentKeysList()): one Array(TopicID,
 ' TopicName, n, question ids, SME ids) per active topic in the template's
 ' order, each list joined with commas, the questions in a random order.
+' repeatTopics: the TopicIDs that may go over the overlap rule (GenerateExam).
 ' problem returns why it can't be drawn, or "" when it can.
-Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allowRepeats As Boolean, _
+Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal repeatTopics As String, _
         ByRef problem As String) As Collection
     Dim rs As DAO.Recordset, plan As New Collection, fresh As Variant, given As Variant, smes As String, ap As Long
     Dim n As Long, nFresh As Long, nGiven As Long, need As Long, noSME As String, shortOnes As String, over As String
@@ -318,7 +330,7 @@ Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allow
             shortOnes = shortOnes & IIf(Len(shortOnes) > 0, ", ", "") & rs!TopicName & " (" & (nFresh + nGiven) & " of " & n & ")"
         Else
             need = n - IIf(nFresh < n, nFresh, n)       ' questions given lately it has to take
-            If need > RepeatsAllowed(n) And Not allowRepeats Then over = over & IIf(Len(over) > 0, ", ", "") & rs!TopicName
+            If need > RepeatsAllowed(n) And Not InKeyList(repeatTopics, rs!TopicID) Then over = over & IIf(Len(over) > 0, ", ", "") & rs!TopicName
             plan.Add Array(CLng(rs!TopicID), CStr(rs!TopicName), n, PickIds(fresh, given, n), smes)
         End If
         rs.MoveNext
@@ -328,7 +340,7 @@ Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allow
     If Len(shortOnes) > 0 Then problem = problem & IIf(Len(problem) > 0, vbCrLf & vbCrLf, "") & _
         "Not enough approved questions in " & shortOnes & "."
     If Len(problem) = 0 And Len(over) > 0 Then problem = "These topics can only be filled with more questions from recent " & _
-        "exams than the overlap rule allows: " & over & "."
+        "exams than the overlap rule allows: " & over & ". The plan now shows them; Generate asks before it goes over."
     If Len(problem) = 0 And plan.Count = 0 Then problem = "This template has no topics that are turned on."
     Set DrawPlan = plan
 End Function
