@@ -414,29 +414,36 @@ End Function
 
 ' The questions on exam topic etId, in the exam's order, for the review
 ' table: id (ExamQuestionID), QuestionID, ref, QuestionText, LevelName, pts
-' and note: Swapped, Given lately (its key is in keys, the RecentKeysList
-' for the exam) or "".
+' and note: Replaced (no longer the approved version in use: a newer version
+' was approved since the draw, or it was retired), Swapped, Given lately (its
+' key is in keys, the RecentKeysList for the exam) or "".
 Public Function ExamTopicQsSql(ByVal etId As Long, ByVal keys As String) As String
     ExamTopicQsSql = "SELECT eq.ExamQuestionID AS id, eq.QuestionID, 'Q' & q.QuestionKey & ' v' & q.VersionNo AS ref, " & _
         "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, d.LevelName, q.TotalPoints AS pts, " & _
-        "IIf(eq.WasSwapped,'Swapped',IIf(q.QuestionKey IN (" & keys & "),'Given lately','')) AS note, eq.SortOrder " & _
+        "IIf(Not (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & "),'Replaced'," & _
+        "IIf(eq.WasSwapped,'Swapped',IIf(q.QuestionKey IN (" & keys & "),'Given lately',''))) AS note, eq.SortOrder " & _
         "FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
         "LEFT JOIN tblDifficultyLevels AS d ON q.DifficultyID=d.DifficultyID " & _
         "WHERE eq.ExamTopicID=" & etId & " ORDER BY eq.SortOrder, eq.ExamQuestionID"
 End Function
 
-' The approved questions in use that could replace one on exam topic etId,
-' for the swap window's table: id (QuestionID), ref, QuestionText, qsort,
+' The approved questions in use that could replace exam question eqId, for
+' the swap window's table: id (QuestionID), ref, QuestionText, qsort,
 ' LevelName, pts and note (Given lately, from keys, or ""). Questions with a
-' version on the exam already are left out. search matches the text and
-' the number (Q12).
-Public Function SwapCandidatesSql(ByVal etId As Long, ByVal keys As String, ByVal search As String) As String
-    Dim examId As Long, topicId As Long, where As String, t As String
+' version elsewhere on the exam are left out; the newer version of the
+' question in the slot itself is listed, so a replaced one can be updated.
+' search matches the text and the number (Q12).
+' Errors: none of its own; a data error passes up.
+Public Function SwapCandidatesSql(ByVal eqId As Long, ByVal keys As String, ByVal search As String) As String
+    Dim examId As Long, etId As Long, topicId As Long, slotQid As Long, where As String, t As String
+    etId = Nz(DLookup("ExamTopicID", "tblExamQuestions", "ExamQuestionID=" & eqId), 0)
+    slotQid = Nz(DLookup("QuestionID", "tblExamQuestions", "ExamQuestionID=" & eqId), 0)
     examId = Nz(DLookup("ExamID", "tblExamTopics", "ExamTopicID=" & etId), 0)
     topicId = Nz(DLookup("TopicID", "tblExamTopics", "ExamTopicID=" & etId), 0)
-    where = "q.TopicID=" & topicId & " AND q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & " AND q.QuestionKey NOT IN " & _
+    where = "q.TopicID=" & topicId & " AND q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & " AND q.QuestionID<>" & slotQid & _
+        " AND q.QuestionKey NOT IN " & _
         "(SELECT q2.QuestionKey FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q2 ON eq.QuestionID=q2.QuestionID " & _
-        "WHERE eq.ExamID=" & examId & " AND q2.QuestionKey Is Not Null)"
+        "WHERE eq.ExamID=" & examId & " AND eq.ExamQuestionID<>" & eqId & " AND q2.QuestionKey Is Not Null)"
     If Len(search) > 0 Then
         t = Q("*" & LikeLiteral(search) & "*")
         where = where & " AND (q.QuestionText LIKE " & t & " OR ('Q' & q.QuestionKey) LIKE " & t & ")"
@@ -506,6 +513,15 @@ Public Sub RequireReviewer(ByVal etId As Long)
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modExams.RequireReviewer", problem
 End Sub
 
+' How many questions on exam topic etId are no longer the approved version in
+' use (the Replaced note: a newer version was approved since the draw, or it
+' was retired).
+' Errors: none of its own; a data error passes up.
+Public Function ReplacedCount(ByVal etId As Long) As Long
+    ReplacedCount = CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
+        "WHERE eq.ExamTopicID=" & etId & " AND NOT (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ")")
+End Function
+
 ' How many questions on exam topic etId were given lately (keys: the
 ' RecentKeysList for its exam).
 Public Function GivenLatelyCount(ByVal etId As Long, ByVal keys As String) As Long
@@ -514,14 +530,16 @@ Public Function GivenLatelyCount(ByVal etId As Long, ByVal keys As String) As Lo
 End Function
 
 ' Why question newQid can't replace exam question eqId, or "": it must be an
-' approved question in use of the same topic with no version on the exam,
-' and the swap may not take the topic's questions given lately over what
-' the overlap rule allows (nor over how many it has now, when it is over
-' already).
+' approved question in use of the same topic, other than the one in the slot,
+' with no version elsewhere on the exam (the slot's own question may come
+' back as its newer version), and the swap may not take the topic's
+' questions given lately over what the overlap rule allows (nor over how
+' many it has now, when it is over already), nor a topic of a later exam
+' (LaterExamProblem).
 Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     Dim rs As DAO.Recordset, examId As Long, etId As Long, topicId As Long, n As Long, oldKey As Variant, newKey As Variant
-    Dim keys As String, have As Long, after As Long, allowed As Long
-    Set rs = CurrentDb.OpenRecordset("SELECT eq.ExamID, eq.ExamTopicID, et.TopicID, et.QuestionCount, q.QuestionKey " & _
+    Dim keys As String, have As Long, after As Long, allowed As Long, oldQid As Long
+    Set rs = CurrentDb.OpenRecordset("SELECT eq.ExamID, eq.ExamTopicID, eq.QuestionID, et.TopicID, et.QuestionCount, q.QuestionKey " & _
         "FROM (tblExamQuestions AS eq INNER JOIN tblExamTopics AS et ON eq.ExamTopicID=et.ExamTopicID) " & _
         "INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID WHERE eq.ExamQuestionID=" & eqId, dbOpenSnapshot)
     If rs.EOF Then
@@ -529,9 +547,11 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
         SwapProblem = "That question is no longer on the exam. The list now shows what is."
         Exit Function
     End If
-    examId = rs!ExamID: etId = rs!ExamTopicID: topicId = rs!TopicID: n = rs!QuestionCount: oldKey = rs!QuestionKey
+    examId = rs!ExamID: etId = rs!ExamTopicID: oldQid = rs!QuestionID: topicId = rs!TopicID: n = rs!QuestionCount
+    oldKey = rs!QuestionKey
     rs.Close
     If newQid = 0 Then SwapProblem = "Pick the question to put in its place.": Exit Function
+    If newQid = oldQid Then SwapProblem = "That is the question in its place now. Pick another.": Exit Function
     If DCount("*", "tblQuestions", "QuestionID=" & newQid & " AND TopicID=" & topicId & " AND IsCurrent AND StatusID=" & _
             ApprovedStatusID()) = 0 Then
         SwapProblem = "That question isn't an approved question of this topic now. It may have been replaced or retired."
@@ -539,7 +559,7 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     End If
     newKey = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & newQid)
     If CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
-            "WHERE eq.ExamID=" & examId & " AND q.QuestionKey=" & Nz(newKey, 0)) > 0 Then
+            "WHERE eq.ExamID=" & examId & " AND eq.ExamQuestionID<>" & eqId & " AND q.QuestionKey=" & Nz(newKey, 0)) > 0 Then
         SwapProblem = "That question is on this exam already."
         Exit Function
     End If

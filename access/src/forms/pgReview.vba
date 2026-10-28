@@ -233,7 +233,7 @@ End Sub
 
 ' Show task taskId on the right (0: the hint instead).
 Private Sub ShowTask(ByVal taskId As Long)
-    Dim rs As DAO.Recordset, isOpen As Boolean, c As Control, problem As String, s As String, n As Long, given As Long
+    Dim rs As DAO.Recordset, isOpen As Boolean, c As Control, problem As String, s As String, n As Long, given As Long, replaced As Long
     m_task = taskId: m_et = 0
     isOpen = (taskId <> 0)
     If isOpen Then
@@ -259,7 +259,10 @@ Private Sub ShowTask(ByVal taskId As Long)
             problem = ReviewProblem(m_et)
             If Len(problem) = 0 Then
                 given = GivenLatelyCount(m_et, m_keys)
+                replaced = ReplacedCount(m_et)
                 s = "Check each question and swap any that aren't right, then sign off. One sign-off completes the topic for all its SMEs."
+                If replaced > 0 Then s = s & " " & replaced & " of them " & IIf(replaced = 1, "was", "were") & " replaced by a newer " & _
+                    "version since the exam was drawn; Swap lists the new version."
                 If given > 0 Then s = s & " " & given & " of them " & IIf(given = 1, "was", "were") & " on an exam generated before this one; the " & _
                     "overlap rule allows " & RepeatsAllowed(n) & "."
                 ShowAlert Me, "alReview", s, "info"

@@ -4,8 +4,8 @@ Option Explicit
 ' Swap a question on an exam topic (Build_dlgSwap), from My reviews.
 ' OpenArgs "eq=<ExamQuestionID>;stamp=<the topic's ChangeNo as My reviews
 ' showed it>", the question to swap out. Lists the
-' approved questions of the topic in use with no version on the exam
-' (modExams.SwapCandidatesSql), those given lately last, filtered by the
+' approved questions of the topic in use with no version elsewhere on the
+' exam, and the newer version of the one in the slot (modExams.SwapCandidatesSql), those given lately last, filtered by the
 ' search box. The picked one shows in full, and the alert says whether the
 ' overlap rule allows it (SwapProblem). Swap puts it on the exam
 ' (SwapQuestion), hands the toast's text back in TempVars("SwapDone"), and
@@ -114,7 +114,7 @@ End Sub
 ' Load the questions that could go in, for the search, and pick the first.
 Private Sub RefreshList()
     Dim n As Long
-    Me.sfCand.Form.RecordSource = SwapCandidatesSql(m_et, m_keys, m_search)
+    Me.sfCand.Form.RecordSource = SwapCandidatesSql(m_eq, m_keys, m_search)
     GridHighlight Me.sfCand, m_search
     n = Me.sfCand.Form.RecordsetClone.RecordCount
     If Len(m_search) = 0 Then
