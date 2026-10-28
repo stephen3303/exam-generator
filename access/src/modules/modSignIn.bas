@@ -24,7 +24,10 @@ Option Explicit
 ' admin becomes its admin, so a new data file can be set up from the app.
 '
 ' A front end built with no data file (build.ps1 with no -BackEnd, for UI work)
-' has no tblSettings: it skips all of this and shows every page.
+' has no tblSettings: it skips all of this and shows every page. The build
+' records which kind it is (the HasDataFile property), so a copy built with a
+' data file whose tblSettings link has gone stops at start-up instead of
+' opening every page unsigned.
 '
 ' The TempVars above only decide what the sidebar shows. Every write that
 ' needs a right checks it again in the data file at the moment of the write
@@ -58,6 +61,11 @@ End Function
 Public Function AppStartUp() As Boolean
     Dim problem As String
     If Not DataLinked() Then AppStartUp = True: Exit Function
+    If Not TableExists(PROBE_TABLE) Then
+        KitMsgBox "This copy of " & APP_NAME & " has lost its link to the data file, so it can't open. " & _
+            "Get a fresh copy from your administrator.", vbExclamation, APP_NAME
+        Exit Function
+    End If
     SplashStatus "Opening the data file" & ChrW(8230)
     If Not KitEnsureBackend(PROBE_TABLE, BE_FILE) Then Exit Function
     problem = DataVersionProblem()
@@ -97,9 +105,21 @@ Public Sub ShowPagesForRoles(frm As Form)
     Next
 End Sub
 
-' True when this front end is linked to (or holds) the data file's tables.
+' True when this front end belongs with a data file: it was built with one
+' (BuiltWithDataFile), or it is linked to (or holds) the data file's tables.
+' False only for a UI-only build. A copy built with a data file stays True
+' when its tblSettings link is removed, so AppStartUp refuses it rather than
+' skipping sign-in.
 Public Function DataLinked() As Boolean
-    DataLinked = TableExists(PROBE_TABLE)
+    DataLinked = BuiltWithDataFile() Or TableExists(PROBE_TABLE)
+End Function
+
+' The HasDataFile property BuildAll set: True when this front end was built
+' linked to a data file. False for a UI-only build and for a copy built
+' before the property existed (DataLinked then goes by the link alone).
+Private Function BuiltWithDataFile() As Boolean
+    On Error Resume Next                    ' error 3270: no such property
+    BuiltWithDataFile = CurrentDb.Properties("HasDataFile")
 End Function
 
 ' Why this copy can't use its data file (KitVersionProblem), or "".

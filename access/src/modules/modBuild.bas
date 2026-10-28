@@ -48,7 +48,7 @@ Public Function BuildAll(ByVal srcRoot As String, ByVal outDir As String, ByVal 
     m_step = "local tables": EnsureWorkTables      ' the question editor's working copy (modQuestions)
     m_step = "user interface": BuildUserInterface
     m_step = "help": LoadHelpTopics srcRoot & "\help\help.txt"
-    m_step = "startup": SetStartupOptions
+    m_step = "startup": SetStartupOptions uiOnly, bePath
     g_Silent = False
     BuildAll = "OK"
     Exit Function
@@ -257,7 +257,11 @@ End Sub
 ' Shift at opening (AllowBypassKey) and F11 (AllowSpecialKeys) stay on in
 ' this .accdb, the developer's copy; build.ps1 -Release turns them off in
 ' the locked .accde users get.
-Private Sub SetStartupOptions()
+' HasDataFile records whether this front end was built linked to a data file,
+' so a copy that loses its tblSettings link isn't taken for a UI-only build
+' (modSignIn.DataLinked). -UiOnly keeps the value the full build set.
+Private Sub SetStartupOptions(ByVal uiOnly As Boolean, ByVal bePath As String)
+    If Not uiOnly Then SetProp "HasDataFile", dbBoolean, (Len(bePath) > 0)
     SetProp "AppTitle", dbText, APP_NAME
     SetProp "StartUpShowDBWindow", dbBoolean, False
     SetProp "ShowDocumentTabs", dbBoolean, False
