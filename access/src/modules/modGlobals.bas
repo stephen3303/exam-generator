@@ -10,12 +10,17 @@ Option Explicit
 ' adapter (kit\adapters), which build.ps1 loads with the kit.
 '
 ' Owner: the app core (build phase 1). Depends on: modErrors; the kit's
-' modDarkMode, modKitShell, modKitUI, modKitUtil.
+' modDarkMode, modKitLocks, modKitShell, modKitUI, modKitUtil.
 
 Public Const APP_NAME As String = "Exam Generator"
 Public Const APP_CODE As String = "EXAMGEN"      ' this app's code in the shared Personnel file (kit_person_app)
 Public Const BE_FILE As String = "ExamGen_BE.accdb"   ' the shared data file's usual name
 Public g_Silent As Boolean                       ' True during the build: nothing may block
+
+' InsertRow's words for a lock, the same as KitExecute's (modKitLocks keeps
+' its own Private).
+Private Const INSERT_BUSY As String = "Waiting for another user to finish saving..."
+Private Const INSERT_LOCKED As String = "Another user is saving the same records right now. Wait a moment, then try again."
 
 ' Message to the user. During the build it is printed instead; warnings and
 ' errors raise, and questions are answered Yes.
@@ -99,26 +104,37 @@ End Function
 '   sql   the INSERT ... VALUES or INSERT ... SELECT statement
 ' Returns the new id.
 ' Errors: 5 when the statement added no row or more than one; the engine's
-'   error when the insert fails. A lock is retried as KitExecute retries it
-'   (the kit's LockWait), then raised.
+'   error when the insert fails, which runs it only once. A lock is retried
+'   as KitExecute retries it (the kit's LockWait, under the busy notice);
+'   one that doesn't clear is logged and raised with the kit's plain
+'   sentence, as KitExecute raises it.
 Public Function InsertRow(ByVal sql As String) As Long
-    Dim db As DAO.Database, rs As DAO.Recordset, attempt As Long, num As Long
+    Dim db As DAO.Database, rs As DAO.Recordset, attempt As Long, num As Long, d As String, src As String, busy As Boolean
     Set db = CurrentDb
 TryAgain:
-    On Error Resume Next
+    On Error GoTo InsertFailed
     db.Execute sql, dbFailOnError
-    num = Err.Number
-    If num <> 0 Then
-        If LockWait(num, attempt) Then GoTo TryAgain
-        On Error GoTo Fail
-        db.Execute sql, dbFailOnError       ' the last try: its error is the one passed on
-    End If
     On Error GoTo Fail
+    If busy Then KitBusyEnd: busy = False
     If db.RecordsAffected <> 1 Then Err.Raise 5, "modGlobals.InsertRow", "Expected to add one row, added " & db.RecordsAffected & "."
     Set rs = db.OpenRecordset("SELECT @@IDENTITY", dbOpenSnapshot)
     InsertRow = Nz(rs.Fields(0).Value, 0)
     rs.Close
     Exit Function
+InsertFailed:
+    ' The insert failed. KitBusy and KitBusyEnd reset Err, so keep the error
+    ' to pass it on.
+    num = Err.Number: d = Err.Description: src = Err.Source
+    If attempt = 0 And IsLockError(num) Then KitBusy INSERT_BUSY: busy = True
+    If LockWait(num, attempt) Then Resume TryAgain
+    If busy Then KitBusyEnd
+    Err.Number = num: Err.Description = d: Err.Source = src
+    If IsLockError(num) Then
+        LogError "modGlobals.InsertRow", "locked after " & LOCK_TRIES & " retries: " & Left$(sql, 200)
+        On Error GoTo 0
+        Err.Raise num, "modGlobals.InsertRow", INSERT_LOCKED
+    End If
+    RaiseAgain "modGlobals.InsertRow", Left$(sql, 200)      ' not a lock: passed on without running it again
 Fail:
     RaiseAgain "modGlobals.InsertRow", Left$(sql, 200)
 End Function

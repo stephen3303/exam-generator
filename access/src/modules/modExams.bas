@@ -129,8 +129,6 @@ Private Function ColumnList(ByVal sql As String) As String
     ColumnList = s
 End Function
 
-' A count from sql ("SELECT Count(*) ..."), read through CurrentDb so that,
-' inside a transaction, it sees the transaction's own writes.
 ' Lock the overlap window's settings row until the transaction commits, so
 ' Generates and swaps, which change what each other's overlap check reads,
 ' run one at a time. A missing row would lock nothing, so it is logged.
@@ -140,6 +138,8 @@ Private Sub LockOverlapWindow()
     End If
 End Sub
 
+' A count from sql ("SELECT Count(*) ..."), read through CurrentDb so that,
+' inside a transaction, it sees the transaction's own writes.
 Private Function CountOf(ByVal sql As String) As Long
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset(sql, dbOpenSnapshot)
@@ -900,7 +900,8 @@ End Function
 ' DH. Idempotent and guarded by status, so any page may run it at any time
 ' (My reviews does when it opens; the Exams list should too): it moves on an
 ' exam that two last sign-offs at the same moment, or a failed step after a
-' sign-off, left behind. The audit row names whoever ran it.
+' sign-off, left behind. The audit row names whoever signed off the last
+' topic, at the time of that sign-off (SendWhenSignedOff).
 ' Never raises: a failure is logged.
 Public Sub SendSignedOffExams()
     Dim ids As String, v As Variant

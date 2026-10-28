@@ -491,28 +491,35 @@ End Function
 ' (modApprovals.QuestionPreview: parts, markings, the correct options and
 ' the reference answers, which the Word document never shows).
 Public Function ExamPreview(ByVal examId As Long) As String
-    Dim rs As DAO.Recordset, s As String, i As Long, lastEt As Long, signer As String
+    Dim rs As DAO.Recordset, s As String, b As String, i As Long, lastEt As Long, signer As String
     Set rs = CurrentDb.OpenRecordset("SELECT eq.QuestionID, eq.ExamTopicID, q.QuestionKey, q.VersionNo, tp.TopicName, " & _
         "et.SignedOffByPersonID, et.SignedOffOn, (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ") AS inUse FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
         "INNER JOIN tblExamTopics AS et ON eq.ExamTopicID=et.ExamTopicID) LEFT JOIN tblTopics AS tp ON et.TopicID=tp.TopicID " & _
         "WHERE eq.ExamID=" & examId & " ORDER BY eq.SortOrder, eq.ExamQuestionID", dbOpenSnapshot)
     Do While Not rs.EOF
+        ' Each question's text (with its topic's heading when the topic
+        ' starts) is built first, so it is added only when it fits.
+        b = ""
         If rs!ExamTopicID <> lastEt Then
-            lastEt = rs!ExamTopicID
             signer = PersonName(rs!SignedOffByPersonID)
-            s = s & IIf(Len(s) > 0, vbCrLf & vbCrLf, "") & UCase$(Nz(rs!TopicName, "A topic")) & _
+            b = IIf(Len(s) > 0, vbCrLf & vbCrLf, "") & UCase$(Nz(rs!TopicName, "A topic")) & _
                 IIf(IsNull(rs!SignedOffOn), " (not signed off)", " (signed off by " & IIf(Len(signer) > 0, signer, "someone no longer listed") & _
                 " on " & Format$(rs!SignedOffOn, "d mmm") & ")")
         End If
-        i = i + 1
-        s = s & vbCrLf & vbCrLf & i & ". " & QuestionRef(rs!QuestionKey, rs!VersionNo) & _
+        b = b & vbCrLf & vbCrLf & (i + 1) & ". " & QuestionRef(rs!QuestionKey, rs!VersionNo) & _
             IIf(Nz(rs!inUse, False), "", " (REPLACED OR RETIRED SINCE THE DRAW)") & vbCrLf & QuestionPreview(rs!QuestionID)
-        rs.MoveNext
-        ' A text box holds about 64,000 characters.
-        If Len(s) > PREVIEW_MAX And Not rs.EOF Then
+        ' A text box holds about 64,000 characters: stop before a question
+        ' that would take the text past PREVIEW_MAX (the first one is cut
+        ' to fit, so there is something to read).
+        If Len(s) + Len(b) > PREVIEW_MAX Then
+            If Len(s) = 0 Then s = Left$(b, PREVIEW_MAX)
             s = s & vbCrLf & vbCrLf & "(The exam goes on, but the rest is too long to show here.)"
             Exit Do
         End If
+        s = s & b
+        lastEt = rs!ExamTopicID
+        i = i + 1
+        rs.MoveNext
     Loop
     rs.Close
     ExamPreview = s

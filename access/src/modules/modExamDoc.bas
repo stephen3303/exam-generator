@@ -51,9 +51,16 @@ Private Const wdAlertsNone As Long = 0
 
 Private m_doc As Object             ' the document being made
 Private m_used As Boolean           ' its first (empty) paragraph has been used
-Private m_pRng() As Object          ' each marked portion's paragraph (a Word range, which moves with the text)
+' The marked portions. While the document is written each is kept as its
+' paragraph's first and last character positions, numbers that later
+' paragraphs, added after them, can't change. StampMarkings makes them into
+' Word ranges (which move with the text) only once every paragraph is in,
+' so no range can grow to take in a paragraph added after it.
+Private m_pS() As Long              ' each portion's paragraph: its Start
+Private m_pE() As Long              '   its End
 Private m_pRank() As Long           '   and its LevelRank
 Private m_pN As Long
+Private m_pRng() As Object          ' StampMarkings: each portion as a Word range
 
 ' ---------------------------------------------------------------------------
 ' Where documents are kept
@@ -145,18 +152,25 @@ End Function
 ' Errors: Word's and the file system's pass up, after Word is closed.
 Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As String) As String
     Dim wd As Object, path As String, st As String
-    Dim overall As Long, num As Long, desc As String, src As String, lvl As Long, sameOrder As Boolean
+    Dim overall As Long, num As Long, desc As String, src As String, lvl As Long, cur As Long, sameOrder As Boolean
     note = ""
     st = ExamStatusName(DLookup("StatusID", "tblExams", "ExamID=" & examId))
     If st <> ES_APPROVED Then MakeExamDocument = DownloadProblem(examId): Exit Function
     MakeExamDocument = UnmarkedProblem(examId)
     If Len(MakeExamDocument) > 0 Then Exit Function
-    ' The marking the SM approved (stored then), not today's order; when the
-    ' admin reordered the levels since, every page carries that marking.
+    ' The marking the SM approved (stored then), or the exam's highest level
+    ' under today's order when that ranks higher. When the admin reordered the
+    ' levels since, every page carries the higher of the two: the stored one
+    ' alone could mark a page lower than its content under today's order, and
+    ' a page must never be. The remake isn't refused, since the exam stays
+    ' approved and its copies are still needed.
     lvl = Nz(DLookup("OverallClassLevelID", "tblExams", "ExamID=" & examId), 0)
-    sameOrder = (lvl = 0 Or lvl = OverallLevelID(examId))
-    If lvl = 0 Then lvl = OverallLevelID(examId)
-    overall = ClassRank(lvl)
+    cur = OverallLevelID(examId)
+    sameOrder = (lvl = 0 Or lvl = cur)
+    overall = ClassRank(cur)
+    If lvl <> 0 Then
+        If ClassRank(lvl) > overall Then overall = ClassRank(lvl)
+    End If
     path = DocPathFor(examId)
     On Error Resume Next
     If Len(Dir(path)) > 0 Then Kill path
@@ -179,7 +193,7 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
     Set m_doc = wd.Documents.Add
     m_used = False
     m_pN = 0
-    ReDim m_pRng(0 To 63): ReDim m_pRank(0 To 63)
+    ReDim m_pS(0 To 63): ReDim m_pE(0 To 63): ReDim m_pRank(0 To 63)
     SetUpPage overall
     WriteCover examId, overall
     WriteQuestions examId
@@ -314,12 +328,14 @@ Private Function OneParagraph(ByVal t As String) As String
     OneParagraph = s
 End Function
 
-' Remember paragraph r as a portion marked at rank rk.
+' Remember paragraph r, the document's last, as a portion marked at rank
+' rk: where it starts and ends, as numbers (see m_pS).
 Private Sub AddPortion(r As Object, ByVal rk As Long)
-    If m_pN > UBound(m_pRng) Then
-        ReDim Preserve m_pRng(0 To 2 * m_pN): ReDim Preserve m_pRank(0 To 2 * m_pN)
+    If m_pN > UBound(m_pS) Then
+        ReDim Preserve m_pS(0 To 2 * m_pN): ReDim Preserve m_pE(0 To 2 * m_pN): ReDim Preserve m_pRank(0 To 2 * m_pN)
     End If
-    Set m_pRng(m_pN) = r.Duplicate
+    m_pS(m_pN) = r.Start
+    m_pE(m_pN) = r.End
     m_pRank(m_pN) = rk
     m_pN = m_pN + 1
 End Sub
@@ -422,6 +438,14 @@ End Function
 Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
     Dim nPages As Long, secRk() As Long, starts() As Long, i As Long, p As Long, ok As Boolean, pos As Long
     Dim sec As Object, r As Object, s0 As Long, s1 As Long
+    ' The portions as ranges, now that nothing more is added after them: the
+    ' text before a position never changed while later paragraphs were
+    ' added, so each range is exactly its paragraph. From here they move
+    ' with the section breaks put in below.
+    ReDim m_pRng(0 To m_pN)
+    For i = 0 To m_pN - 1
+        Set m_pRng(i) = m_doc.Range(m_pS(i), m_pE(i))
+    Next
     m_doc.Repaginate
     nPages = m_doc.ComputeStatistics(wdStatisticPages)
     ok = sameOrder And nPages >= 1
@@ -467,8 +491,8 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
         If ok Then SetMarking sec, RankMarking(secRk(p)) Else SetMarking sec, RankMarking(overall)
     Next
     If Not sameOrder Then
-        note = "The classification order was changed after the SM approved this exam, so every page carries the overall " & _
-            "marking approved then."
+        note = "The classification order was changed after the SM approved this exam, so every page carries the higher of " & _
+            "the overall marking approved then and the exam's highest marking now."
     ElseIf Not ok Then
         note = "Word couldn't split the pages cleanly, so every page carries the exam's overall marking."
     End If

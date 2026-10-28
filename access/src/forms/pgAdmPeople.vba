@@ -150,13 +150,16 @@ End Sub
 Private Function SavePersonFlag(ByVal fld As String, ByVal v As Boolean) As Boolean
     Dim ws As DAO.Workspace, inTrans As Boolean, before As Long
     On Error GoTo Fail
-    DBEngine.Idle dbRefreshCache            ' count other copies' latest commits
-    before = AdminCount()
+    DBEngine.Idle dbRefreshCache            ' the counts below read other copies' latest commits
     Set ws = DBEngine.Workspaces(0)
     ws.BeginTrans: inTrans = True
     ' Admin changes take turns: another admin's change waits here until this
-    ' one commits, so the count below sees it.
-    KitExecute "UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey='SchemaVersion'"
+    ' one commits, so the counts below, read only after the wait, see it. A
+    ' missing row would lock nothing, so it is logged.
+    If KitExecute("UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey='SchemaVersion'") = 0 Then
+        LogError "pgAdmPeople.SavePersonFlag", "No SchemaVersion row in tblSettings: admin changes aren't serialised."
+    End If
+    before = AdminCount()
     KitExecute "UPDATE tblPeople SET " & fld & "=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
     If Not v And before > 0 Then
         If AdminCount() = 0 Then
