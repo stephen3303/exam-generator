@@ -352,9 +352,12 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET PortionMark=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "up", "down"
+            ' Exam documents made before now are made again at their next
+            ' download: the newest audit entry marks the moment. Written first,
+            ' so a move never stands without it (a stamp with no move costs
+            ' one extra remake per exam).
+            SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
             If Not MoveRow("tblClassLevels", "ClassLevelID", "LevelRank", id, IIf(k = "up", -1, 1)) Then Exit Sub
-            ' Exam documents made before now are made again at their next download.
-            SetSetting SET_CLASS_ORDER_AT, Format$(Now(), "yyyy\-mm\-dd hh\:nn\:ss")
         Case "del"
             used = DCount("*", "tblQuestions", "ClassLevelID=" & id) + DCount("*", "tblQuestionParts", "ClassLevelID=" & id) + _
                 DCount("*", "tblExams", "OverallClassLevelID=" & id)
