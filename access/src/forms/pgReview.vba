@@ -34,6 +34,7 @@ Private Sub Form_Load()
         ShowTask 0
         Exit Sub
     End If
+    SendSignedOffExams                      ' an exam whose topics are all signed off goes on to the DH
     RefreshList 0
     Exit Sub
 Err_Handler:

@@ -63,6 +63,13 @@ Public Function ExamStatusID(ByVal nm As String) As Long
     ExamStatusID = Nz(DLookup("StatusID", "tblStatuses", "StatusName=" & Q(nm) & " AND AppliesTo='Exam'"), 0)
 End Function
 
+' The exam statuses in which its topics are still with their SMEs (they can
+' be swapped and signed off, and the last sign-off sends the exam to the DH),
+' as ids for IN (...). Every "still in SME review" check uses this list.
+Public Function SmeReviewStatusIDs() As String
+    SmeReviewStatusIDs = CStr(ExamStatusID(ES_SME_REVIEW))
+End Function
+
 ' How many of the n questions a topic gets may have been given lately.
 Public Function RepeatsAllowed(ByVal n As Long) As Long
     If n <= 0 Then Exit Function
@@ -450,7 +457,7 @@ Public Function ReviewProblem(ByVal etId As Long) As String
     ElseIf Not IsNull(rs!SignedOffByPersonID) Then
         s = "Signed off by " & SignerName(rs!SignedOffByPersonID) & " on " & Format$(rs!SignedOffOn, "d mmm yyyy") & _
             ", so its questions are settled."
-    ElseIf rs!StatusID <> ExamStatusID(ES_SME_REVIEW) Then
+    ElseIf Not InKeyList(SmeReviewStatusIDs(), rs!StatusID) Then
         s = "The exam is past SME review, so its questions can't be changed here."
     Else
         topicId = rs!TopicID
@@ -631,6 +638,15 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
+    ' Take the exam's row first, while it is still in SME review: two sign-offs
+    ' of one exam's topics then run one after the other, so the later one sees
+    ' the earlier one's topic signed off.
+    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
+            SmeReviewStatusIDs() & ")") = 0 Then
+        ws.Rollback: inTrans = False
+        SignOffTopic = "The exam is past SME review, so this topic can't be signed off now."
+        Exit Function
+    End If
     ' One sign-off wins, and only on the questions shown: only while no one
     ' has signed it off or swapped a question since the page loaded it.
     n = KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=" & pid & ", SignedOffOn=Now(), ChangeNo=Nz(ChangeNo,0)+1 " & _
@@ -646,9 +662,10 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
     AddAudit ITEM_EXAM, examId, ver, AU_SIGNED_OFF, RoleID("SME"), topic
     SendWhenSignedOff examId
     ws.CommitTrans: inTrans = False
-    SendWhenSignedOff examId                ' a last topic signed off at the same moment as this one
-    nLeft = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
-    If nLeft = 0 Then
+    nLeft = SendAfterSignOff(examId)        ' and a last topic signed off at the same moment as this one; never raises
+    If nLeft < 0 Then
+        doneText = "Signed off."
+    ElseIf nLeft = 0 Then
         doneText = "Signed off. That was the exam's last topic, so it goes to the DH for approval."
     Else
         doneText = "Signed off. " & nLeft & IIf(nLeft = 1, " more topic on this exam waits", " more topics on this exam wait") & _
@@ -663,13 +680,61 @@ Fail:
 End Function
 
 ' Send exam examId to the DH for approval (In Review, at the DH's step) when
-' every topic is signed off and it is still in SME review. Safe to call
-' twice: only the call that moves it writes the audit row.
+' every topic is signed off and it is still in SME review (SmeReviewStatusIDs).
+' Safe to call twice: only the call that moves it writes the audit row
+' (Submitted). Call it inside a transaction, so the move and its audit row
+' are written together.
+' Errors: a data error passes up (the caller rolls back).
 Private Sub SendWhenSignedOff(ByVal examId As Long)
     Dim n As Long
     If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Sub
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REVIEW) & ", CurrentStepRoleID=" & RoleID("DH") & _
-        " WHERE ExamID=" & examId & " AND StatusID=" & ExamStatusID(ES_SME_REVIEW))
+        " WHERE ExamID=" & examId & " AND StatusID IN (" & SmeReviewStatusIDs() & ")")
     If n > 0 Then AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_SUBMITTED, RoleID("DH"), _
         "Every topic signed off"
+End Sub
+
+' After a sign-off of exam examId has committed: read past Jet's cache, so
+' another copy's sign-off of a moment ago counts, and send the exam to the DH
+' when every topic is signed off now (SendWhenSignedOff, in its own
+' transaction). Returns how many topics still wait, or -1 when this failed.
+' Never raises: the sign-off is saved whatever happens here, so a failure is
+' logged and the sweep (SendSignedOffExams) moves the exam later.
+Private Function SendAfterSignOff(ByVal examId As Long) As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean
+    On Error GoTo Fail
+    DBEngine.Idle dbRefreshCache
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    SendWhenSignedOff examId
+    ws.CommitTrans: inTrans = False
+    SendAfterSignOff = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
+    Exit Function
+Fail:
+    If inTrans Then ws.Rollback
+    LogError "modExams.SendAfterSignOff", "exam " & examId
+    SendAfterSignOff = -1
+End Function
+
+' Send every exam still in SME review whose topics are all signed off to the
+' DH. Idempotent and guarded by status, so any page may run it at any time
+' (My reviews does when it opens; the Exams list should too): it moves on an
+' exam that two last sign-offs at the same moment, or a failed step after a
+' sign-off, left behind. The audit row names whoever ran it.
+' Never raises: a failure is logged.
+Public Sub SendSignedOffExams()
+    Dim ids As String, v As Variant
+    On Error GoTo Fail
+    If Not DataLinked() Then Exit Sub
+    DBEngine.Idle dbRefreshCache
+    ids = ColumnList("SELECT e.ExamID FROM tblExams AS e WHERE e.StatusID IN (" & SmeReviewStatusIDs() & ") " & _
+        "AND EXISTS (SELECT * FROM tblExamTopics AS et WHERE et.ExamID=e.ExamID) " & _
+        "AND NOT EXISTS (SELECT * FROM tblExamTopics AS et WHERE et.ExamID=e.ExamID AND et.SignedOffByPersonID Is Null)")
+    If Len(ids) = 0 Then Exit Sub
+    For Each v In Split(ids, ",")
+        SendAfterSignOff CLng(v)
+    Next
+    Exit Sub
+Fail:
+    LogError "modExams.SendSignedOffExams"
 End Sub
