@@ -559,11 +559,9 @@ End Function
 ' ---------------------------------------------------------------------------
 
 ' Why exam examId can't be downloaded now, or "": only an approved exam has
-' a document, and only the approval chain (DH, XO, SM) and admins may
-' download it, read from the data file now: an exam is need-to-know until it
-' is given, so SMEs and others don't see the whole exam beforehand.
+' a document, and anyone who can use the app may download it.
 Public Function DownloadProblem(ByVal examId As Long) As String
-    Dim st As String, pid As Long
+    Dim st As String
     If Not DataLinked() Then DownloadProblem = "This copy has no data file.": Exit Function
     st = ExamStatusName(DLookup("StatusID", "tblExams", "ExamID=" & examId))
     If Len(st) = 0 Then
@@ -575,22 +573,7 @@ Public Function DownloadProblem(ByVal examId As Long) As String
             Case Else: st = "It was sent back to its SMEs."
         End Select
         DownloadProblem = "The document is made when the SM gives the exam final approval. " & st
-    Else
-        pid = SignedInPersonID()
-        If Not MayDownload(pid) Then
-            DownloadProblem = "Only the DH, XO, SM and Exam Generator admins can download an approved exam."
-        End If
     End If
-End Function
-
-' True when person pid is active here, may still use the app, and holds a
-' chain role (DH, XO or SM) or is an admin.
-Private Function MayDownload(ByVal pid As Long) As Boolean
-    If pid = 0 Then Exit Function
-    If Not Nz(DLookup("IsActive", "tblPeople", "PersonID=" & pid), False) Then Exit Function
-    If Not PersonCanUse(pid, APP_CODE) Then Exit Function
-    MayDownload = Nz(DLookup("IsAdmin", "tblPeople", "PersonID=" & pid), False) Or PersonHasRole(pid, "DH") Or _
-        PersonHasRole(pid, "XO") Or PersonHasRole(pid, "SM")
 End Function
 
 ' Copy exam examId's document to dest (a path the person chose) and write
