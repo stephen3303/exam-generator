@@ -261,8 +261,8 @@ Private Sub ShowTask(ByVal taskId As Long)
                 given = GivenLatelyCount(m_et, m_keys)
                 replaced = ReplacedCount(m_et)
                 s = "Check each question and swap any that aren't right, then sign off. One sign-off completes the topic for all its SMEs."
-                If replaced > 0 Then s = s & " " & replaced & " of them " & IIf(replaced = 1, "was", "were") & " replaced or retired " & _
-                    "since the exam was drawn; swap " & IIf(replaced = 1, "it", "them") & " out (Swap lists the newer version when there is one)."
+                If replaced > 0 Then s = s & " " & replaced & " of them " & IIf(replaced = 1, "was", "were") & " replaced by a newer " & _
+                    "version or retired since the exam was drawn; swap " & IIf(replaced = 1, "it", "them") & " before you sign off."
                 If given > 0 Then s = s & " " & given & " of them " & IIf(given = 1, "was", "were") & " on an exam generated before this one; the " & _
                     "overlap rule allows " & RepeatsAllowed(n) & "."
                 rj = ExamRejectionText(rs!ExamID)    ' sent back by an approver: why, first, then the counts
