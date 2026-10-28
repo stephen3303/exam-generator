@@ -145,6 +145,7 @@ Private Sub RefreshStats()
         ClearFigures "The first date is after the second. Swap them to see the figures.", "warning"
         Exit Sub
     End If
+    ClearFigures "Working out the figures...", "info"  ' if RunStats fails, nothing stale shows and Print and Export stay off
     RunStats d1, d2, Nz(Me.cboTemplate, 0)
     m_from = d1: m_to = d2                  ' what the figures are for, for the tile, Print and Export
     m_tplName = IIf(Nz(Me.cboTemplate, 0) = 0, "", Nz(Me.cboTemplate.Column(1), "one template"))
@@ -158,7 +159,7 @@ Private Sub RefreshStats()
     ElseIf n = 0 Then
         ShowAlert Me, "alWeak", "No topic takes " & Format$(WEAK_SHARE, "0%") & " or more of its questions from one reference.", "success"
     Else
-        ShowAlert Me, "alWeak", Replace(s, vbCrLf, "; "), "warning", "Weak reference coverage"
+        ShowAlert Me, "alWeak", Replace(Replace(s, "&", "&&"), vbCrLf, "; "), "warning", "Weak reference coverage"
     End If
     Me.sfTopics.Form.RecordSource = StatTopicsSql()
     n = Me.sfTopics.Form.RecordsetClone.RecordCount

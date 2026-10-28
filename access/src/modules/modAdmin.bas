@@ -152,14 +152,15 @@ Public Function TopicSupplySql() As String
 End Function
 
 ' The active topics short of approved questions under the overlap rule, one
-' line each ("Damage Control: 12 approved, needs 28", a long name cut short
-' at 32 characters so a one-line alert holds two lines), then "and 3 more".
+' line each ("Damage Control: 12 approved, needs 28"), then "and 3 more".
 '   pct, window   OverlapPct and OverlapWindow (or values being tried)
 '   nShort        returns how many topics are short
 '   maxLines      the most topic lines before "and N more"
+'   nameLen       cut a long name short at this many characters (ClipText),
+'                 e.g. 32 so a one-line alert holds two lines; 0 keeps it whole
 ' Returns "" when none is short. Errors: the engine's.
 Public Function TopicsShortText(ByVal pct As Long, ByVal window As Long, Optional ByRef nShort As Long, _
-        Optional ByVal maxLines As Long = 4) As String
+        Optional ByVal maxLines As Long = 4, Optional ByVal nameLen As Long = 0) As String
     Dim rs As DAO.Recordset, need As Long, s As String
     nShort = 0
     Set rs = CurrentDb.OpenRecordset("SELECT * FROM (" & TopicSupplySql() & ") AS x WHERE x.IsActive ORDER BY x.TopicName", dbOpenSnapshot)
@@ -168,7 +169,7 @@ Public Function TopicsShortText(ByVal pct As Long, ByVal window As Long, Optiona
         If rs!on_hand < need Then
             nShort = nShort + 1
             If nShort <= maxLines Then
-                s = s & IIf(Len(s) > 0, vbCrLf, "") & ClipText(Nz(rs!TopicName, ""), 32) & ": " & rs!on_hand & " approved, needs " & need
+                s = s & IIf(Len(s) > 0, vbCrLf, "") & ClipText(Nz(rs!TopicName, ""), nameLen) & ": " & rs!on_hand & " approved, needs " & need
             End If
         End If
         rs.MoveNext

@@ -153,7 +153,7 @@ Private Sub ShowShort()
         ShowAlert Me, "alShort", "Every active topic has enough approved questions for exams under these values.", _
             "success", "No topics short"
     Else
-        ShowAlert Me, "alShort", s, "warning", n & " " & Plural(n, "topic") & IIf(n = 1, " is", " are") & " short of approved questions"
+        ShowAlert Me, "alShort", Replace(s, "&", "&&"), "warning", n & " " & Plural(n, "topic") & IIf(n = 1, " is", " are") & " short of approved questions"
     End If
 End Sub
 

@@ -75,8 +75,7 @@ Public Sub EmailChanged()
     On Error GoTo Err_Handler
     SaveSwitch "tgEmail", "NotifyEmail", "EGNotifyEmail"
     If IsSwitchOn("tgEmail") And Len(PersonEmail(m_pid)) = 0 Then
-        KitMsgBox "Emails are on, but the Personnel file has no email address for you, so none can reach you yet. " & _
-            "Ask the admin to add it.", vbInformation, MSG_TITLE
+        KitMsgBox "Emails are on, but none can reach you yet. " & PersonEmailProblem(m_pid), vbInformation, MSG_TITLE
     End If
     Exit Sub
 Err_Handler:
@@ -121,7 +120,7 @@ Private Sub ShowAddress()
         Me.lblEmail.Caption = "Emails go to " & Replace(addr, "&", "&&") & ", the address in the Personnel file."
         Me.lblEmail.ForeColor = Th(CLR_MUTED_FG)
     Else
-        Me.lblEmail.Caption = "The Personnel file has no email address for you. Ask the admin to add it."
+        Me.lblEmail.Caption = PersonEmailProblem(m_pid)    ' none, or not one usable address
         Me.lblEmail.ForeColor = Th(CLR_WARN_TEXT)
     End If
 End Sub

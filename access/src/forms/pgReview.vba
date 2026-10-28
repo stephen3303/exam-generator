@@ -11,9 +11,10 @@ Option Explicit
 ' the picked question in full. Swap opens dlgSwap; Sign off completes the
 ' topic for every SME on it. Both are checked again in the data file when
 ' clicked (RequireReviewer). The Dashboard can ask for a task to be shown
-' first through TempVars("ReviewTaskID"). The emails a sign-off or the
-' opening sweep queues are sent once the click or the loading is over
-' (modNotify.SendQueuedNotices).
+' first through TempVars("ReviewTaskID"). The emails a sign-off queues are
+' sent straight after it, on its error path too; the opening sweep's once
+' the page has loaded and nothing else is open over the app, or first thing
+' in a sign-off (modNotify.SendQueuedNotices).
 
 Private Const MSG_TITLE As String = "My reviews"
 
@@ -49,17 +50,28 @@ Err_Handler:
     HandleError "pgReview.Form_Load"
 End Sub
 
-' Once, after Form_Load: send the emails the opening sweep queued. Their
-' note is dropped (a failed email is logged): the person who opened the
-' page didn't take the step, and it mustn't land on their next toast.
+' After Form_Load: send the emails the opening sweep queued, once nothing
+' else is open over the app (a click made while the page loaded may have
+' opened a dialog); until then the timer tries again.
 Private Sub Form_Timer()
     On Error GoTo Err_Handler
-    Me.TimerInterval = 0
-    SendQueuedNotices
-    TakeNoticeNote
+    If Me.TimerInterval = 0 Then Exit Sub   ' already sent (a tick left over from before)
+    If NoticesShouldWait() Then Me.TimerInterval = 250: Exit Sub
+    SendSweepNotices
     Exit Sub
 Err_Handler:
     HandleError "pgReview.Form_Timer"
+End Sub
+
+' Send the emails the opening sweep queued, once: from Form_Timer, or first
+' thing in a sign-off, so the two never go as one batch. The person who
+' opened the page didn't take the step, but the emails went from their
+' Outlook, so what wasn't sent or may wait in their Outbox shows in a toast
+' of its own.
+Private Sub SendSweepNotices()
+    If Me.TimerInterval = 0 Then Exit Sub
+    Me.TimerInterval = 0
+    SendNoticesWithToast "An exam with every topic signed off went on to the DH."
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -107,6 +119,7 @@ Private Sub btnSignOff_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgReview.btnSignOff_Click", m_et
+    SendNoticesWithToast                    ' any emails the sign-off queued go now, not with a later action
     RefreshList m_task                      ' a refused sign-off: show where it stands now
 End Sub
 
@@ -172,6 +185,7 @@ Public Sub GridRightClick(ByVal grid As String)
     Exit Sub
 Err_Handler:
     HandleError "pgReview.GridRightClick", grid
+    SendNoticesWithToast                    ' any emails a sign-off queued go now, not with a later action
     RefreshList m_task
 End Sub
 
@@ -180,6 +194,7 @@ End Sub
 Private Sub SignOffClicked()
     Dim problem As String, done As String, n As Long
     If m_et = 0 Then Exit Sub
+    SendSweepNotices                        ' the opening sweep's emails, if they still wait, apart from this sign-off's
     problem = ReviewProblem(m_et)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_task: Exit Sub
     n = Me.sfQs.Form.RecordsetClone.RecordCount

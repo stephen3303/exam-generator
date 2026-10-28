@@ -130,6 +130,7 @@ Private Sub btnApprove_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgApprovals.btnApprove_Click", m_qid
+    SendNoticesWithToast                    ' any emails the approval queued go now, not with a later action
     RefreshList m_qid                       ' a refused approval: show where it stands now
 End Sub
 
@@ -139,6 +140,7 @@ Private Sub btnReject_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgApprovals.btnReject_Click", m_qid
+    SendNoticesWithToast                    ' any emails the send-back queued go now, not with a later action
     RefreshList m_qid
 End Sub
 
@@ -156,6 +158,7 @@ Private Sub btnXApprove_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgApprovals.btnXApprove_Click", m_xid
+    SendNoticesWithToast                    ' any emails the approval queued go now, not with a later action
     RefreshXList m_xid
 End Sub
 
@@ -165,6 +168,7 @@ Private Sub btnXReject_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgApprovals.btnXReject_Click", m_xid
+    SendNoticesWithToast                    ' any emails the send-back queued go now, not with a later action
     RefreshXList m_xid
 End Sub
 
@@ -247,6 +251,7 @@ Public Sub GridRightClick(ByVal grid As String)
     Exit Sub
 Err_Handler:
     HandleError "pgApprovals.GridRightClick", grid
+    SendNoticesWithToast                    ' any emails an approval or send-back queued go now, not with a later action
     RefreshList m_qid
 End Sub
 
