@@ -168,6 +168,8 @@ Private Function SavePersonFlag(ByVal fld As String, ByVal v As Boolean) As Bool
         End If
     End If
     If v And fld = "IsActive" Then EnsurePerson m_pid
+    AuditAdmin ITEM_PERSON, m_pid, IIf(fld = "IsAdmin", "Admin", "Exam Generator access") & " turned " & _
+        IIf(v, "on", "off") & " for " & PersonName(m_pid)
     ws.CommitTrans: inTrans = False
     SavePersonFlag = True
     Exit Function
@@ -214,7 +216,10 @@ Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
     ' Off their topics and the role itself go together, or neither.
     Set ws = DBEngine.Workspaces(0)
     ws.BeginTrans: inTrans = True
-    If Len(topics) > 0 Then KitExecute "DELETE FROM tblTopicSMEs WHERE PersonID=" & m_pid
+    If Len(topics) > 0 Then
+        KitExecute "DELETE FROM tblTopicSMEs WHERE PersonID=" & m_pid
+        AuditAdmin ITEM_PERSON, m_pid, PersonName(m_pid) & " taken off the topics " & topics
+    End If
     SetPersonRole m_pid, code, v
     ws.CommitTrans: inTrans = False
     Changed
