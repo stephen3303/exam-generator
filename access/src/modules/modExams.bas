@@ -227,7 +227,11 @@ End Function
 ' topic's SMEs a review task, all in one transaction. repeatTopics lists the
 ' TopicIDs (joined with commas, "" for none) the DH agreed may take more
 ' questions given lately than the overlap rule allows, because they can't be
-' filled otherwise; any other topic over the rule stops the draw. Returns "" with the new exam's id
+' filled otherwise; any other topic over the rule stops the draw. The draw
+' is made inside the transaction, after its first write locks the overlap
+' window's settings row, so two DHs generating at once run one after the
+' other and each exam's draw sees the other; every question is inserted only
+' while it is still approved and in use. Returns "" with the new exam's id
 ' in examId, or why it can't be generated (who it is for, the template, or
 ' a topic short of questions, of SMEs, or over the rule); then nothing is
 ' written.
@@ -236,7 +240,7 @@ End Function
 Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, ByVal repeatTopics As String, _
         ByRef examId As Long) As String
     Dim ws As DAO.Workspace, db As DAO.Database, rs As DAO.Recordset, plan As Collection, p As Variant, v As Variant
-    Dim r As String, tplName As String, problem As String, inTrans As Boolean, etId As Long, i As Long
+    Dim r As String, tplName As String, problem As String, inTrans As Boolean, etId As Long, i As Long, ap As Long
     Dim num As Long, desc As String, src As String
     RequireExamMaker
     examId = 0
@@ -248,11 +252,20 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
         GenerateExam = "Pick a template. Only templates that are turned on can be used."
         Exit Function
     End If
-    Set plan = DrawPlan(tplId, RecentKeysList(), repeatTopics, problem)
-    If Len(problem) > 0 Then GenerateExam = problem: Exit Function
+    ap = ApprovedStatusID()
+    DBEngine.Idle dbRefreshCache            ' the draw reads other copies' latest commits, not Jet's cache
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
+    ' Lock the overlap window's settings row until commit: another DH's
+    ' Generate waits here, then draws with this exam in its window.
+    KitExecute "UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey=" & Q(SET_OVERLAP_WINDOW)
+    Set plan = DrawPlan(tplId, RecentKeysList(), repeatTopics, problem)
+    If Len(problem) > 0 Then
+        ws.Rollback: inTrans = False
+        GenerateExam = problem
+        Exit Function
+    End If
     Set db = CurrentDb
     Set rs = db.OpenRecordset("tblExams", dbOpenDynaset)
     rs.AddNew
@@ -280,8 +293,17 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
         rs.Close
         For Each v In Split(p(3), ",")
             i = i + 1                       ' the exam's order, topic after topic
-            KitExecute "INSERT INTO tblExamQuestions (ExamID, ExamTopicID, QuestionID, SortOrder, WasSwapped) VALUES (" & _
-                examId & ", " & etId & ", " & CLng(v) & ", " & i & ", False)"
+            ' Only while it is still approved and in use: a question retired since
+            ' the draw stops the exam rather than land on it.
+            If KitExecute("INSERT INTO tblExamQuestions (ExamID, ExamTopicID, QuestionID, SortOrder, WasSwapped) SELECT " & _
+                    examId & ", " & etId & ", QuestionID, " & i & ", False FROM tblQuestions WHERE QuestionID=" & CLng(v) & _
+                    " AND IsCurrent AND StatusID=" & ap) = 0 Then
+                ws.Rollback: inTrans = False
+                examId = 0
+                GenerateExam = "A question was replaced or retired while the exam was being drawn, so nothing was saved. " & _
+                    "Generate again."
+                Exit Function
+            End If
         Next
         For Each v In Split(p(4), ",")
             KitExecute "INSERT INTO tblTasks (TaskType, ItemType, ItemID, ExamTopicID, AssignedPersonID, TaskStatus, CreatedOn) " & _
