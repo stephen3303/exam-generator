@@ -15,8 +15,8 @@ Option Explicit
 ' source's last ORDER BY, and must still list the values of the rows shown.
 '
 ' Owner: build phase 10. Depends on: modAdmin (PersonNameSql), modExams
-' (ITEM_EXAM), modGlobals (Q, LikeLiteral), modQuestions (ITEM_QUESTION,
-' ITEM_REFERENCE); the kit's PERSON_TABLE.
+' (ITEM_EXAM), modBank (ITEM_BANK), modGlobals (Q, LikeLiteral),
+' modQuestions (ITEM_QUESTION, ITEM_REFERENCE); the kit's PERSON_TABLE.
 
 Public Const LOG_MAX As Long = 1000             ' rows a list shows at most
 
@@ -113,7 +113,8 @@ Private Function WhoSql() As String
 End Function
 
 ' The audit row's item as SQL: a question's key and version, an exam's id
-' and version, a reference's title, else its type and id. The joins ignore
+' and version, a reference's title, "Question bank" for an export or
+' import of it (modBank), else its type and id. The joins ignore
 ' ItemType (Jet can't join on a constant); the IIf reads each table only on
 ' its own type's rows. A deleted draft's rows say so (its key is in the
 ' Deleted row's comment).
@@ -121,7 +122,8 @@ Private Function AuditItemSql() As String
     AuditItemSql = "IIf(a.ItemType=" & Q(ITEM_QUESTION) & ", IIf(IsNull(q.QuestionID), 'Question ' & a.ItemID & ' (deleted)', " & _
         "'Q' & q.QuestionKey & ' v' & a.VersionNo), " & _
         "IIf(a.ItemType=" & Q(ITEM_EXAM) & ", 'E' & a.ItemID & ' v' & a.VersionNo, " & _
-        "IIf(a.ItemType=" & Q(ITEM_REFERENCE) & ", 'Reference: ' & Nz(s.RefTitle,'(deleted)'), a.ItemType & ' ' & a.ItemID)))"
+        "IIf(a.ItemType=" & Q(ITEM_REFERENCE) & ", 'Reference: ' & Nz(s.RefTitle,'(deleted)'), " & _
+        "IIf(a.ItemType=" & Q(ITEM_BANK) & ", 'Question bank', a.ItemType & ' ' & a.ItemID))))"
 End Function
 
 ' The audit list's FROM clause; withNames adds the question's topic and the
