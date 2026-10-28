@@ -248,28 +248,12 @@ Private Sub RefreshList(ByVal pid As Long)
     n = g.RecordsetClone.RecordCount
     ShowEmpty Me, "emptyList", n = 0
     SetVisible Me.sfList, n > 0
-    If MarkRow(pid) Then
+    If GridSelect(Me.sfList, pid) Then
         ShowPerson pid
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ShowPerson 0
     End If
 End Sub
-
-' Select pid's row in the list. False when it isn't listed.
-Private Function MarkRow(ByVal pid As Long) As Boolean
-    Dim g As Form
-    If pid = 0 Then Exit Function
-    Set g = Me.sfList.Form
-    With g.RecordsetClone
-        .FindFirst "id=" & pid
-        If Not .NoMatch Then
-            g.Bookmark = .Bookmark
-            g.txtSel = pid
-            g.Recalc
-            MarkRow = True
-        End If
-    End With
-End Function
 
 ' Show person pid on the right (0: nobody, and the hint instead).
 Private Sub ShowPerson(ByVal pid As Long)

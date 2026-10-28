@@ -297,25 +297,18 @@ End Function
 ' Make the three local tables when this front end lacks them (BuildAll's
 ' "local tables" step, and the editor before it loads a question).
 Public Sub EnsureWorkTables()
-    If Not LocalTableExists("wq_part") Then
+    If Not TableExists("wq_part", True) Then
         CurrentDb.Execute "CREATE TABLE wq_part (id COUNTER CONSTRAINT pk_wq_part PRIMARY KEY, PartLabel TEXT(5), " & _
             "PartText MEMO, Points DOUBLE, ClassLevelID LONG, ReferenceAnswer MEMO, SortOrder LONG)", dbFailOnError
     End If
-    If Not LocalTableExists("wq_option") Then
+    If Not TableExists("wq_option", True) Then
         CurrentDb.Execute "CREATE TABLE wq_option (id COUNTER CONSTRAINT pk_wq_option PRIMARY KEY, part_id LONG, " & _
             "OptionText MEMO, IsCorrect YESNO, SortOrder LONG)", dbFailOnError
     End If
-    If Not LocalTableExists("wq_ref") Then
+    If Not TableExists("wq_ref", True) Then
         CurrentDb.Execute "CREATE TABLE wq_ref (id COUNTER CONSTRAINT pk_wq_ref PRIMARY KEY, RefID LONG, Paragraph TEXT(100))", dbFailOnError
     End If
 End Sub
-
-Private Function LocalTableExists(ByVal nm As String) As Boolean
-    Dim td As DAO.TableDef
-    For Each td In CurrentDb.TableDefs
-        If td.Name = nm Then LocalTableExists = (Len(td.Connect) = 0): Exit Function
-    Next
-End Function
 
 Public Sub ClearWork()
     CurrentDb.Execute "DELETE FROM wq_option", dbFailOnError

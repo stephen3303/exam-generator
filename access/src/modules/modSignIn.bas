@@ -99,10 +99,7 @@ End Sub
 
 ' True when this front end is linked to (or holds) the data file's tables.
 Public Function DataLinked() As Boolean
-    Dim td As DAO.TableDef
-    For Each td In CurrentDb.TableDefs
-        If td.Name = PROBE_TABLE Then DataLinked = True: Exit Function
-    Next
+    DataLinked = TableExists(PROBE_TABLE)
 End Function
 
 ' Why this copy can't use its data file (KitVersionProblem), or "".

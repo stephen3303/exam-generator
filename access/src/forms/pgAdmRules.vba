@@ -149,7 +149,7 @@ Private Sub ShowShort()
         ShowAlert Me, "alShort", "Every active topic has enough approved questions for exams under these values.", _
             "success", "No topics short"
     Else
-        ShowAlert Me, "alShort", s, "warning", n & IIf(n = 1, " topic is", " topics are") & " short of approved questions"
+        ShowAlert Me, "alShort", s, "warning", n & " " & Plural(n, "topic") & IIf(n = 1, " is", " are") & " short of approved questions"
     End If
 End Sub
 
@@ -158,7 +158,7 @@ End Sub
 Private Function SaveRule() As Boolean
     Dim t As String
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    t = Trim$(FieldText(Me.txtDefault))
+    t = Trim$(FieldText(Me, Me.txtDefault))
     If Not IsWhole(t, 1, 50) Then
         KitMsgBox "Questions per topic to start with must be a whole number from 1 to 50.", vbExclamation, MSG_TITLE
         Me.txtDefault.SetFocus
@@ -181,15 +181,6 @@ Private Function IsWhole(ByVal t As String, ByVal lo As Long, ByVal hi As Long) 
     IsWhole = (CLng(t) >= lo And CLng(t) <= hi)
 End Function
 
-' A field's text: what is typed so far while it has the focus, else its value.
-Private Function FieldText(c As Control) As String
-    Dim act As String
-    On Error Resume Next
-    act = Me.ActiveControl.Name
-    On Error GoTo 0
-    If act = c.Name Then FieldText = Nz(c.Text, "") Else FieldText = Nz(c.Value, "")
-End Function
-
 ' ---------------------------------------------------------------------------
 ' The lists
 ' ---------------------------------------------------------------------------
@@ -204,7 +195,7 @@ Private Sub btnDiffAdd_Click()
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     KitExecute "INSERT INTO tblDifficultyLevels (LevelName, SortOrder, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
         NextOrder("tblDifficultyLevels", "SortOrder") & ", True)"
-    ListChanged Me.sfDiff, DLookup("DifficultyID", "tblDifficultyLevels", "LevelName=" & Q(Trim$(v)))
+    GridSelect Me.sfDiff, DLookup("DifficultyID", "tblDifficultyLevels", "LevelName=" & Q(Trim$(v))), True
     KitToast "Level added.", "success"
     Exit Sub
 Err_Handler:
@@ -225,7 +216,7 @@ Private Sub btnClassAdd_Click()
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     KitExecute "INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & Q(Trim$(m)) & ", " & _
         Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"
-    ListChanged Me.sfClass, DLookup("ClassLevelID", "tblClassLevels", "Marking=" & Q(Trim$(m)))
+    GridSelect Me.sfClass, DLookup("ClassLevelID", "tblClassLevels", "Marking=" & Q(Trim$(m))), True
     ' A new level gets the next LevelRank, so it ranks highest and sits last in
     ' this lowest-first list; Move up makes it rank lower.
     KitToast "Added as the highest level, at the bottom of the list. Move it up if it ranks lower.", "success"
@@ -294,20 +285,20 @@ Private Sub DiffActions(ByVal atPointer As Boolean)
         Case "del"
             used = DCount("*", "tblQuestions", "DifficultyID=" & id)
             If used > 0 Then
-                KitMsgBox """" & nm & """ is on " & used & IIf(used = 1, " question", " questions") & ", so it can't be deleted. " & _
+                KitMsgBox """" & nm & """ is on " & used & " " & Plural(used, "question") & ", so it can't be deleted. " & _
                     "Turn it off instead: those questions keep it, and new ones can't pick it.", vbInformation, MSG_TITLE
                 Exit Sub
             End If
             If Not KitConfirmTyped("Delete the difficulty level """ & nm & """?", "No question uses it. This can't be undone.", _
                 PURGE_WORD, "Delete", "Difficulty levels") Then Exit Sub
             KitExecute "DELETE FROM tblDifficultyLevels WHERE DifficultyID=" & id
-            ListChanged Me.sfDiff, Null
+            GridSelect Me.sfDiff, Null, True
             KitToast "Level deleted.", "destructive"
             Exit Sub
         Case Else
             Exit Sub
     End Select
-    ListChanged Me.sfDiff, id
+    GridSelect Me.sfDiff, id, True
 End Sub
 
 ' The selected classification level's actions.
@@ -352,28 +343,13 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             If Not KitConfirmTyped("Delete the classification level """ & nm & """?", _
                 "No question, part or exam uses it. This can't be undone.", PURGE_WORD, "Delete", "Classification levels") Then Exit Sub
             KitExecute "DELETE FROM tblClassLevels WHERE ClassLevelID=" & id
-            ListChanged Me.sfClass, Null
+            GridSelect Me.sfClass, Null, True
             KitToast "Level deleted.", "destructive"
             Exit Sub
         Case Else
             Exit Sub
     End Select
-    ListChanged Me.sfClass, id
-End Sub
-
-' Reload a list and select id in it (Null: none).
-Private Sub ListChanged(sf As Control, ByVal id As Variant)
-    Dim g As Form
-    Set g = sf.Form
-    g.Requery
-    g.txtSel = Null
-    If Not IsNull(id) Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = id
-        End With
-    End If
-    g.Recalc
+    GridSelect Me.sfClass, id, True
 End Sub
 
 Private Function DiffSql() As String

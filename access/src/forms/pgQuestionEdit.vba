@@ -898,7 +898,7 @@ End Sub
 Private Sub RefreshParts(ByVal pid As Long)
     Dim n As Long
     Me.sfParts.Form.Requery
-    SelectRow Me.sfParts, pid
+    GridSelect Me.sfParts, pid
     n = WorkPartCount()
     If n > 0 Then
         Me.cboMark = RolledUpMarking()
@@ -939,7 +939,7 @@ End Sub
 Private Sub RefreshOptions(ByVal id As Long)
     Dim n As Long, nParts As Long, keep As Variant
     Me.sfOptions.Form.Requery
-    SelectRow Me.sfOptions, id
+    GridSelect Me.sfOptions, id
     nParts = WorkPartCount()
     keep = Me.cboOptPart
     Me.cboOptPart.RowSource = "SELECT id, PartLabel FROM wq_part ORDER BY SortOrder"
@@ -986,7 +986,7 @@ End Sub
 Private Sub RefreshRefs(ByVal id As Long)
     Dim n As Long
     Me.sfRefs.Form.Requery
-    SelectRow Me.sfRefs, id
+    GridSelect Me.sfRefs, id
     n = DCount("*", "wq_ref")
     If n = 0 Then
         ShowAlert Me, "alRefs", "No references yet. Cite at least one before the question is submitted.", "warning"
@@ -1020,17 +1020,3 @@ End Sub
 Private Function SelId(sf As Control) As Long
     SelId = Nz(sf.Form.txtSel, 0)
 End Function
-
-' Select row id of a table (0: none).
-Private Sub SelectRow(sf As Control, ByVal id As Long)
-    Dim g As Form
-    Set g = sf.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = id
-        End With
-    End If
-    g.Recalc
-End Sub

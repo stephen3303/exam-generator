@@ -18,7 +18,7 @@ End Property
 Private Sub Form_Load()
     Dim key As Variant, ver As Variant
     On Error GoTo Err_Handler
-    m_qid = ArgLong("id")
+    m_qid = OpenArgLong(Me, "id")
     key = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & m_qid)
     ver = DLookup("VersionNo", "tblQuestions", "QuestionID=" & m_qid)
     Me.Caption = "Reject " & QuestionRef(key, ver)
@@ -61,12 +61,3 @@ Private Sub btnCancel_Click()
 Err_Handler:
     HandleError "dlgReject.btnCancel_Click"
 End Sub
-
-' The number after name= in OpenArgs ("id=3"), or 0.
-Private Function ArgLong(ByVal name As String) As Long
-    Dim part As Variant, v As String
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then v = Mid$(part, Len(name) + 2)
-    Next
-    If IsNumeric(v) Then ArgLong = CLng(v)
-End Function

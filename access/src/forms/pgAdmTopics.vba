@@ -72,7 +72,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
     id = Nz(Me.sfList.Form.txtSel, 0)
     If id = 0 Then Exit Sub
     If Not ShowTopic(id) Then
-        MarkRow m_id
+        GridSelect Me.sfList, m_id
         Exit Sub
     End If
     If m_stale Then RefreshList id          ' the topic left behind was saved with a change
@@ -162,8 +162,7 @@ End Sub
 Public Sub TopicSaved(ByVal id As Long)
     On Error GoTo Err_Handler
     m_stale = False
-    Me.sfList.Form.Requery
-    MarkRow id
+    GridSelect Me.sfList, id, True
     ShowSupply
     Exit Sub
 Err_Handler:
@@ -232,7 +231,7 @@ Private Function TopicUse(ByVal id As Long) As String
     n(2) = DCount("*", "tblExamTopics", "TopicID=" & id)
     words = Array("question", "template", "exam")
     For i = 0 To 2
-        If n(i) > 0 Then s = s & IIf(Len(s) > 0, " and ", "") & n(i) & " " & words(i) & IIf(n(i) = 1, "", "s")
+        If n(i) > 0 Then s = s & IIf(Len(s) > 0, " and ", "") & n(i) & " " & Plural(n(i), CStr(words(i)))
     Next
     If Len(s) > 0 Then s = "it is on " & s
     TopicUse = s
@@ -274,20 +273,9 @@ End Sub
 
 ' The SMEs changed: their table (pid selected, 0 for none) and the list's row.
 Private Sub SMEsChanged(ByVal pid As Long)
-    Dim g As Form
-    Set g = Me.sfSMEs.Form
-    g.Requery
-    g.txtSel = Null
-    If pid <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & pid
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = pid
-        End With
-    End If
-    g.Recalc
+    GridSelect Me.sfSMEs, pid, True
     ShowSMEState
-    Me.sfList.Form.Requery
-    MarkRow m_id
+    GridSelect Me.sfList, m_id, True
 End Sub
 
 Private Sub ShowSMEState()
@@ -310,30 +298,12 @@ Private Sub RefreshList(ByVal openId As Long)
         SetVisible Me.emptyList_b, False
     End If
     SetVisible Me.sfList, n > 0
-    If MarkRow(openId) Then
+    If GridSelect(Me.sfList, openId) Then
         ShowTopic openId
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ClearTopic
     End If
 End Sub
-
-' Select id's row in the list. False when it isn't listed.
-Private Function MarkRow(ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = Me.sfList.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function
 
 ' Open topic id on the right with its SMEs and supply. False when the open
 ' topic can't be saved first (it stays).
@@ -385,10 +355,6 @@ Private Sub ShowSupply()
             need & " when an exam takes " & per & ".", "warning"
     End If
 End Sub
-
-Private Function Plural(ByVal n As Long, ByVal word As String) As String
-    Plural = word & IIf(n = 1, "", "s")
-End Function
 
 ' The topics for the search, by name, with their status under the rule.
 Private Function ListSql() As String

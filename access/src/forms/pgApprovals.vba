@@ -221,7 +221,7 @@ Private Sub AfterFilter()
         End If
         SetVisible Me.sfList, n > 0
     End If
-    If MarkRow(Me.sfList, m_qid) Then
+    If GridSelect(Me.sfList, m_qid) Then
         ShowQuestion m_qid
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ShowQuestion 0
@@ -291,21 +291,3 @@ Private Sub ShowGroup()
         ShowQuestion m_qid
     End If
 End Sub
-
-' Select row id of a table. False when it isn't listed.
-Private Function MarkRow(sf As Control, ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = sf.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function

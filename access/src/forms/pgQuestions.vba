@@ -247,7 +247,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
         Case "sfRefs"
             id = Nz(Me.sfRefs.Form.txtSel, 0)
             If id = m_rid Then Exit Sub
-            If Not RefLeaveOK() Then MarkRow Me.sfRefs, m_rid: Exit Sub
+            If Not RefLeaveOK() Then GridSelect Me.sfRefs, m_rid: Exit Sub
             ShowRef id
         Case "sfRefQs"
             id = Nz(Me.sfRefQs.Form.txtSel, 0)
@@ -373,7 +373,7 @@ Private Sub AfterFilter()
         End If
         SetVisible Me.sfList, n > 0
     End If
-    If MarkRow(Me.sfList, m_qid) Then
+    If GridSelect(Me.sfList, m_qid) Then
         ShowQuestion m_qid
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ShowQuestion 0
@@ -531,7 +531,7 @@ Private Sub RefreshRefs(ByVal openId As Long)
         SetVisible Me.sfRefs, n > 0
     End If
     SetCount Me.tab_r, DCount("*", "tblSourceRefs")
-    If MarkRow(Me.sfRefs, openId) Then
+    If GridSelect(Me.sfRefs, openId) Then
         ShowRef openId
     ElseIf IsNull(SelectFirstRow(Me.sfRefs)) Then
         ShowRef 0
@@ -704,21 +704,3 @@ Private Sub ShowGroup()
         If DataLinked() Then RefreshRefs m_rid Else ShowRef 0
     End If
 End Sub
-
-' Select row id of a table. False when it isn't listed.
-Private Function MarkRow(sf As Control, ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = sf.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function

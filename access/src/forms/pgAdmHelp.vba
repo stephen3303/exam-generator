@@ -67,7 +67,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
     key = Nz(Me.sfList.Form.txtSel, "")
     If Len(key) = 0 Or (key = m_key And Not m_new) Then Exit Sub
     If Not LeaveTopic() Then
-        MarkRow m_key
+        GridSelect Me.sfList, m_key
         Exit Sub
     End If
     ShowTopic key
@@ -194,7 +194,7 @@ End Sub
 Private Function LeaveTopic() As Boolean
     Dim nm As String
     If Not m_dirty Then LeaveTopic = True: Exit Function
-    nm = Trim$(FieldText(Me.txtTitle))
+    nm = Trim$(FieldText(Me, Me.txtTitle))
     If Len(nm) = 0 Then nm = IIf(m_new, "the new topic", m_key) Else nm = """" & nm & """"
     Select Case KitMsgBox("Save your changes to " & nm & "?", vbYesNoCancel + vbQuestion, MSG_TITLE)
         Case vbYes: LeaveTopic = SaveTopic()
@@ -207,9 +207,9 @@ End Function
 Private Function SaveTopic() As Boolean
     Dim key As String, title As String, body As String, problem As String
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    key = LCase$(Trim$(FieldText(Me.txtKey)))
-    title = Trim$(FieldText(Me.txtTitle))
-    body = FieldText(Me.txtBody)
+    key = LCase$(Trim$(FieldText(Me, Me.txtKey)))
+    title = Trim$(FieldText(Me, Me.txtTitle))
+    body = FieldText(Me, Me.txtBody)
     problem = TopicProblem(key, title)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbExclamation, MSG_TITLE
@@ -279,7 +279,7 @@ Private Sub ShowTopic(ByVal key As String)
         End If
         rs.Close
     End If
-    MarkRow m_key
+    GridSelect Me.sfList, m_key
     ShowState
 End Sub
 
@@ -317,7 +317,7 @@ Private Sub RefreshList()
     ShowEmpty Me, "emptyList", n = 0
     ' The empty state shows in place of the list: a subform always covers a label.
     SetVisible Me.sfList, n > 0
-    If MarkRow(m_key) Or m_dirty Or m_new Then Exit Sub
+    If GridSelect(Me.sfList, m_key) Or m_dirty Or m_new Then Exit Sub
     If IsNull(SelectFirstRow(Me.sfList)) Then ShowTopic ""
 End Sub
 
@@ -333,39 +333,7 @@ Private Function ListSql() As String
         "FROM " & m_table & where & " ORDER BY sort_order, topic_key"
 End Function
 
-' Select key's row in the list (none for ""). False when it isn't listed.
-Private Function MarkRow(ByVal key As String) As Boolean
-    Dim g As Form
-    Set g = Me.sfList.Form
-    g.txtSel = Null
-    If Len(key) > 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & Q(key)
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = key
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function
-
-' A field's text: what is typed so far while it has the focus (Ctrl+S saves
-' without leaving it), else its value.
-Private Function FieldText(c As Control) As String
-    Dim act As String
-    On Error Resume Next
-    act = Me.ActiveControl.Name             ' error 2474 when none has the focus
-    On Error GoTo 0
-    If act = c.Name Then FieldText = Nz(c.Text, "") Else FieldText = Nz(c.Value, "")
-End Function
-
 ' help_topic when this copy is linked to it, else zz_help.
 Private Function TopicTable() As String
-    Dim td As DAO.TableDef
-    TopicTable = HELP_TABLE
-    For Each td In CurrentDb.TableDefs
-        If StrComp(td.Name, HELP_SHARED_TABLE, vbTextCompare) = 0 Then TopicTable = HELP_SHARED_TABLE: Exit Function
-    Next
+    If TableExists(HELP_SHARED_TABLE) Then TopicTable = HELP_SHARED_TABLE Else TopicTable = HELP_TABLE
 End Function

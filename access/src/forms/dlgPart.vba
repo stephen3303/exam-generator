@@ -22,8 +22,8 @@ End Property
 Private Sub Form_Load()
     Dim rs As DAO.Recordset, mark As Long
     On Error GoTo Err_Handler
-    m_id = ArgLong("id")
-    m_total = ArgText("total")
+    m_id = OpenArgLong(Me, "id")
+    m_total = OpenArgText(Me, "total")
     If m_id <> 0 Then
         Set rs = CurrentDb.OpenRecordset("SELECT * FROM wq_part WHERE id=" & m_id, dbOpenSnapshot)
         If Not rs.EOF Then
@@ -37,8 +37,8 @@ Private Sub Form_Load()
         Me.Caption = "Change part " & Me.txtLabel
         Me.lblHead.Caption = "Part " & Me.txtLabel
     Else
-        Me.txtLabel = Chr$(65 + WorkPartCount())
-        mark = ArgLong("mark")
+        Me.txtLabel = NextPartLabel()
+        mark = OpenArgLong(Me, "mark")
         If mark <> 0 Then Me.cboPartMark = mark
         If Len(OthersPoints()) > 0 Then Me.txtPartPoints = OthersPoints()
         Me.Caption = "Add a part"
@@ -134,19 +134,4 @@ Private Function OthersPoints() As String
     If Len(PointsProblem(m_total, "Points")) > 0 Then Exit Function
     remain = CDbl(m_total) - Nz(DSum("Points", "wq_part"), 0)
     If remain > 0 Then OthersPoints = PointsText(remain)
-End Function
-
-' The number after name= in OpenArgs ("id=3;total=4"), or 0.
-Private Function ArgLong(ByVal name As String) As Long
-    Dim v As String
-    v = ArgText(name)
-    If IsNumeric(v) Then ArgLong = CLng(v)
-End Function
-
-' The text after name= in OpenArgs, "" when it isn't there.
-Private Function ArgText(ByVal name As String) As String
-    Dim part As Variant
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then ArgText = Mid$(part, Len(name) + 2)
-    Next
 End Function

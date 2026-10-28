@@ -16,7 +16,7 @@ End Property
 Private Sub Form_Load()
     Dim rs As DAO.Recordset, n As Long, nVer As Long, st As String
     On Error GoTo Err_Handler
-    m_key = Val(Mid$(Nz(Me.OpenArgs, ""), InStr(Nz(Me.OpenArgs, "") & "=", "=") + 1))
+    m_key = OpenArgLong(Me, "key")
     Me.Caption = "History of Q" & m_key
     Me.lblHead.Caption = "History of Q" & m_key
     Me.sfHist.Form.RecordSource = HistorySql(m_key)

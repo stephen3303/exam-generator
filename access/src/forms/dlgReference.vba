@@ -25,8 +25,8 @@ End Property
 Private Sub Form_Load()
     Dim rs As DAO.Recordset
     On Error GoTo Err_Handler
-    m_mode = LCase$(ArgText("mode"))
-    m_id = Val(ArgText("id"))
+    m_mode = LCase$(OpenArgText(Me, "mode"))
+    m_id = OpenArgLong(Me, "id")
     If m_mode = "new" Then
         Me.Caption = "Add a reference"
         Me.lblHead.Caption = "Add a reference to the list"
@@ -174,11 +174,3 @@ Private Sub HideSegment()
         If c.Name Like "segSource_*" Then c.Visible = False
     Next
 End Sub
-
-' The text after name= in OpenArgs, "" when it isn't there.
-Private Function ArgText(ByVal name As String) As String
-    Dim part As Variant
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then ArgText = Mid$(part, Len(name) + 2)
-    Next
-End Function
