@@ -123,9 +123,9 @@ Private Sub btnSubmit_Click()
     StartNotices                            ' the toast reports this submit's emails only
     problem = SubmitQuestion(m_id)
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
+    SendQueuedNotices                       ' the DHs' emails, straight after the submit
     who = RoleHolders("DH")
     LoadQuestion m_id, False
-    SendQueuedNotices                       ' the DHs' emails, now the question shows as submitted
     If Len(who) = 0 Then
         KitMsgBox WithNoticeNote("Submitted. Nobody holds the department head role yet, so it waits until the admin gives " & _
             "someone that role on the People and routing page."), vbInformation, MSG_TITLE
@@ -135,6 +135,7 @@ Private Sub btnSubmit_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgQuestionEdit.btnSubmit_Click", m_id
+    SendNoticesWithToast                    ' any emails the submit queued go now, not with a later action
 End Sub
 
 Private Sub btnBack_Click()

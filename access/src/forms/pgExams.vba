@@ -12,9 +12,10 @@ Option Explicit
 ' the page; only a DH sees New exam, which opens dlgNewExam, and the right
 ' is checked again in the data file when the exam is generated
 ' (modExams.RequireExamMaker). Another page can ask for an exam to be shown
-' first through TempVars("ExamsExamID"). The emails New exam or the
-' opening sweep queues are sent once the dialog has closed or the page has
-' loaded (modNotify.SendQueuedNotices).
+' first through TempVars("ExamsExamID"). The emails New exam queues are
+' sent once its dialog has closed, on its error path too; the opening
+' sweep's once the page has loaded and nothing else is open over the app,
+' or first thing in New exam (modNotify.SendQueuedNotices).
 
 Private Const MSG_TITLE As String = "Exams"
 
@@ -49,17 +50,28 @@ Err_Handler:
     HandleError "pgExams.Form_Load"
 End Sub
 
-' Once, after Form_Load: send the emails the opening sweep queued. Their
-' note is dropped (a failed email is logged): the person who opened the
-' page didn't take the step, and it mustn't land on their next toast.
+' After Form_Load: send the emails the opening sweep queued, once nothing
+' else is open over the app (a click made while the page loaded may have
+' opened a dialog); until then the timer tries again.
 Private Sub Form_Timer()
     On Error GoTo Err_Handler
-    Me.TimerInterval = 0
-    SendQueuedNotices
-    TakeNoticeNote
+    If Me.TimerInterval = 0 Then Exit Sub   ' already sent (a tick left over from before)
+    If NoticesShouldWait() Then Me.TimerInterval = 250: Exit Sub
+    SendSweepNotices
     Exit Sub
 Err_Handler:
     HandleError "pgExams.Form_Timer"
+End Sub
+
+' Send the emails the opening sweep queued, once: from Form_Timer, or first
+' thing in New exam, so the two never go as one batch. The person who
+' opened the page didn't take the step, but the emails went from their
+' Outlook, so what wasn't sent or may wait in their Outbox shows in a toast
+' of its own.
+Private Sub SendSweepNotices()
+    If Me.TimerInterval = 0 Then Exit Sub
+    Me.TimerInterval = 0
+    SendNoticesWithToast "An exam with every topic signed off went on to the DH."
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -104,6 +116,7 @@ End Sub
 Private Sub btnNew_Click()
     Dim problem As String, ok As Boolean
     On Error GoTo Err_Handler
+    SendSweepNotices                        ' the opening sweep's emails, if they still wait, apart from this exam's
     problem = ExamMakerProblem()
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: Exit Sub
     StartNotices                            ' the toast reports this exam's emails only
@@ -116,6 +129,7 @@ Private Sub btnNew_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgExams.btnNew_Click"
+    SendNoticesWithToast                    ' any emails the new exam queued go now, not with a later action
 End Sub
 
 Private Sub btnDownload_Click()

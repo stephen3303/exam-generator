@@ -96,7 +96,7 @@ Private Sub OpenPicked()
     End Select
     If Not PageAllowed(key) Then
         If Len(tv) > 0 Then TempVars(tv) = Null
-        KitMsgBox "Sign out and sign in again to see your new role.", vbInformation, "Dashboard"
+        KitMsgBox "Your roles changed since you signed in. Sign out and sign in again.", vbInformation, "Dashboard"
         Exit Sub
     End If
     If Len(tv) > 0 Then
@@ -137,13 +137,13 @@ End Sub
 ' lines in the alert, or that every topic has enough.
 Private Sub ShowShortTopics()
     Dim n As Long, s As String
-    s = TopicsShortText(OverlapPct(), OverlapWindow(), n, 2)    ' two lines fit the titled alert's one line
+    s = TopicsShortText(OverlapPct(), OverlapWindow(), n, 2, 32)    ' two lines, long names cut short, fit the titled alert's one line
     If n = 0 Then
         SetTile "tileShort", 0, "every active topic has enough"
         ShowAlert Me, "alShort", "Every active topic has enough approved questions for the templates that use it.", "success"
     Else
         SetTile "tileShort", n, IIf(n = 1, "topic needs", "topics need") & " more approved questions"
-        ShowAlert Me, "alShort", Replace(s, vbCrLf, "; "), "warning", "Topics short of approved questions"
+        ShowAlert Me, "alShort", Replace(Replace(s, "&", "&&"), vbCrLf, "; "), "warning", "Topics short of approved questions"
     End If
 End Sub
 
@@ -172,6 +172,11 @@ Private Sub RefreshActivity()
     Dim n As Long
     Me.sfActivity.Form.RecordSource = RecentActivitySql(20)
     n = Me.sfActivity.Form.RecordsetClone.RecordCount
-    ShowEmpty Me, "emptyActivity", n = 0
+    If IsExamAdmin() Then
+        ShowEmpty Me, "emptyActivity", n = 0
+    Else                                    ' theirs covers only their own work (RecentActivitySql)
+        ShowEmpty Me, "emptyActivity", n = 0, "Nothing about your work yet", _
+            "What you and others do to your questions, reviews and exams shows here."
+    End If
     SetVisible Me.sfActivity, n > 0
 End Sub
