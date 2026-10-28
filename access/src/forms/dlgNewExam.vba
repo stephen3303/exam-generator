@@ -58,7 +58,7 @@ Private Sub btnGenerate_Click()
         Me.cboTemplate.SetFocus
         Exit Sub
     End If
-    r = Nz(CleanText(Me.txtRecipient), "")
+    r = CleanRecipient(Me.txtRecipient)
     problem = RecipientProblem(r)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbInformation, MSG_TITLE

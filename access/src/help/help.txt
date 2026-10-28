@@ -40,7 +40,7 @@ Each exam topic you review. When the department head generates an exam, every SM
 - Type in the **search box** to find a review by who the exam is for, its template or its topic. Use the funnels on the column captions to narrow the list, and click a caption to sort by it.
 
 # Checking the questions
-Pick a review to see it on the right: the exam it is on, the questions drawn for the topic, and the picked question in full under them, with its parts, answer options and references. A question marked **Given lately** was on one of the exams generated before this one (as many as the admin set for the overlap rule); one marked **Swapped** was put in by an SME. One marked **Replaced** is no longer the approved version in use: a newer version was approved after the exam was drawn. **Swap** lists the newer version, so you can put it in its place.
+Pick a review to see it on the right: the exam it is on, the questions drawn for the topic, and the picked question in full under them, with its parts, answer options and references. A question marked **Given lately** was on one of the exams generated before this one (as many as the admin set for the overlap rule); one marked **Swapped** was put in by an SME, and **Swapped, given lately** is both. One marked **Replaced** is no longer the approved version in use: a newer version was approved after the exam was drawn. **Swap** lists the newer version, so you can put it in its place.
 
 # Swapping and signing off
 - **Swap** puts another approved question of the topic in place of the picked one. Double-click a question, or right-click it, to do the same. See **Swapping a question**.

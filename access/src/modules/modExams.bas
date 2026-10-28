@@ -161,7 +161,14 @@ Public Sub RequireExamMaker()
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modExams.RequireExamMaker", problem
 End Sub
 
-' Why recipient (already cleaned) won't do as who the exam is for, or "".
+' Who the exam is for, cleaned (CleanText) for its one-line field: a line
+' break pasted in becomes a space. "" for none.
+Public Function CleanRecipient(ByVal v As Variant) As String
+    CleanRecipient = Replace(Replace(Nz(CleanText(v), ""), vbCrLf & vbCrLf, " "), vbCrLf, " ")
+End Function
+
+' Why recipient (already cleaned, CleanRecipient) won't do as who the exam
+' is for, or "".
 Public Function RecipientProblem(ByVal recipient As String) As String
     If Len(recipient) = 0 Then
         RecipientProblem = "Type who the exam is for: the boat, schoolhouse or other command."
@@ -244,7 +251,7 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
     Dim num As Long, desc As String, src As String
     RequireExamMaker
     examId = 0
-    r = Nz(CleanText(recipient), "")
+    r = CleanRecipient(recipient)
     GenerateExam = RecipientProblem(r)
     If Len(GenerateExam) > 0 Then Exit Function
     tplName = Nz(DLookup("TemplateName", "tblTemplates", "TemplateID=" & tplId & " AND IsActive"), "")
@@ -449,13 +456,16 @@ End Function
 ' The questions on exam topic etId, in the exam's order, for the review
 ' table: id (ExamQuestionID), QuestionID, ref, QuestionText, LevelName, pts
 ' and note: Replaced (no longer the approved version in use: a newer version
-' was approved since the draw, or it was retired), Swapped, Given lately (its
-' key is in keys, the RecentKeysList for the exam) or "".
+' was approved since the draw, or it was retired), Swapped, given lately,
+' Swapped, Given lately (its key is in keys, the RecentKeysList for the
+' exam) or "". A swapped question given lately says both, so the SME can
+' see every question that counts against the overlap rule.
 Public Function ExamTopicQsSql(ByVal etId As Long, ByVal keys As String) As String
     ExamTopicQsSql = "SELECT eq.ExamQuestionID AS id, eq.QuestionID, 'Q' & q.QuestionKey & ' v' & q.VersionNo AS ref, " & _
         "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, d.LevelName, q.TotalPoints AS pts, " & _
         "IIf(Not (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & "),'Replaced'," & _
-        "IIf(eq.WasSwapped,'Swapped',IIf(q.QuestionKey IN (" & keys & "),'Given lately',''))) AS note, eq.SortOrder " & _
+        "IIf(q.QuestionKey IN (" & keys & "),IIf(eq.WasSwapped,'Swapped, given lately','Given lately')," & _
+        "IIf(eq.WasSwapped,'Swapped',''))) AS note, eq.SortOrder " & _
         "FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
         "LEFT JOIN tblDifficultyLevels AS d ON q.DifficultyID=d.DifficultyID " & _
         "WHERE eq.ExamTopicID=" & etId & " ORDER BY eq.SortOrder, eq.ExamQuestionID"
