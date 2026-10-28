@@ -297,10 +297,14 @@ End Function
 ' gaps sort themselves out. False when the row is already at that end.
 ' The renumbering is one transaction, so a failure part-way leaves the old
 ' order, not half of the new one.
+' tbl, idField and orderField must be plain names and where one simple test
+' (CheckSqlParts); they go into SQL as they are.
+' Errors: 5 when a name or where isn't of that shape.
 Public Function MoveRow(ByVal tbl As String, ByVal idField As String, ByVal orderField As String, ByVal id As Long, _
         ByVal delta As Long, Optional ByVal where As String = "") As Boolean
     Dim rs As DAO.Recordset, ids() As Long, n As Long, i As Long, at As Long
     Dim ws As DAO.Workspace, inTrans As Boolean
+    CheckSqlParts "modAdmin.MoveRow", where, tbl, idField, orderField
     Set rs = CurrentDb.OpenRecordset("SELECT " & idField & " FROM " & tbl & IIf(Len(where) > 0, " WHERE " & where, "") & _
         " ORDER BY " & orderField & ", " & idField, dbOpenSnapshot)
     at = -1
@@ -330,8 +334,9 @@ Fail:
 End Function
 
 ' The next order number for a row added at the end of tbl's rows matching
-' where.
+' where. The names and where are checked as for MoveRow (error 5).
 Public Function NextOrder(ByVal tbl As String, ByVal orderField As String, Optional ByVal where As String = "") As Long
+    CheckSqlParts "modAdmin.NextOrder", where, tbl, orderField
     If Len(where) > 0 Then
         NextOrder = Nz(DMax(orderField, tbl, where), 0) + 1
     Else
@@ -341,9 +346,11 @@ End Function
 
 ' What is wrong with name for a list entry of at most maxLen characters,
 ' which must be unique in field of tbl (other than the row exceptWhere
-' picks, "" for none), or "". what names the thing: "topic".
+' picks, "" for none), or "". what names the thing: "topic". tbl, fld and
+' exceptWhere are checked as for MoveRow (error 5); nm may be any text.
 Public Function NameProblem(ByVal nm As String, ByVal maxLen As Long, ByVal tbl As String, ByVal fld As String, _
         ByVal what As String, Optional ByVal exceptWhere As String = "") As String
+    CheckSqlParts "modAdmin.NameProblem", exceptWhere, tbl, fld
     nm = Trim$(nm)
     If Len(nm) = 0 Then
         NameProblem = "Give the " & what & " a name."
@@ -352,4 +359,32 @@ Public Function NameProblem(ByVal nm As String, ByVal maxLen As Long, ByVal tbl 
     ElseIf DCount("*", tbl, fld & "=" & Q(nm) & IIf(Len(exceptWhere) > 0, " AND NOT (" & exceptWhere & ")", "")) > 0 Then
         NameProblem = "There is already a " & what & " called """ & nm & """."
     End If
+End Function
+
+' The ordered-list helpers put table and field names and a where test into
+' SQL as they are. Every caller passes constants and Long ids today; this
+' keeps it so. Raise error 5 (from proc) unless each of names is a plain
+' name (a letter or _, then letters, digits or _) and where is "", one
+' "name=<whole number>" or one "name Is Null".
+Private Sub CheckSqlParts(ByVal proc As String, ByVal where As String, ParamArray names() As Variant)
+    Dim nm As Variant, eq As Long, ok As Boolean
+    For Each nm In names
+        If Not IsPlainName(CStr(nm)) Then Err.Raise 5, proc, "Not a plain table or field name: " & nm
+    Next
+    If Len(where) = 0 Then Exit Sub
+    eq = InStr(where, "=")
+    If eq > 0 Then
+        ok = IsPlainName(Left$(where, eq - 1)) And IsWholeNumber(Mid$(where, eq + 1))
+    ElseIf Right$(where, 8) = " Is Null" Then
+        ok = IsPlainName(Left$(where, Len(where) - 8))
+    End If
+    If Not ok Then Err.Raise 5, proc, "Not one simple test: " & where
+End Sub
+
+Private Function IsPlainName(ByVal s As String) As Boolean
+    IsPlainName = (s Like "[A-Za-z_]*") And Not (s Like "*[!A-Za-z0-9_]*")
+End Function
+
+Private Function IsWholeNumber(ByVal s As String) As Boolean
+    IsWholeNumber = Len(s) > 0 And Len(s) <= 10 And Not (s Like "*[!0-9]*")
 End Function
