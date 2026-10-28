@@ -263,6 +263,7 @@ End Sub
 ' Show person pid on the right (0: nobody, and the hint instead).
 Private Sub ShowPerson(ByVal pid As Long)
     Dim rs As DAO.Recordset, nm As Variant, isOpen As Boolean, s As String
+    On Error GoTo Fail
     m_pid = pid
     isOpen = (pid <> 0)
     If isOpen Then
@@ -286,13 +287,19 @@ Private Sub ShowPerson(ByVal pid As Long)
             Me.lblTopics.Caption = IIf(Len(s) > 0, s, "No topics yet. Add SMEs to a topic on the Topics page.")
             m_loading = False
         End If
-        rs.Close
+        rs.Close: Set rs = Nothing
     End If
     For Each nm In Array("lblName", "lblWho", "tgActive", "tgAdmin", "tgSME", "tgDH", "tgXO", "tgSM", _
             "lbltgActive", "lbltgAdmin", "lbltgSME", "lbltgDH", "lbltgXO", "lbltgSM", "lblSMEFor", "lblTopics")
         SetVisible Me.Controls(nm), isOpen
     Next
     SetVisible Me.lblDetailEmpty, Not isOpen
+    Exit Sub
+Fail:
+    ' A failed look-up must not leave the switches ignoring every flip.
+    m_loading = False
+    If Not rs Is Nothing Then rs.Close
+    RaiseAgain "pgAdmPeople.ShowPerson", pid
 End Sub
 
 ' Everyone with a row in tblPeople, by name, with their roles.

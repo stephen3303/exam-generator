@@ -331,8 +331,12 @@ Private Sub ShowTopicState()
     If sel Then
         Set g = Me.sfTopics.Form
         With g.RecordsetClone
-            .MoveFirst: first = (!id = g.txtSel)
-            .MoveLast: last = (!id = g.txtSel)
+            If .RecordCount = 0 Then        ' emptied by another admin since the last requery
+                sel = False
+            Else
+                .MoveFirst: first = (!id = g.txtSel)
+                .MoveLast: last = (!id = g.txtSel)
+            End If
         End With
     End If
     SetEnabled Me.btnChange, sel

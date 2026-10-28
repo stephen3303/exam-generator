@@ -167,19 +167,35 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub cboDiff_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.cboDiff_AfterUpdate", m_id
 End Sub
 
 Private Sub cboMark_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.cboMark_AfterUpdate", m_id
 End Sub
 
 Private Sub txtText_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.txtText_AfterUpdate", m_id
 End Sub
 
 Private Sub txtRefAns_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.txtRefAns_AfterUpdate", m_id
 End Sub
 
 ' Points: shown as 4 or 1.5 when a number, and the parts' total checked.
