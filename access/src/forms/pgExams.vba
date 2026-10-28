@@ -63,7 +63,7 @@ Err_Handler:
     HandleError "pgExams.Form_Timer"
 End Sub
 
-' Send the emails the opening sweep queued, once: from Form_Timer, or first
+' Send the emails the opening sweep queued, once: from Form_Timer, CanLeave, or first
 ' thing in New exam, so the two never go as one batch. The person who
 ' opened the page didn't take the step, but the emails went from their
 ' Outlook, so what wasn't sent or may wait in their Outbox shows in a toast
@@ -71,8 +71,16 @@ End Sub
 Private Sub SendSweepNotices()
     If Me.TimerInterval = 0 Then Exit Sub
     Me.TimerInterval = 0
-    SendNoticesWithToast "An exam with every topic signed off went on to the DH."
+    SendNoticesWithToast "An exam went on to the DH."
 End Sub
+
+' The shell asks before it leaves the page (or closes the app): the opening
+' sweep's emails go first if the timer hasn't sent them yet.
+Public Function CanLeave() As Boolean
+    On Error Resume Next                    ' never keeps the person on the page
+    SendSweepNotices
+    CanLeave = True
+End Function
 
 ' ---------------------------------------------------------------------------
 ' Chips and search (the kit's builders call these)

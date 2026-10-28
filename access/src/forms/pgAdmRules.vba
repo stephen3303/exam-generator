@@ -324,7 +324,7 @@ End Sub
 
 ' The selected classification level's actions.
 Private Sub ClassActions(ByVal atPointer As Boolean)
-    Dim id As Long, nm As String, pm As String, used As Long, k As String, v As Variant, problem As String
+    Dim id As Long, nm As String, pm As String, used As Long, k As String, v As Variant, problem As String, r As Long
     Dim a(5) As String
     id = Nz(Me.sfClass.Form.txtSel, 0)
     If id = 0 Then KitToast "Pick a level in the list first.", "info": Exit Sub
@@ -352,12 +352,20 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET PortionMark=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "up", "down"
+            ' The top level can't go up, nor the bottom one down (MoveRow's
+            ' order: LevelRank, then ClassLevelID); nothing changes, so no stamp.
+            r = Nz(DLookup("LevelRank", "tblClassLevels", "ClassLevelID=" & id), 0)
+            If DCount("*", "tblClassLevels", IIf(k = "up", "LevelRank<" & r & " OR (LevelRank=" & r & " AND ClassLevelID<" & id & ")", _
+                "LevelRank>" & r & " OR (LevelRank=" & r & " AND ClassLevelID>" & id & ")")) = 0 Then Exit Sub
             ' Exam documents made before now are made again at their next
             ' download: the newest audit entry marks the moment. Written first,
-            ' so a move never stands without it (a stamp with no move costs
-            ' one extra remake per exam).
+            ' so a move never stands without it, and again once it has moved,
+            ' so a document made while it moved counts as made before.
             SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
             If Not MoveRow("tblClassLevels", "ClassLevelID", "LevelRank", id, IIf(k = "up", -1, 1)) Then Exit Sub
+            On Error Resume Next                ' if this fails, the first stamp still stands
+            SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
+            On Error GoTo 0
         Case "del"
             used = DCount("*", "tblQuestions", "ClassLevelID=" & id) + DCount("*", "tblQuestionParts", "ClassLevelID=" & id) + _
                 DCount("*", "tblExams", "OverallClassLevelID=" & id)
