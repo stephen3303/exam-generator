@@ -43,7 +43,7 @@ Private Const wdActiveEndPageNumber As Long = 3
 Private Const wdStatisticPages As Long = 2
 Private Const wdGoToPage As Long = 1
 Private Const wdGoToAbsolute As Long = 1
-Private Const wdSectionBreakNextPage As Long = 2
+Private Const wdSectionBreakContinuous As Long = 3
 Private Const wdHeaderFooterPrimary As Long = 1
 Private Const wdFieldPage As Long = 33
 Private Const wdFieldNumPages As Long = 26
@@ -490,12 +490,7 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
         ' own back (its page break and indent).
         For p = nPages To 2 Step -1
             Set fmt = m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format.Duplicate
-            ' A next-page break, not a continuous one: each page's text then keeps
-            ' to its own page however Word reflows it once the breaks are in, so
-            ' the sections stay one per page (with continuous breaks the reflow
-            ' moved page tops off the breaks and every exam fell back to the
-            ' overall marking).
-            m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakNextPage
+            m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
             Set rr = m_doc.Range(starts(p), starts(p) + 1)
             If rr.Text = vbCr Then
                 rr.Delete
