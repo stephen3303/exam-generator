@@ -9,19 +9,23 @@ Option Explicit
 '   Errors       the error log (modLogs.ErrorListSql); Clear log empties it
 '                after asking (modErrors.ClearErrorLog).
 ' Each list shows the newest LOG_MAX entries that fit, and the subtitle says
-' when there are more. The picked entry shows in full on the right (Copy
-' puts it on the clipboard); Export saves the open list.
+' when there are more. Typing in the search box waits for a pause (the
+' form's Timer) before the list is loaded again. The picked entry shows in
+' full on the right (Copy puts it on the clipboard); Export saves the open
+' list.
 '
 ' Depends on: modErrors, modLogs, modSignIn, modUI; the kit's modGridFilter,
 ' modKitFiles, modKitUI, modKitUtil.
 
 Private Const MSG_TITLE As String = "Logs"
+Private Const SEARCH_WAIT_MS As Long = 300      ' the pause in typing before the list is loaded again
 
 Private m_tab As String         ' "a" Audit trail, "e" Errors
 Private m_search As String
 Private m_aid As Long           ' the audit entry shown (0: none)
 Private m_eid As Long           ' the error entry shown (0: none)
 Private m_ok As Boolean         ' a data file is linked and the signed-in person is an admin
+Private m_total As Long         ' the entries the search and dates match in all
 
 Public Property Get HelpTopic() As String
     HelpTopic = "logs"
@@ -31,7 +35,7 @@ Private Sub Form_Load()
     On Error GoTo Err_Handler
     m_tab = "a"
     SelectTab Me, "a"
-    Me.dtFrom = DateAdd("d", -30, Date): Me.dtTo = Date
+    Me.dtFrom = DateAdd("d", -29, Date): Me.dtTo = Date        ' the last 30 days, today included
     m_ok = DataLinked()
     If m_ok Then m_ok = IsExamAdmin()
     If Not m_ok Then
@@ -62,12 +66,21 @@ End Function
 Public Sub SearchFor(ByVal text As String)
     On Error GoTo Err_Handler
     m_search = Trim$(text)
-    RefreshList
+    Me.TimerInterval = SEARCH_WAIT_MS       ' Form_Timer loads the list once the typing pauses
     Me.txtSearch.SetFocus
     Me.txtSearch.SelStart = Len(text)
     Exit Sub
 Err_Handler:
     HandleError "pgAdmLogs.SearchFor", text
+End Sub
+
+Private Sub Form_Timer()
+    On Error GoTo Err_Handler
+    Me.TimerInterval = 0
+    RefreshList
+    Exit Sub
+Err_Handler:
+    HandleError "pgAdmLogs.Form_Timer"
 End Sub
 
 ' A column funnel changed the rows shown (GridHeaders' onFilter).
@@ -96,20 +109,24 @@ Err_Handler:
 End Sub
 
 ' The calendar buttons: the kit's picker sets the box without its
-' AfterUpdate, so the list is loaded again here.
+' AfterUpdate, so the list is loaded again here when the date changed.
 Private Sub cal_dtFrom_Click()
+    Dim was As Variant
     On Error GoTo Err_Handler
+    was = Me.dtFrom
     PickDate Me, "dtFrom"
-    RefreshList
+    If Nz(Me.dtFrom, 0) <> Nz(was, 0) Then RefreshList
     Exit Sub
 Err_Handler:
     HandleError "pgAdmLogs.cal_dtFrom_Click"
 End Sub
 
 Private Sub cal_dtTo_Click()
+    Dim was As Variant
     On Error GoTo Err_Handler
+    was = Me.dtTo
     PickDate Me, "dtTo"
-    RefreshList
+    If Nz(Me.dtTo, 0) <> Nz(was, 0) Then RefreshList
     Exit Sub
 Err_Handler:
     HandleError "pgAdmLogs.cal_dtTo_Click"
@@ -140,8 +157,10 @@ Err_Handler:
     HandleError "pgAdmLogs.btnCopy_Click"
 End Sub
 
+' Admins only, checked again: the lists hold every user's names and computers.
 Private Sub btnExport_Click()
     On Error GoTo Err_Handler
+    RequireExamAdmin
     If m_tab = "e" Then ExportGridAs Me.sfEList.Form, "Error log" Else ExportGridAs Me.sfList.Form, "Audit trail"
     Exit Sub
 Err_Handler:
@@ -161,6 +180,7 @@ Private Sub btnClear_Click()
     Exit Sub
 Err_Handler:
     HandleError "pgAdmLogs.btnClear_Click"
+    On Error Resume Next                    ' show what is left; a second failure was already reported
     RefreshList
 End Sub
 
@@ -184,7 +204,9 @@ End Sub
 Private Sub ShowAll()
     ClearGridFilters Me.Controls(ListName())
     Me.dtFrom = Null: Me.dtTo = Null
-    SetSearch Me, "txtSearch", ""           ' calls SearchFor, which loads the list
+    SetSearch Me, "txtSearch", ""           ' calls SearchFor, which sets m_search
+    Me.TimerInterval = 0
+    RefreshList
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -211,9 +233,13 @@ End Sub
 
 ' Load the open tab's list for the search and the dates.
 Private Sub RefreshList()
-    Dim sf As Control, total As Long, dFrom As Variant, dTo As Variant
+    Dim sf As Control, n As Long, dFrom As Variant, dTo As Variant, nm As Variant
     Set sf = Me.Controls(ListName())
     If Not m_ok Then
+        ' Nothing to sort or filter: the open tab's column captions and funnels go too.
+        For Each nm In Split(Me.Controls(IIf(m_tab = "e", "grpE", "grpA")).Caption, ";")
+            If Left$(nm, 3) = "hdr" Then SetVisible Me.Controls(nm), False
+        Next
         SetVisible sf, False
         ShowEmpty Me, IIf(m_tab = "e", "emptyEList", "emptyList"), True, IIf(DataLinked(), "For the admin only", "No data file linked"), _
             IIf(DataLinked(), "Only the Exam Generator admin can read the logs.", "This copy was built without the data file, so there are no logs.")
@@ -225,52 +251,85 @@ Private Sub RefreshList()
     dFrom = Me.dtFrom: dTo = Me.dtTo
     If IsDate(dFrom) And IsDate(dTo) Then
         If DateValue(dFrom) > DateValue(dTo) Then
-            Me.lblSubtitle.Caption = "The first date is after the second: swap them to see entries."
-            sf.Form.RecordSource = IIf(m_tab = "e", ErrorListSql("", Date + 1, Date), AuditLogSql("", Date + 1, Date))
+            If m_tab = "e" Then
+                sf.Form.RecordSource = ErrorListSql("", Date + 1, Date)
+            Else
+                sf.Form.RecordSource = AuditLogSql("", Date + 1, Date)
+            End If
+            m_total = -1                            ' AfterFilter says why the list is empty
             AfterFilter
             Exit Sub
         End If
     End If
     If m_tab = "e" Then
         sf.Form.RecordSource = ErrorListSql(m_search, dFrom, dTo)
-        total = ErrorListCount(m_search, dFrom, dTo)
     Else
         sf.Form.RecordSource = AuditLogSql(m_search, dFrom, dTo)
-        total = AuditLogCount(m_search, dFrom, dTo)
     End If
     SetGridFilter sf, ""                    ' the column funnels, on the new rows
     GridHighlight sf, m_search
-    If total > LOG_MAX Then
-        Me.lblSubtitle.Caption = "Showing the newest " & Format$(LOG_MAX, "#,##0") & " of " & Format$(total, "#,##0") & _
-            " entries. Narrow the dates or search to see older ones."
+    ' Count them all only when the list may have been cut: with no funnel on,
+    ' fewer than LOG_MAX rows shown is the whole count.
+    n = ShownCount(sf)
+    If n < LOG_MAX And Len(GridFilterWhere(sf)) = 0 Then
+        m_total = n
+    ElseIf m_tab = "e" Then
+        m_total = ErrorListCount(m_search, dFrom, dTo)
     Else
-        Me.lblSubtitle.Caption = Format$(total, "#,##0") & IIf(total = 1, " entry", " entries")
+        m_total = AuditLogCount(m_search, dFrom, dTo)
     End If
     AfterFilter
 End Sub
 
-' After the rows shown changed: the empty state, and the entry shown kept
-' when still listed (else the first).
+' The rows the list shows now.
+Private Function ShownCount(sf As Control) As Long
+    Dim rs As DAO.Recordset
+    Set rs = sf.Form.RecordsetClone
+    If Not rs.EOF Then rs.MoveLast
+    ShownCount = rs.RecordCount
+End Function
+
+' After the rows shown changed: the count in the subtitle, the empty state,
+' and the entry shown kept when still listed (else the first).
 Private Sub AfterFilter()
-    Dim sf As Control, n As Long, keep As Long
+    Dim sf As Control, n As Long, keep As Long, emp As String, funnels As Boolean
     Set sf = Me.Controls(ListName())
-    n = sf.Form.RecordsetClone.RecordCount
-    ShowEmpty Me, IIf(m_tab = "e", "emptyEList", "emptyList"), n = 0
+    n = ShownCount(sf)
+    funnels = Len(GridFilterWhere(sf)) > 0
+    If m_total < 0 Then
+        Me.lblSubtitle.Caption = "The first date is after the second: swap them to see entries."
+    ElseIf m_total > LOG_MAX Then
+        Me.lblSubtitle.Caption = "Showing the newest " & Format$(LOG_MAX, "#,##0") & " of " & Format$(m_total, "#,##0") & _
+            " entries that match the search and dates. Narrow them to see older ones."
+    Else
+        Me.lblSubtitle.Caption = Format$(n, "#,##0") & IIf(n = 1, " entry", " entries") & IIf(funnels, " (column filters on)", "")
+    End If
+    emp = IIf(m_tab = "e", "emptyEList", "emptyList")
+    If n = 0 And m_total = 0 And Len(m_search) = 0 And IsNull(Me.dtFrom) And IsNull(Me.dtTo) And Not funnels Then
+        ShowEmpty Me, emp, True, IIf(m_tab = "e", "The error log is empty", "The audit trail is empty"), "Nothing has been recorded yet."
+        SetVisible Me.Controls(emp & "_b"), False
+    ElseIf m_tab = "e" Then
+        ShowEmpty Me, emp, n = 0, "No errors logged", "No error fits the search, the dates and the column filters."
+    Else
+        ShowEmpty Me, emp, n = 0, "Nothing in the audit trail", "No entry fits the search, the dates and the column filters."
+    End If
     SetVisible sf, n > 0
     SetEnabled Me.btnExport, n > 0
     SetEnabled Me.btnClear, m_ok
     keep = IIf(m_tab = "e", m_eid, m_aid)
     If GridSelect(sf, keep) Then
         ShowEntry keep
-    Else
-        ShowEntry Nz(SelectFirstRow(sf), 0)
+    ElseIf IsNull(SelectFirstRow(sf)) Then  ' SelectFirstRow shows the first row's entry itself (GridClick)
+        ShowEntry 0
     End If
 End Sub
 
 ' Show entry id of the open tab in full (0: the hint instead).
 Private Sub ShowEntry(ByVal id As Long)
     Dim s As String
-    If id <> 0 Then s = IIf(m_tab = "e", ErrorLogDetail(id), AuditDetail(id))
+    If id <> 0 Then
+        If m_tab = "e" Then s = ErrorLogDetail(id) Else s = AuditDetail(id)
+    End If
     If m_tab = "e" Then m_eid = id Else m_aid = id
     Me.txtDetail = IIf(Len(s) > 0, s, Null)
     SetVisible Me.lblDetailEmpty, Len(s) = 0

@@ -75,10 +75,10 @@ The first person to open the app on a new data file who is an admin in the Perso
 
 The app has been written and reviewed without Access, Word or Outlook, so the first release needs these on Windows before it goes to users:
 
-1. Build from nothing: `.\backend\new-backend.ps1`, then `.\build.ps1 -BackEnd .\build\ExamGen_BE.accdb -Release`. The build must finish with no compile error.
+1. Build from nothing: delete any `build\ExamGen_BE.accdb` left from an earlier build (it keeps that build's help text, since the app only adds help topics that are missing), run `.\backend\new-backend.ps1`, then `.\build.ps1 -BackEnd .\build\ExamGen_BE.accdb -Release`. The build must finish with no compile error.
 2. Click through every page and dialog in a light and a dark palette (`review/qa-visual-review-prompt.md`): nothing cut off, overlapping or unreadable.
 3. Walk one question from draft through the SME, DH, XO and SM, and one exam from New exam through every sign-off and approval to its Word document. Check the document's page markings against its questions' portion markings, and that each person's Dashboard list and Emails switches change what reaches them (Outlook may ask to allow the app to send; say yes, or ask IT to allow it).
-4. Check the points the static reviews couldn't: an upgrade over existing rows that break a check is logged and skipped (error 3379 from `Relations.Append`), two copies turning off the last two admins at once, and Statistics' figures against a hand count.
+4. Check the points the static reviews couldn't: an upgrade over existing rows that break a check is logged and skipped (error 3379 from `Relations.Append`), two copies turning off the last two admins at once (Admin: People open on two PCs), and Statistics' figures against a hand count.
 5. Open the `.accde` holding Shift: it must still run the start-up and sign-in.
 
 ## Build phases

@@ -347,7 +347,7 @@ Each new copy of the app brings its own wording for the topics, but only for top
 The audit trail and the error log, for the admin. Both tabs share the search box and the dates, which start at the last 30 days.
 
 # Audit trail
-Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference. **As** is the role the step was taken as. Nobody can change or delete the audit trail from the app.
+Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference. **As** is the role the step was taken as. A draft question that was deleted shows as "Question" and its number, marked deleted; its Deleted entry names its key. Nobody can change or delete the audit trail from the app.
 
 # Errors
 Every error anyone's copy of the app has hit, newest first, with the page, the procedure and the error. Click an entry to see all of it: the call trail, the form and control, and the computer and build. **Copy** puts the whole entry on the clipboard, to paste into an email to whoever maintains the app.
@@ -355,7 +355,7 @@ Every error anyone's copy of the app has hit, newest first, with the page, the p
 **Clear log** deletes every entry for every user, after asking. **Export** first to keep a copy.
 
 # Finding entries
-- Type in the search box to find names, actions, items, comments or error text.
+- Type in the search box to find names, actions, items, comments or error text. The list changes once you pause typing.
 - Change the dates, or clear them to see every date.
 - Use a column's funnel to filter by its values.
 - A list shows the newest 1,000 entries that fit; the line under the title says when there are more.

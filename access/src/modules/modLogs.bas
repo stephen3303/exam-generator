@@ -10,7 +10,9 @@ Option Explicit
 '
 ' Each list is the newest LOG_MAX rows that fit the search box and the
 ' dates, newest first. A day range is whole days, both included; a missing
-' date leaves that end open.
+' date leaves that end open. The newest rows are picked in an inner query
+' and ordered again outside it: the kit's column funnels drop a record
+' source's last ORDER BY, and must still list the values of the rows shown.
 '
 ' Owner: build phase 10. Depends on: modAdmin (PersonNameSql), modExams
 ' (ITEM_EXAM), modGlobals (Q, LikeLiteral), modQuestions (ITEM_QUESTION,
@@ -25,16 +27,22 @@ Public Const LOG_MAX As Long = 1000             ' rows a list shows at most
 '   fromDay, toDay   whole days, both included; Null leaves that end open
 ' Builds the SQL only. Errors: none.
 Public Function AuditLogSql(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As String
+    AuditLogSql = "SELECT t.* FROM (SELECT TOP " & LOG_MAX & " a.AuditID AS id, Format(a.ActionOn,'d mmm yy h:nn') AS when_txt, " & _
+        "a.ActionOn, " & WhoSql() & " AS who, a.ActionType, " & AuditItemSql() & " AS item, " & _
+        "r.RoleCode AS step, Left(Replace(Nz(a.Comments,''), Chr(13) & Chr(10), ' '), 120) AS note " & AuditFromSql() & _
+        " WHERE " & AuditWhere(search, fromDay, toDay) & " ORDER BY a.ActionOn DESC, a.AuditID DESC) AS t " & _
+        "ORDER BY t.ActionOn DESC, t.id DESC"
+End Function
+
+' The audit list's WHERE (without the word) for the search and the dates.
+Private Function AuditWhere(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As String
     Dim w As String
     w = DayWhere("a.ActionOn", fromDay, toDay)
     If Len(search) > 0 Then
         w = w & " AND (" & WhoSql() & " & ' ' & a.ActionType & ' ' & " & AuditItemSql() & " & ' ' & Nz(a.Comments,'')) LIKE " & _
             Q("*" & LikeLiteral(search) & "*")
     End If
-    AuditLogSql = "SELECT TOP " & LOG_MAX & " a.AuditID AS id, Format(a.ActionOn,'d mmm yy h:nn') AS when_txt, a.ActionOn, " & _
-        WhoSql() & " AS who, a.ActionType, " & AuditItemSql() & " AS item, " & _
-        "r.RoleCode AS step, Left(Replace(Nz(a.Comments,''), Chr(13) & Chr(10), ' '), 120) AS note " & AuditFromSql() & _
-        " WHERE " & Mid$(w, 6) & " ORDER BY a.ActionOn DESC, a.AuditID DESC"
+    AuditWhere = Mid$(w, 6)
 End Function
 
 ' Everything one audit row holds, as text for the detail box and Copy; ""
@@ -62,26 +70,36 @@ End Function
 '                            the description, procedure, page and user
 ' Builds the SQL only. Errors: none.
 Public Function ErrorListSql(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As String
+    ErrorListSql = "SELECT t.* FROM (SELECT TOP " & LOG_MAX & " l.id, Format(l.logged_at,'d mmm yy h:nn') AS when_txt, " & _
+        "l.logged_at, IIf(Len(l.username & '')>0, l.username, '(' & l.windows_user & ')') AS who, l.page, l.source, " & _
+        "l.error_number & ': ' & Left(Replace(Nz(l.description,''), Chr(13) & Chr(10), ' '), 120) AS err_txt " & _
+        "FROM error_log AS l WHERE " & ErrorWhere(search, fromDay, toDay) & " ORDER BY l.id DESC) AS t ORDER BY t.id DESC"
+End Function
+
+' The error list's WHERE (without the word) for the search and the dates.
+Private Function ErrorWhere(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As String
     Dim w As String
     w = DayWhere("l.logged_at", fromDay, toDay)
     If Len(search) > 0 Then
         w = w & " AND (l.error_number & ' ' & Nz(l.description,'') & ' ' & Nz(l.source,'') & ' ' & Nz(l.page,'') & ' ' & " & _
             "Nz(l.username,'') & ' ' & Nz(l.windows_user,'')) LIKE " & Q("*" & LikeLiteral(search) & "*")
     End If
-    ErrorListSql = "SELECT TOP " & LOG_MAX & " l.id, Format(l.logged_at,'d mmm yy h:nn') AS when_txt, l.logged_at, " & _
-        "IIf(Len(l.username & '')>0, l.username, '(' & l.windows_user & ')') AS who, l.page, l.source, " & _
-        "l.error_number & ': ' & Left(Replace(Nz(l.description,''), Chr(13) & Chr(10), ' '), 120) AS err_txt " & _
-        "FROM error_log AS l WHERE " & Mid$(w, 6) & " ORDER BY l.id DESC"
+    ErrorWhere = Mid$(w, 6)
 End Function
 
-' How many rows a list's filters match in all, to say when LOG_MAX cut it.
+' How many rows a list's search and dates match in all, to say when LOG_MAX
+' cut it.
 ' Errors: the engine's.
 Public Function AuditLogCount(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As Long
-    AuditLogCount = CountRows(Replace(AuditLogSql(search, fromDay, toDay), "SELECT TOP " & LOG_MAX & " ", "SELECT ", , 1))
+    If Len(search) = 0 Then                 ' the dates alone need no joins
+        AuditLogCount = CountRows("SELECT Count(*) FROM tblAuditTrail AS a WHERE " & AuditWhere("", fromDay, toDay))
+    Else
+        AuditLogCount = CountRows("SELECT Count(*) " & AuditFromSql() & " WHERE " & AuditWhere(search, fromDay, toDay))
+    End If
 End Function
 
 Public Function ErrorListCount(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As Long
-    ErrorListCount = CountRows(Replace(ErrorListSql(search, fromDay, toDay), "SELECT TOP " & LOG_MAX & " ", "SELECT ", , 1))
+    ErrorListCount = CountRows("SELECT Count(*) FROM error_log AS l WHERE " & ErrorWhere(search, fromDay, toDay))
 End Function
 
 ' ---------------------------------------------------------------------------
@@ -97,9 +115,11 @@ End Function
 ' The audit row's item as SQL: a question's key and version, an exam's id
 ' and version, a reference's title, else its type and id. The joins ignore
 ' ItemType (Jet can't join on a constant); the IIf reads each table only on
-' its own type's rows.
+' its own type's rows. A deleted draft's rows say so (its key is in the
+' Deleted row's comment).
 Private Function AuditItemSql() As String
-    AuditItemSql = "IIf(a.ItemType=" & Q(ITEM_QUESTION) & ", 'Q' & q.QuestionKey & ' v' & a.VersionNo, " & _
+    AuditItemSql = "IIf(a.ItemType=" & Q(ITEM_QUESTION) & ", IIf(IsNull(q.QuestionID), 'Question ' & a.ItemID & ' (deleted)', " & _
+        "'Q' & q.QuestionKey & ' v' & a.VersionNo), " & _
         "IIf(a.ItemType=" & Q(ITEM_EXAM) & ", 'E' & a.ItemID & ' v' & a.VersionNo, " & _
         "IIf(a.ItemType=" & Q(ITEM_REFERENCE) & ", 'Reference: ' & Nz(s.RefTitle,'(deleted)'), a.ItemType & ' ' & a.ItemID)))"
 End Function
@@ -130,7 +150,7 @@ End Function
 
 Private Function CountRows(ByVal sql As String) As Long
     Dim rs As DAO.Recordset
-    Set rs = CurrentDb.OpenRecordset("SELECT Count(*) FROM (" & Left$(sql, InStr(sql, " ORDER BY ") - 1) & ")", dbOpenSnapshot)
+    Set rs = CurrentDb.OpenRecordset(sql, dbOpenSnapshot)
     CountRows = Nz(rs.Fields(0).Value, 0)
     rs.Close
 End Function

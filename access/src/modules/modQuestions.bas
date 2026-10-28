@@ -990,12 +990,13 @@ End Function
 '   rules now refuse (the reason is the message); others pass up through
 '   RaiseAgain after the rollback.
 Public Function DeleteDraft(ByVal qid As Long) As Long
-    Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long, problem As String
+    Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long, problem As String, qkey As String
     Dim num As Long, desc As String, src As String
     RequireQuestionWriter qid
     Set ws = DBEngine.Workspaces(0)
     baseId = Nz(DLookup("ReplacesQuestionID", "tblQuestions", "QuestionID=" & qid), 0)
     ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid), 0)
+    qkey = Nz(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), "")
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
     ' The delete rules again inside the transaction, and a delete that only
@@ -1010,7 +1011,9 @@ Public Function DeleteDraft(ByVal qid As Long) As Long
         ws.Rollback: inTrans = False
         Err.Raise ERR_NOT_ALLOWED, "modQuestions.DeleteDraft", "It can't be deleted now. " & problem
     End If
-    AddAudit ITEM_QUESTION, qid, ver, AU_DELETED, , "Draft deleted"
+    ' The key in the comment: the row it names is gone, so the audit trail
+    ' can't look it up any more (Admin: Logs).
+    AddAudit ITEM_QUESTION, qid, ver, AU_DELETED, , "Draft Q" & qkey & " v" & ver & " deleted"
     ws.CommitTrans: inTrans = False
     If baseId <> 0 Then
         If Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & baseId), False) Then DeleteDraft = baseId

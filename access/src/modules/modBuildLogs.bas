@@ -20,8 +20,8 @@ End Sub
 
 ' "field|caption|width px|options[|sort field]"
 Private Function AuditCols() As Variant
-    AuditCols = Array("when_txt|When|96|m|ActionOn", "who|Who|130|s", "ActionType|Action|90|", "item|Item|120|bs", _
-        "step|As|44|m", "note|Note|108|s")
+    AuditCols = Array("when_txt|When|96|m|ActionOn", "who|Who|122|s", "ActionType|Action|90|", "item|Item|120|bs", _
+        "step|As|52|m", "note|Note|108|s")
 End Function
 
 Private Function ErrorCols() As Variant
@@ -36,7 +36,7 @@ End Function
 Public Sub Build_pgAdmLogs()
     Dim c As Control, x As Long, y As Long, h As Long, fx As Long, fw As Long, lw As Long, before As Object
     NewForm "", 0, PAGE_W, PAGE_H
-    Ev F, "OnLoad"
+    Ev F, "OnLoad", "OnTimer"
     PageHeader "Admin: Logs", "The audit trail (who authored, changed, submitted, reviewed, approved, sent back, generated and " & _
         "downloaded what) and the error log. Both are read only; the error log can be cleared.", PAGE_PAD
     TabStrip PAGE_PAD, px(76), ContentW(), "TabPick", "a|Audit trail", "e|Errors"

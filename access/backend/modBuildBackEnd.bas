@@ -24,7 +24,7 @@ Option Explicit
 ' (modSignIn). A change here bumps both and adds a step to modSignIn.UpgradeData,
 ' which brings an existing data file up to date. 2: tblExamTopics.ChangeNo.
 ' 3: the unique indexes and relationships from uxLevelName and rQ_Step on
-' (CreateIndexes, CreateRelationships).
+' (CreateIndexes, CreateRelationships). 4: ixAuditOn.
 
 ' Make the data file by hand from any Access database: asks for the path
 ' (default: the database's own folder) and whether to replace a file there.
@@ -167,6 +167,7 @@ Private Sub CreateIndexes(db As DAO.Database)
     ExecDdl db, "CREATE UNIQUE INDEX uxExamQ ON tblExamQuestions (ExamID, QuestionID)"
     ExecDdl db, "CREATE INDEX ixTaskPerson ON tblTasks (AssignedPersonID, TaskStatus)"
     ExecDdl db, "CREATE INDEX ixAuditItem ON tblAuditTrail (ItemType, ItemID)"
+    ExecDdl db, "CREATE INDEX ixAuditOn ON tblAuditTrail (ActionOn)"
     ExecDdl db, "CREATE INDEX ixExamApproved ON tblExams (FinalApprovedOn)"
     ExecDdl db, "CREATE INDEX ixErrorLogged ON error_log (logged_at)"
     ' Names and codes the app keeps unique: the data file refuses a second one
@@ -263,5 +264,5 @@ Private Sub SeedData(db As DAO.Database)
     ExecDdl db, "INSERT INTO tblSettings VALUES ('OverlapMaxPct','30','Max % of an exam''s questions that may appear in the lookback window')"
     ExecDdl db, "INSERT INTO tblSettings VALUES ('OverlapWindowExams','10','Number of most recent exams checked for overlap')"
     ExecDdl db, "INSERT INTO tblSettings VALUES ('DefaultQuestionCount','4','Default questions per topic in a template')"
-    ExecDdl db, "INSERT INTO tblSettings VALUES ('SchemaVersion','3','Back-end schema version')"
+    ExecDdl db, "INSERT INTO tblSettings VALUES ('SchemaVersion','4','Back-end schema version')"
 End Sub

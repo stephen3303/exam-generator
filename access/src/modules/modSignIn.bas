@@ -43,7 +43,7 @@ Option Explicit
 ' modErrors, modGlobals; the kit's modKitBackend, modKitHelp, modKitLocks,
 ' modKitShell, modKitUI, modPersonnel, modPersonnelUI.
 
-Public Const DATA_VERSION As Long = 3            ' the tblSettings SchemaVersion this copy reads
+Public Const DATA_VERSION As Long = 4            ' the tblSettings SchemaVersion this copy reads
 
 ' Raised by the checks made at the point of a write when the signed-in person
 ' may not make it. Err.Description is the reason, written for the user.
@@ -217,6 +217,7 @@ End Function
 ' Returns 0 when it finished, else the number of the error that stopped it.
 '   2: tblExamTopics.ChangeNo (0 for the topics already there).
 '   3: the unique indexes and relationships new data files have (UpgradeTo3).
+'   4: ixAuditOn, the audit trail by date (Admin: Logs searches it by day).
 Private Function UpgradeData(ByVal v As Long) As Long
     Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean, n As Long, d As String
     On Error GoTo Fail
@@ -238,6 +239,7 @@ Private Function UpgradeData(ByVal v As Long) As Long
         CurrentDb.TableDefs("tblExamTopics").RefreshLink        ' the link shows the new column
     End If
     If v < 3 Then UpgradeTo3 db
+    If v < 4 Then AddIndexIfMissing db, "ixAuditOn", "tblAuditTrail", "ActionOn", False
     db.Execute "UPDATE tblSettings SET SettingValue='" & DATA_VERSION & "' WHERE SettingKey='SchemaVersion'", dbFailOnError
     db.Close
     Exit Function
@@ -287,14 +289,16 @@ Private Sub UpgradeTo3(db As DAO.Database)
     AddRelationIfMissing db, "rQ_Rep", "tblQuestions", "QuestionID", "tblQuestions", "ReplacesQuestionID"
 End Sub
 
-' Add unique index nm on tbl (cols) unless the table has it already.
-Private Sub AddIndexIfMissing(db As DAO.Database, ByVal nm As String, ByVal tbl As String, ByVal cols As String)
+' Add index nm on tbl (cols), unique unless isUnique is False, unless the
+' table has it already.
+Private Sub AddIndexIfMissing(db As DAO.Database, ByVal nm As String, ByVal tbl As String, ByVal cols As String, _
+        Optional ByVal isUnique As Boolean = True)
     Dim ix As DAO.Index, n As Long, d As String
     For Each ix In db.TableDefs(tbl).Indexes
         If ix.Name = nm Then Exit Sub
     Next
     On Error Resume Next
-    db.Execute "CREATE UNIQUE INDEX " & nm & " ON " & tbl & " (" & cols & ")", dbFailOnError
+    db.Execute "CREATE " & IIf(isUnique, "UNIQUE ", "") & "INDEX " & nm & " ON " & tbl & " (" & cols & ")", dbFailOnError
     n = Err.Number: d = Err.Description
     On Error GoTo 0
     UpgradeSkip n, d, nm

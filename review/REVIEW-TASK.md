@@ -8,8 +8,11 @@ Run on the Windows review VMs:
    Save the result as `review/reports/code-review-YYYY-MM-DD.md`.
 2. **Visual QA (VM 2).** Pull this repo. In the `access` folder run:
    ```
-   .\backend\new-backend.ps1; .\build.ps1 -BackEnd .\build\ExamGen_BE.accdb
+   Remove-Item .\build\ExamGen_BE.accdb -ErrorAction SilentlyContinue
+   .\backend\new-backend.ps1
+   if ($?) { .\build.ps1 -BackEnd .\build\ExamGen_BE.accdb }
    ```
+   The data file is made new each time: a reused one keeps the help text from the phase it was made in.
    Open `access\build\ExamGenerator.accdb` and test it with `review/qa-visual-review-prompt.md`.
    Save the result as `review/reports/qa-YYYY-MM-DD.md`, with screenshots in `review/reports/screenshots/`.
 
