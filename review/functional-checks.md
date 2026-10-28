@@ -21,3 +21,8 @@ Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail pr
    - Add an SME to a topic of an exam in SME review, then open My reviews as that SME. They should have a review.
    - Repeat with two copies at the same moment: one signs off the topic while the other opens My reviews. No open review should be left on a topic that is already signed off.
 10. **Speed.** With three or more exams in SME review, time how long My reviews and Exams take to open.
+11. **Sign out** (My settings; the feature-sign-out branch).
+   - Sign out and sign in as another person. The app should reopen on their Dashboard with only their pages.
+   - Sign out and close the sign-in screen. The app should close.
+   - Sign out and sign in as someone with no Exam Generator role. The app should say why and close.
+   - As a Windows-only user with no app password, Sign out should ask you to choose one first. Signed in by password on someone else's Windows account whose owner has no app password, Sign out should refuse.

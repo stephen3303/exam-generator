@@ -377,7 +377,8 @@ The app sends its emails once your step is saved, from your computer's Outlook. 
 Click **Appearance** to choose the colors the whole app uses on this computer.
 
 # Sign out
-Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app.
+Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app, and so does signing in as someone with no Exam Generator role.
+- If you sign in with Windows and have no app password yet, Sign out asks you to choose one first, so only you can sign back in as you.
 - Someone signing in on a computer that isn't theirs should leave **Use my Windows sign-in next time** unticked, or this Windows account will sign them in from then on.
 
 === directory | Personnel

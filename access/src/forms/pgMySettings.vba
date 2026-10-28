@@ -9,12 +9,12 @@ Option Explicit
 '   Emails          an Outlook email when something waits on them (modNotify)
 ' Under them the address emails go to (the Personnel file's) and Send me a
 ' test email. Then Colors, the palette picker, and Sign out (AppSignOut,
-' modGlobals), which lets someone else sign in without closing Access.
+' modSignIn), which lets someone else sign in without closing Access.
 ' With no data file linked, nobody signed in, or no row for them in
 ' tblPeople, the switches are off and locked, and the line under them says
 ' which; Sign out is off with no data file or nobody signed in.
 '
-' Depends on: modGlobals, modNotify, modSignIn; the kit's modKitLocks,
+' Depends on: modNotify, modSignIn; the kit's modKitLocks,
 ' modKitUI, modKitUtil, modPersonnel.
 
 Private Const MSG_TITLE As String = "My settings"
@@ -65,10 +65,12 @@ End Sub
 ' someone to sign out.
 Private Sub ShowSignedIn()
     If DataLinked() And SignedInPersonID() <> 0 Then
-        Me.lblSignedIn.Caption = "You're signed in as " & Nz(TempVars("PersonName"), Nz(TempVars("Username"), "you")) & _
+        Me.lblSignedIn.Caption = "You're signed in as " & _
+            Replace(Nz(TempVars("PersonName"), Nz(TempVars("Username"), "you")), "&", "&&") & _
             ". Sign out to let someone else sign in on this copy."
     Else
-        Me.lblSignedIn.Caption = "Nobody is signed in on this copy."
+        Me.lblSignedIn.Caption = IIf(DataLinked(), "Nobody is signed in on this copy.", _
+            "This copy was built without the data file, so nobody signs in.")
         SetEnabled Me.btnSignOut, False
     End If
 End Sub

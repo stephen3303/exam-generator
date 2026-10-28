@@ -20,6 +20,11 @@ Option Explicit
 ' Then ShowPagesForRoles hides the sidebar pages they can't use, and
 ' frmMain.RoutePage sends any other way in (Ctrl+K) to the dashboard.
 '
+' My settings' Sign out (AppSignOut) clears the session and shows the
+' sign-in screen, so someone else can use this copy without closing Access;
+' signing in reopens frmMain, whose AppStartUp skips step 3 and reads the
+' new person's roles.
+'
 ' The first Personnel admin to open a new data file (tblPeople still empty)
 ' becomes its Exam Generator admin, so it can be set up from the app. That
 ' happens once: tblSettings AdminBootstrapped records it, and a data file
@@ -125,6 +130,80 @@ Public Sub ShowPagesForRoles(frm As Form)
         ShellShowItem frm, CStr(k), PageAllowed(CStr(k))
     Next
 End Sub
+
+' Sign out and show the sign-in screen (My settings' Sign out). Only with a
+' data file, only while the current page can be left, and only when the
+' next person can't take over this Windows account's owner
+' (OwnerPasswordReady).
+' Errors: none (shown and logged by HandleError).
+' Side effects: clears the session, the roles and the pages' hand-off
+'   TempVars. Closing the sign-in screen closes the app, as at start-up.
+'   Signing in reopens frmMain on the Dashboard, whose Form_Load reads the
+'   new person's roles (AppStartUp); a person without a role is told why and
+'   the app closes, as at start-up.
+Public Function AppSignOut()
+    Dim v As Variant
+    On Error GoTo Err_Handler
+    If Not DataLinked() Then Exit Function
+    If IsFormOpen("frmMain") Then
+        If Not Forms("frmMain").CanLeavePage() Then Exit Function
+    End If
+    If Not OwnerPasswordReady() Then Exit Function
+    ClearRoles
+    ' The pages' hand-offs name the last person's items: drop them.
+    On Error Resume Next                    ' one that was never set
+    For Each v In Array("BankQuestionID", "EditQuestionID", "EditMode", "ExamsExamID", _
+            "ApprovalsExamID", "ApprovalsQuestionID", "ReviewTaskID")
+        TempVars.Remove v
+    Next
+    On Error GoTo Err_Handler
+    If Not KitPersonnelSignOut(APP_CODE) Then
+        DoCmd.Quit acQuitSaveNone
+        Exit Function
+    End If
+    ' A toast still showing would be left at the top left by the reopen (as
+    ' for a palette switch, modDarkMode).
+    If IsFormOpen("dlgToast") Then DoCmd.Close acForm, "dlgToast", acSaveNo
+    If IsFormOpen("frmMain") Then Forms("frmMain").Reopen "dash"
+    Exit Function
+Err_Handler:
+    HandleError "modSignIn.AppSignOut"
+End Function
+
+' The sign-in screen lets whoever runs this Windows account choose its
+' owner's first app password (the kit's PersonnelCanSetFirstPassword), which
+' after Sign out could be someone else using the owner's session. True when
+' that can't happen: no person has this Windows account, theirs has an app
+' password already, or the owner is the one signing out and chooses one now.
+' False, having said why, otherwise.
+' Errors: the engine's and the kit's.
+Private Function OwnerPasswordReady() As Boolean
+    Dim owner As Long, user As String, p1 As Variant, p2 As Variant, problem As String
+    owner = PersonnelWindowsPersonId()
+    If owner = 0 Then OwnerPasswordReady = True: Exit Function
+    user = Nz(DLookup("username", PERSON_TABLE, "person_id=" & owner), "")
+    If Not PersonnelCanSetFirstPassword(user) Then
+        OwnerPasswordReady = True
+        Exit Function
+    End If
+    If owner <> SignedInPersonID() Then
+        KitMsgBox "Sign out isn't available on this Windows account yet: its owner has no app password, so the next " & _
+            "person could choose one for them. Close " & APP_NAME & " instead.", vbExclamation, "Sign out"
+        Exit Function
+    End If
+    p1 = KitInputBox("Choose an app password first (8 or more characters), so only you can sign in as you " & _
+        "after you sign out.", "Sign out", , True)
+    If IsNull(p1) Then Exit Function
+    p2 = KitInputBox("Type the same password again.", "Sign out", , True)
+    If IsNull(p2) Then Exit Function
+    If StrComp(p1, p2, vbBinaryCompare) <> 0 Then
+        KitMsgBox "The two passwords don't match. Click Sign out to try again.", vbExclamation, "Sign out"
+        Exit Function
+    End If
+    problem = PersonnelSetPassword(owner, CStr(p1))
+    If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, "Sign out": Exit Function
+    OwnerPasswordReady = True
+End Function
 
 ' True when this front end belongs with a data file: it was built with one
 ' (BuiltWithDataFile), or it is linked to (or holds) the data file's tables.

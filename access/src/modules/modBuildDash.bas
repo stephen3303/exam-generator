@@ -157,7 +157,7 @@ End Function
 ' ---------------------------------------------------------------------------
 
 ' The person's notice switches (the Dashboard's list, and emails), the
-' address emails go to with a test send, and the palette picker.
+' address emails go to with a test send, the palette picker, and Sign out.
 Public Sub Build_pgMySettings()
     Dim c As Control, x As Long, y As Long, w As Long, fw As Long
     NewForm "", 0, PAGE_W, PAGE_H
