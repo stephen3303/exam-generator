@@ -50,6 +50,7 @@ Public Sub BuildQuestionGrids()
     BuildGrid "subGridHistory", HistoryCols(), TabInW()
     BuildGrid "subGridHistoryDlg", HistoryCols(), px(720)
     BuildGrid "subGridApprovals", ApprovalCols(), ApprListW() - px(32), 2
+    BuildGrid "subGridExamQueue", ExamQueueCols(), ApprListW() - px(32)
 End Sub
 
 ' "field|caption|width px|options[|sort field]"
@@ -82,6 +83,11 @@ End Function
 Private Function ApprovalCols() As Variant
     ApprovalCols = Array("ref|#|60|m|QuestionKey", "QuestionText|Question|180|ws|qsort", "TopicName|Topic|88|s", _
         "author|Author|100|", "kind|Kind|100|p")
+End Function
+
+Private Function ExamQueueCols() As Variant
+    ExamQueueCols = Array("ref|#|60|m|id", "exam|Exam for|172|bs", "TemplateName|Template|120|s", "step|Step|76|m", _
+        "since_txt|Waiting since|100|m|since")
 End Function
 
 Private Function HistoryCols() As Variant
@@ -462,8 +468,8 @@ Public Sub Build_pgApprovals()
     Dim c As Control, x As Long, y As Long, h As Long, fx As Long, fw As Long, btnY As Long, before As Object
     NewForm "", 0, PAGE_W, PAGE_H
     Ev F, "OnLoad"
-    PageHeader "Approvals", "Questions waiting for your approval at your step of the chain. Approve sends one on; " & _
-        "Reject sends it back to its author with your reason.", PAGE_PAD
+    PageHeader "Approvals", "Questions and exams waiting for your approval at your step of the chain. Approve sends one on; " & _
+        "Reject sends it back with your reason: a question to its author, an exam to its SMEs.", PAGE_PAD
     TabStrip PAGE_PAD, px(76), ContentW(), "TabPick", "q|Questions|0", "x|Exams|0"
     y = BANK_Y: h = PAGE_H - y - px(16)
     x = PAGE_PAD + ApprListW() + px(12): fx = x + px(16): fw = APPR_W - px(32): btnY = y + h - px(16) - px(30)
@@ -499,9 +505,32 @@ Public Sub Build_pgApprovals()
     c.Visible = False: c.TabStop = False
     Avatar "avAuthor", "txtAuthor", fx, y + px(114), px(36)
 
-    ' The Exams tab: a placeholder.
-    EmptyState "emptyExams", PAGE_PAD, y + px(40), ContentW(), "E8A5", "Exam approvals come in build phase 8", _
-        "Exams waiting for your approval will show here, like questions do on the Questions tab."
+    ' The Exams tab: the same layout, with its own search box.
+    Set before = NamesNow()
+    SearchBox "txtXSearch", PAGE_PAD, px(120), px(260), "SearchExams", "Search...", px(28)
+    Card "XList", "Waiting for you", PAGE_PAD, y, ApprListW(), h, , 2, 2
+    GridHeaders "hdrXList", ExamQueueCols(), PAGE_PAD + px(16), y + px(40), w:=ApprListW() - px(32), sortSf:="sfXList", _
+        filterSf:="sfXList", onFilter:="ListFiltered"
+    Set c = SubF("sfXList", "subGridExamQueue", PAGE_PAD + px(16), y + px(62), ApprListW() - px(32), h - px(78)): Anchor c, 2, 2
+    EmptyState "emptyXList", PAGE_PAD + px(16), y + px(90), ApprListW() - px(32), "E8A5", "Nothing waiting for you", _
+        "Exams sent to your step of the chain show here once their SMEs sign off every topic.", "Clear search"
+    Card "XDetail", "Exam", x, y, APPR_W, h, , 1, 2
+    Lbl "lblXRef", "", fx, y + px(104), fw, px(22), 11, True
+    Lbl "lblXBy", "", fx, y + px(126), fw, px(32), 9, False, CLR_MUTED_FG
+    Lbl "lblXState", "", fx, y + px(160), fw, px(36), 9, False, CLR_FG
+    FieldLbl "capXPreview", "THE EXAM, WITH ITS ANSWERS", fx, y + px(204), fw
+    Set c = RO("txtXPreview", "", fx, y + px(222), fw, btnY - px(12) - (y + px(222)), 10)
+    c.ScrollBars = 2
+    Set c = Btn("btnXApprove", "Approve", fx, btnY, px(96), px(30))
+    c.ControlTipText = "Approve it at your step and send it on"
+    Set c = Btn("btnXReject", "Reject", fx + px(104), btnY, px(88), px(30), "destructive")
+    c.ControlTipText = "Send one topic or all of them back to their SMEs with your reason"
+    Set c = Btn("btnXHistory", "History", fx + fw - px(88), btnY, px(88), px(30), "outline")
+    c.ControlTipText = "Who generated, signed off, approved and sent back the exam, and when"
+    Set c = Lbl("lblXDetailEmpty", "Pick an exam in the list to see it here.", fx, y + px(120), fw, px(20), 9, False, CLR_MUTED_FG)
+    c.TextAlign = 2
+    GroupSince before, "grpX"
+    Stepper "stpX", fx, y + px(44), fw, 2, "", "SME", "DH", "XO", "SM"
     SaveForm "pgApprovals"
 End Sub
 

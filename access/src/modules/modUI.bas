@@ -44,11 +44,11 @@ End Function
 Public Function StatusVariant(ByVal status As Variant) As String
     On Error GoTo Gone
     Select Case Nz(status, "")
-        Case "Approved", "Done", "Active", "Correct", "Ready": StatusVariant = "success"
+        Case "Approved", "Done", "Active", "Correct", "Ready", "Signed off": StatusVariant = "success"
         Case "In review", "SME review", "Open", "New", "Swapped": StatusVariant = "info"
         Case "Returned", "Rejected", "Short", "Repeats", "Given lately": StatusVariant = "warning"
         Case "Invalid", "No SME": StatusVariant = "destructive"
-        Case "Draft", "Closed", "Retired", "Off", "New version": StatusVariant = "secondary"
+        Case "Draft", "Closed", "Retired", "Off", "New version", "Waiting": StatusVariant = "secondary"
     End Select
     Exit Function
 Gone:

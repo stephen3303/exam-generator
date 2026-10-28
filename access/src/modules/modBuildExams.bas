@@ -1,13 +1,20 @@
 Option Compare Database
 Option Explicit
 
-' Exam Generator (Access edition) - the exam kickoff and SME review of build
-' phase 7: My reviews (pgReview), the Exams page's New exam button (pgExams,
-' whose list comes in phase 8), and the dialogs dlgNewExam and dlgSwap.
-' modBuild.BuildPages calls BuildExamGrids first, then the pages;
-' BuildUserInterface builds the dialogs.
+' Exam Generator (Access edition) - the exam pages of build phases 7 and 8:
+' My reviews (pgReview), the Exams page (pgExams: every exam, where it
+' stands, Download a copy, and the DH's New exam), and the dialogs
+' dlgNewExam and dlgSwap. The Approvals page's Exams tab is built with its
+' Questions tab (modBuildQuestions.Build_pgApprovals). modBuild.BuildPages
+' calls BuildExamGrids first, then the pages; BuildUserInterface builds the
+' dialogs.
 
 Private Const REV_LIST_W As Long = 6600         ' My reviews' list card, 440 px
+Private Const EXAM_DETAIL_W As Long = 6300      ' the Exams page's detail card, 420 px
+
+Private Function ExamListW() As Long
+    ExamListW = ContentW() - EXAM_DETAIL_W - px(12)
+End Function
 
 Private Function RevDetailW() As Long
     RevDetailW = ContentW() - REV_LIST_W - px(12)
@@ -19,6 +26,8 @@ Public Sub BuildExamGrids()
     BuildGrid "subGridExamQs", ExamQCols(), RevDetailW() - px(32)
     BuildGrid "subGridPlan", PlanCols(), px(580)
     BuildGrid "subGridSwap", SwapCols(), px(680)
+    BuildGrid "subGridExams", ExamCols(), ExamListW() - px(32)
+    BuildGrid "subGridExamTopics", ExamTopicCols(), EXAM_DETAIL_W - px(32)
 End Sub
 
 ' "field|caption|width px|options[|sort field]"
@@ -38,6 +47,15 @@ End Function
 Private Function SwapCols() As Variant
     SwapCols = Array("ref|#|60|m|QuestionKey", "QuestionText|Question|380|s|qsort", "LevelName|Difficulty|80|m", "pts|Points|60|r", _
         "note|Note|100|p")
+End Function
+
+Private Function ExamCols() As Variant
+    ExamCols = Array("ref|#|60|m|id", "exam|Exam for|150|bs", "TemplateName|Template|110|s", "status|Status|96|p", _
+        "step|Waits on|52|m", "created_txt|Created|60|m|CreatedOn")
+End Function
+
+Private Function ExamTopicCols() As Variant
+    ExamTopicCols = Array("TopicName|Topic|140|b", "qn|Qs|44|r", "status|State|88|p", "signer|Signed off by|116|")
 End Function
 
 ' ---------------------------------------------------------------------------
@@ -87,20 +105,53 @@ Public Sub Build_pgReview()
 End Sub
 
 ' ---------------------------------------------------------------------------
-' Exams (page 4): the list comes in phase 8
+' Exams (page 4)
 ' ---------------------------------------------------------------------------
 
-' The DH's New exam button over a placeholder for the list of exams.
+' The search box and a chip per status over every exam, newest first, and
+' the picked one on the right: where it is in the chain, who it is for and
+' who generated it, where it stands (its overall marking once approved, the
+' reason when it was sent back), its topics with who signed each off,
+' Download a copy and History. The DH's New exam button is top right.
 Public Sub Build_pgExams()
-    Dim c As Control
+    Dim c As Control, x As Long, y As Long, h As Long, fx As Long, fw As Long, btnY As Long, lw As Long
     NewForm "", 0, PAGE_W, PAGE_H
     Ev F, "OnLoad"
-    PageHeader "Exams", "Every exam and where it stands in review and approval. The department head starts a new exam here.", _
-        PAGE_PAD
+    PageHeader "Exams", "Every exam and where it stands in review and approval. The department head starts a new exam here; " & _
+        "once the SM approves one, anyone can download its Word document.", PAGE_PAD
     Set c = Btn("btnNew", "New exam", PAGE_W - PAGE_PAD - px(120), px(24), px(120), px(32), "outline")
     c.ControlTipText = "Pick a template and who the exam is for; the questions are drawn for you": Anchor c, 1, 0
-    EmptyState "emptyStub", PAGE_PAD, px(140), ContentW(), "E8A5", "The list of exams comes in build phase 8", _
-        "New exam generates one now. Each topic's SMEs then find it under My reviews.", shown:=True
+    SearchBox "txtSearch", PAGE_PAD, px(84), px(260), "SearchFor", "Search...", px(28)
+    ChipRow "chip", PAGE_PAD + px(272), px(85), "ChipPick", Split(EXAM_CHIPS, "|")
+    y = px(128): h = PAGE_H - y - px(16): lw = ExamListW()
+    x = PAGE_PAD + lw + px(12): fx = x + px(16): fw = EXAM_DETAIL_W - px(32): btnY = y + h - px(16) - px(30)
+
+    Card "List", "Exams", PAGE_PAD, y, lw, h, , 2, 2
+    GridHeaders "hdrList", ExamCols(), PAGE_PAD + px(16), y + px(40), w:=lw - px(32), sortSf:="sfList", _
+        filterSf:="sfList", onFilter:="ListFiltered"
+    Set c = SubF("sfList", "subGridExams", PAGE_PAD + px(16), y + px(62), lw - px(32), h - px(78)): Anchor c, 2, 2
+    EmptyState "emptyList", PAGE_PAD + px(16), y + px(90), lw - px(32), "E8A5", "No exams yet", _
+        "When the DH generates an exam it shows here, from SME review to final approval.", "Show all"
+
+    Card "Detail", "Exam", x, y, EXAM_DETAIL_W, h, , 1, 2
+    Stepper "stpExam", fx, y + px(44), fw, 1, "", "SME", "DH", "XO", "SM"
+    Lbl "lblExam", "", fx, y + px(104), fw, px(22), 11, True
+    Lbl "lblExamBy", "", fx, y + px(126), fw, px(32), 9, False, CLR_MUTED_FG
+    Lbl "lblState", "", fx, y + px(160), fw, px(52), 9, False, CLR_FG
+    FieldLbl "capTopics", "TOPICS", fx, y + px(218), fw
+    Lbl "lblTopics", "", fx, y + px(234), px(140), px(20), 9, False, CLR_MUTED_FG
+    Set c = Txt("txtPct", "", fx, y + px(234), px(40), px(20))
+    c.Visible = False: c.TabStop = False
+    Progress "prgTopics", "[txtPct]", fx + px(148), y + px(241), fw - px(148), px(6)
+    GridHeaders "hdrTopics", ExamTopicCols(), fx, y + px(262), w:=fw
+    Set c = SubF("sfTopics", "subGridExamTopics", fx, y + px(284), fw, btnY - px(12) - (y + px(284)))
+    c.TabStop = False
+    Set c = Btn("btnDownload", "Download", fx, btnY, px(112), px(30))
+    c.ControlTipText = "Save a copy of the approved exam's Word document"
+    Set c = Btn("btnHistory", "History", fx + fw - px(88), btnY, px(88), px(30), "outline")
+    c.ControlTipText = "Who generated, signed off, approved, sent back and downloaded it, and when"
+    Set c = Lbl("lblDetailEmpty", "Pick an exam in the list to see it here.", fx, y + px(120), fw, px(20), 9, False, CLR_MUTED_FG)
+    c.TextAlign = 2
     SaveForm "pgExams"
 End Sub
 
@@ -136,6 +187,31 @@ Public Sub Build_dlgNewExam()
     Set c = Btn("btnCancel", "Cancel", w - px(20) - px(88), px(484), px(88), px(30), "outline")
     c.Cancel = True
     SaveForm "dlgNewExam"
+End Sub
+
+' Send an exam back (an approver, from the Approvals page): which topic, or
+' every topic, who gets it back, and the reason (required).
+Public Sub Build_dlgRejectExam()
+    Dim c As Control, w As Long, iw As Long
+    w = px(500): iw = w - px(40)
+    NewDialog "Send back", w, px(462)
+    Ev F, "OnLoad"
+    Lbl "lblHead", "", px(20), px(20), iw, px(24), 11, True
+    Lbl "lblSub", "", px(20), px(46), iw, px(32), 9, False, CLR_MUTED_FG
+    FieldLbl "capTopic", "SEND BACK", px(20), px(88), iw
+    Set c = Cbo("cboTopic", "", "", px(20), px(106), iw, px(30), 2, "0;" & iw)
+    Ev c, "AfterUpdate"
+    FieldLbl "capTo", "GOES BACK TO", px(20), px(146), iw
+    RO "txtTo", "", px(20), px(164), iw, px(48), 10
+    FieldLbl "capReason", "REASON (REQUIRED)", px(20), px(222), iw
+    Set c = Txt("txtReason", "", px(20), px(240), iw, px(128))
+    c.EnterKeyBehavior = True: c.ScrollBars = 2
+    Lbl "lblHint", "Say what to change. Its SMEs read this under My reviews, and it stays in the exam's history.", px(20), px(372), _
+        iw, px(20), 9, False, CLR_MUTED_FG
+    Set c = Btn("btnReject", "Send back", w - px(20) - px(104) - px(8) - px(88), px(410), px(104), px(30), "destructive")
+    Set c = Btn("btnCancel", "Cancel", w - px(20) - px(88), px(410), px(88), px(30), "outline")
+    c.Cancel = True
+    SaveForm "dlgRejectExam"
 End Sub
 
 ' Swap a question on an exam topic: the approved questions of the topic not

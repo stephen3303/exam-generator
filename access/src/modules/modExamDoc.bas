@@ -92,23 +92,35 @@ End Function
 ' approval whose document failed, or a file someone moved). Returns "" and
 ' the path in docPath, or why there is none.
 Public Function EnsureExamDocument(ByVal examId As Long, ByRef docPath As String) As String
-    Dim p As String, note As String, num As Long, desc As String, src As String
+    Dim p As String, note As String
     docPath = ""
     p = Nz(DLookup("OutputFile", "tblExams", "ExamID=" & examId), "")
     If Len(p) > 0 Then
         If Len(Dir(p)) > 0 Then docPath = p: Exit Function
     End If
-    KitBusy "Making the exam's Word document..."
-    On Error GoTo Busy_Fail
-    EnsureExamDocument = MakeExamDocument(examId, note)
-    KitBusyEnd
-    On Error GoTo 0
+    EnsureExamDocument = MakeExamDocumentNow(examId, note)
     If Len(EnsureExamDocument) = 0 Then docPath = Nz(DLookup("OutputFile", "tblExams", "ExamID=" & examId), "")
+End Function
+
+' Make exam examId's document now, under the busy veil: after its final
+' approval (pgApprovals), and from EnsureExamDocument. Returns "" or why it
+' wasn't made; note as MakeExamDocument's. An unexpected error (Word
+' stopping halfway, a folder it can't write to) is logged and returned as a
+' sentence instead of raised, since the exam's approval stands either way.
+Public Function MakeExamDocumentNow(ByVal examId As Long, ByRef note As String) As String
+    Dim desc As String
+    note = ""
+    KitBusy "Making the exam's Word document..."
+    On Error GoTo Fail
+    MakeExamDocumentNow = MakeExamDocument(examId, note)
+    KitBusyEnd
     Exit Function
-Busy_Fail:
-    num = Err.Number: desc = Err.Description: src = Err.Source
-    KitBusyEnd                              ' resets Err, so it is read first
-    Err.Raise num, src, desc
+Fail:
+    desc = Err.Description
+    LogError "modExamDoc.MakeExamDocumentNow", "Exam " & examId
+    KitBusyEnd
+    MakeExamDocumentNow = "The Word document couldn't be made (" & desc & "). Download a copy on the Exams page tries again; " & _
+        "the error log has the details."
 End Function
 
 ' ---------------------------------------------------------------------------
@@ -126,10 +138,7 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
     Dim overall As Long, num As Long, desc As String, src As String
     note = ""
     st = ExamStatusName(DLookup("StatusID", "tblExams", "ExamID=" & examId))
-    If st <> ES_APPROVED Then
-        MakeExamDocument = "Only an approved exam has a document; this one is " & IIf(Len(st) > 0, LCase$(st), "missing") & "."
-        Exit Function
-    End If
+    If st <> ES_APPROVED Then MakeExamDocument = DownloadProblem(examId): Exit Function
     ' Every question and part must carry a marking the lookup list knows.
     Set rs = CurrentDb.OpenRecordset("SELECT q.QuestionKey, q.VersionNo FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
         "ON eq.QuestionID=q.QuestionID) LEFT JOIN tblClassLevels AS c ON q.ClassLevelID=c.ClassLevelID WHERE eq.ExamID=" & examId & _
@@ -149,8 +158,14 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
     End If
     overall = ClassRank(OverallLevelID(examId))
     path = DocPathFor(examId)
-    If Len(Dir(path)) > 0 Then Kill path
     On Error Resume Next
+    If Len(Dir(path)) > 0 Then Kill path
+    If Err.Number <> 0 Then
+        On Error GoTo 0
+        MakeExamDocument = "The document made before couldn't be replaced; someone may have it open (" & path & "). " & _
+            "Close it and try again."
+        Exit Function
+    End If
     Set wd = CreateObject("Word.Application")
     If wd Is Nothing Then
         On Error GoTo 0

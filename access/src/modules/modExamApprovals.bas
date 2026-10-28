@@ -93,7 +93,13 @@ Public Function ExamApproveProblem(ByVal examId As Long) As String
     stepId = Nz(rs!CurrentStepRoleID, 0)
     rs.Close
     If st <> ES_REVIEW Or stepId = 0 Then
-        ExamApproveProblem = "It is " & IIf(Len(st) > 0, LCase$(st), "in no known state") & " now, so it isn't waiting for an approval."
+        Select Case st
+            Case ES_SME_REVIEW: st = "Its SMEs are still reviewing it"
+            Case ES_REJECTED: st = "It was sent back to its SMEs"
+            Case ES_APPROVED: st = "It already has final approval"
+            Case Else: st = "It is in no known state"
+        End Select
+        ExamApproveProblem = st & ", so it isn't waiting for an approval."
         Exit Function
     End If
     code = RoleCodeOf(stepId)
@@ -196,7 +202,7 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
         If Len(ids) = 0 Then
             noSme = noSme & IIf(Len(noSme) > 0, ", ", "") & Nz(rs!TopicName, "A topic")
         Else
-            plan.Add Array(rs!ExamTopicID, ids)
+            plan.Add Array(CLng(rs!ExamTopicID), ids)
         End If
         topics = topics & IIf(Len(topics) > 0, ", ", "") & Nz(rs!TopicName, "a topic")
         rs.MoveNext
@@ -457,7 +463,12 @@ Public Function DownloadProblem(ByVal examId As Long) As String
     If Len(st) = 0 Then
         DownloadProblem = "This exam was deleted."
     ElseIf st <> ES_APPROVED Then
-        DownloadProblem = "The document is made when the SM gives the exam final approval. It is " & LCase$(st) & " now."
+        Select Case st
+            Case ES_SME_REVIEW: st = "Its SMEs are still reviewing it."
+            Case ES_REVIEW: st = "It is waiting on an approver."
+            Case Else: st = "It was sent back to its SMEs."
+        End Select
+        DownloadProblem = "The document is made when the SM gives the exam final approval. " & st
     End If
 End Function
 

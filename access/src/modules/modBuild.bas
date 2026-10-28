@@ -93,6 +93,7 @@ Private Sub BuildUserInterface()
     Build_dlgReject                ' send a question back to its author
     Build_dlgNewExam               ' generate an exam (modBuildExams)
     Build_dlgSwap                  ' swap a question on an exam topic
+    Build_dlgRejectExam            ' send an exam back to its SMEs
     BuildMessageDialog             ' the kit's dlgMessage, for KitMsgBox
     BuildInputDialog               ' dlgInput, for KitInputBox
     BuildConfirmDialog             ' dlgConfirm, for KitConfirmTyped
