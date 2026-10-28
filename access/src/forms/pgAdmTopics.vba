@@ -18,7 +18,7 @@ Private Const MSG_TITLE As String = "Topics"
 
 Private m_id As Long            ' the open topic (0 when none)
 Private m_search As String
-Private m_stale As Boolean      ' subTopic saved a change the list doesn't show yet
+Private m_isStale As Boolean    ' subTopic saved a change the list doesn't show yet
 
 Private Sub Form_Load()
     On Error GoTo Err_Handler
@@ -75,7 +75,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
         GridSelect Me.sfList, m_id
         Exit Sub
     End If
-    If m_stale Then RefreshList id          ' the topic left behind was saved with a change
+    If m_isStale Then RefreshList id          ' the topic left behind was saved with a change
     Exit Sub
 Err_Handler:
     HandleError "pgAdmTopics.GridClick", id
@@ -155,13 +155,13 @@ End Sub
 ' subTopic saved a change (its AfterUpdate). The list catches up once the
 ' save that caused it is over (GridClick, TopicSaved).
 Public Sub TopicChanged()
-    m_stale = True
+    m_isStale = True
 End Sub
 
 ' subTopic's Save or Active switch saved topic id: show it in the list.
 Public Sub TopicSaved(ByVal id As Long)
     On Error GoTo Err_Handler
-    m_stale = False
+    m_isStale = False
     GridSelect Me.sfList, id, True
     ShowSupply
     Exit Sub
@@ -285,7 +285,7 @@ End Sub
 ' topic; none listed: nothing).
 Private Sub RefreshList(ByVal openId As Long)
     Dim g As Form, n As Long
-    m_stale = False
+    m_isStale = False
     Set g = Me.sfList.Form
     g.RecordSource = ListSql()
     GridHighlight Me.sfList, m_search

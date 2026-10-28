@@ -8,7 +8,7 @@ Option Explicit
 ' it at once. A front end with no data file linked edits zz_help alone.
 '
 ' The fields are unbound, so the page keeps track of an unsaved edit itself
-' (m_dirty) and asks before it is lost: another topic, New topic, a search
+' (m_isDirty) and asks before it is lost: another topic, New topic, a search
 ' that hides the topic, or leaving the page (CanLeave). A topic's key is set
 ' when it is made and can't change after, because the pages and dialogs find
 ' their help by it.
@@ -18,8 +18,8 @@ Private Const MSG_TITLE As String = "Help topics"
 Private m_table As String       ' help_topic, or zz_help with no data file linked
 Private m_key As String         ' the open topic's key ("" when none is open)
 Private m_lastKey As String     ' the topic open before New topic, for Undo changes
-Private m_new As Boolean        ' the open topic is new and not saved yet
-Private m_dirty As Boolean      ' the fields have changes not saved yet
+Private m_isNew As Boolean      ' the open topic is new and not saved yet
+Private m_isDirty As Boolean    ' the fields have changes not saved yet
 Private m_search As String
 
 Private Sub Form_Load()
@@ -47,7 +47,7 @@ Public Function Shortcut(ByVal action As String) As Boolean
     On Error GoTo Err_Handler
     Select Case action
         Case SHORTCUT_SAVE
-            If m_dirty Then SaveTopic
+            If m_isDirty Then SaveTopic
             Shortcut = True
         Case SHORTCUT_NEW
             NewTopic
@@ -65,7 +65,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
     Dim key As String
     On Error GoTo Err_Handler
     key = Nz(Me.sfList.Form.txtSel, "")
-    If Len(key) = 0 Or (key = m_key And Not m_new) Then Exit Sub
+    If Len(key) = 0 Or (key = m_key And Not m_isNew) Then Exit Sub
     If Not LeaveTopic() Then
         GridSelect Me.sfList, m_key
         Exit Sub
@@ -119,10 +119,10 @@ End Sub
 ' first when the admin says so (a new topic has to be).
 Private Sub btnPreview_Click()
     On Error GoTo Err_Handler
-    If m_new Then
+    If m_isNew Then
         If KitMsgBox("Preview shows saved topics. Save this new topic first?", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
         If Not SaveTopic() Then Exit Sub
-    ElseIf m_dirty Then
+    ElseIf m_isDirty Then
         Select Case KitMsgBox("Preview shows the topic as saved. Save your changes first?", vbYesNoCancel + vbQuestion, MSG_TITLE)
             Case vbYes: If Not SaveTopic() Then Exit Sub
             Case vbCancel: Exit Sub
@@ -139,7 +139,7 @@ End Sub
 Private Sub btnUndo_Click()
     Dim key As String
     On Error GoTo Err_Handler
-    If m_new Then key = m_lastKey Else key = m_key
+    If m_isNew Then key = m_lastKey Else key = m_key
     ShowTopic key
     Exit Sub
 Err_Handler:
@@ -173,8 +173,8 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub Edited()
-    If m_dirty Then Exit Sub
-    m_dirty = True
+    If m_isDirty Then Exit Sub
+    m_isDirty = True
     ShowState
 End Sub
 
@@ -183,7 +183,7 @@ Private Sub NewTopic()
     If Not LeaveTopic() Then Exit Sub
     m_lastKey = m_key
     ShowTopic ""
-    m_new = True
+    m_isNew = True
     Me.lblStamp.Caption = "New topic, not saved yet"
     ShowState
     Me.txtKey.SetFocus
@@ -193,12 +193,12 @@ End Sub
 ' cancels, or the topic can't be saved (the admin has been told why).
 Private Function LeaveTopic() As Boolean
     Dim nm As String
-    If Not m_dirty Then LeaveTopic = True: Exit Function
+    If Not m_isDirty Then LeaveTopic = True: Exit Function
     nm = Trim$(FieldText(Me, Me.txtTitle))
-    If Len(nm) = 0 Then nm = IIf(m_new, "the new topic", m_key) Else nm = """" & nm & """"
+    If Len(nm) = 0 Then nm = IIf(m_isNew, "the new topic", m_key) Else nm = """" & nm & """"
     Select Case KitMsgBox("Save your changes to " & nm & "?", vbYesNoCancel + vbQuestion, MSG_TITLE)
         Case vbYes: LeaveTopic = SaveTopic()
-        Case vbNo: m_dirty = False: LeaveTopic = True
+        Case vbNo: m_isDirty = False: LeaveTopic = True
     End Select
 End Function
 
@@ -216,7 +216,7 @@ Private Function SaveTopic() As Boolean
         Exit Function
     End If
     KitHelpSave key, title, body
-    m_key = key: m_new = False: m_dirty = False
+    m_key = key: m_isNew = False: m_isDirty = False
     RefreshList
     ShowTopic key
     If m_table = HELP_SHARED_TABLE Then
@@ -241,7 +241,7 @@ Private Function TopicProblem(ByVal key As String, ByVal title As String) As Str
         TopicProblem = "Give the topic a title. The help window lists topics by their titles."
     ElseIf Len(title) > 80 Then
         TopicProblem = "A topic's title can be at most 80 characters."
-    ElseIf m_new Then
+    ElseIf m_isNew Then
         If TopicExists(key) Then
             TopicProblem = "There is already a topic with the key " & key & ". Open it from the list to change it."
         Else
@@ -264,7 +264,7 @@ End Function
 ' and mark its row.
 Private Sub ShowTopic(ByVal key As String)
     Dim rs As DAO.Recordset
-    m_key = "": m_new = False: m_dirty = False
+    m_key = "": m_isNew = False: m_isDirty = False
     Me.txtKey = Null: Me.txtTitle = Null: Me.txtBody = Null
     Me.lblStamp.Caption = ""
     If Len(key) > 0 Then
@@ -296,12 +296,12 @@ End Function
 ' typed only for a new topic.
 Private Sub ShowState()
     Dim isOpen As Boolean
-    isOpen = m_new Or Len(m_key) > 0
-    Me.txtKey.Locked = Not m_new
+    isOpen = m_isNew Or Len(m_key) > 0
+    Me.txtKey.Locked = Not m_isNew
     Me.txtTitle.Locked = Not isOpen
     Me.txtBody.Locked = Not isOpen
-    SetEnabled Me.btnSave, m_dirty
-    SetEnabled Me.btnUndo, m_dirty Or m_new
+    SetEnabled Me.btnSave, m_isDirty
+    SetEnabled Me.btnUndo, m_isDirty Or m_isNew
     SetEnabled Me.btnPreview, isOpen
 End Sub
 
@@ -317,7 +317,7 @@ Private Sub RefreshList()
     ShowEmpty Me, "emptyList", n = 0
     ' The empty state shows in place of the list: a subform always covers a label.
     SetVisible Me.sfList, n > 0
-    If GridSelect(Me.sfList, m_key) Or m_dirty Or m_new Then Exit Sub
+    If GridSelect(Me.sfList, m_key) Or m_isDirty Or m_isNew Then Exit Sub
     If IsNull(SelectFirstRow(Me.sfList)) Then ShowTopic ""
 End Sub
 

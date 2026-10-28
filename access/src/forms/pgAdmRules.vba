@@ -15,14 +15,14 @@ Option Explicit
 
 Private Const MSG_TITLE As String = "Rules and lists"
 
-Private m_dirty As Boolean      ' the rule has changes not saved yet
-Private m_data As Boolean       ' a data file is linked
+Private m_isDirty As Boolean    ' the rule has changes not saved yet
+Private m_hasData As Boolean    ' a data file is linked
 
 Private Sub Form_Load()
     Dim c As Variant
     On Error GoTo Err_Handler
-    m_data = DataLinked()
-    If m_data Then
+    m_hasData = DataLinked()
+    If m_hasData Then
         Me.sfDiff.Form.RecordSource = DiffSql()
         Me.sfClass.Form.RecordSource = ClassSql()
         LoadRule
@@ -42,7 +42,7 @@ End Sub
 ' frmMain asks before it swaps or closes this page.
 Public Function CanLeave() As Boolean
     On Error GoTo Err_Handler
-    If Not m_dirty Then CanLeave = True: Exit Function
+    If Not m_isDirty Then CanLeave = True: Exit Function
     Select Case KitMsgBox("Save your changes to the overlap rule?", vbYesNoCancel + vbQuestion, MSG_TITLE)
         Case vbYes: CanLeave = SaveRule()
         Case vbNo: CanLeave = True
@@ -56,7 +56,7 @@ End Function
 Public Function Shortcut(ByVal action As String) As Boolean
     On Error GoTo Err_Handler
     If action = SHORTCUT_SAVE Then
-        If m_dirty Then SaveRule
+        If m_isDirty Then SaveRule
         Shortcut = True
     End If
     Exit Function
@@ -85,7 +85,7 @@ End Sub
 ' A slider moved (its onChange).
 Public Sub RuleChanged()
     On Error GoTo Err_Handler
-    If Not m_data Then Exit Sub
+    If Not m_hasData Then Exit Sub
     Edited
     ShowShort
     Exit Sub
@@ -125,20 +125,20 @@ Private Sub LoadRule()
     SetSlider Me, "sldPct", OverlapPct()
     SetSlider Me, "sldWindow", OverlapWindow()
     Me.txtDefault = DefaultQuestionCount()
-    m_dirty = False
+    m_isDirty = False
     ShowShort
     ShowState
 End Sub
 
 Private Sub Edited()
-    If m_dirty Or Not m_data Then Exit Sub
-    m_dirty = True
+    If m_isDirty Or Not m_hasData Then Exit Sub
+    m_isDirty = True
     ShowState
 End Sub
 
 Private Sub ShowState()
-    SetEnabled Me.btnSave, m_dirty
-    SetEnabled Me.btnUndo, m_dirty
+    SetEnabled Me.btnSave, m_isDirty
+    SetEnabled Me.btnUndo, m_isDirty
 End Sub
 
 ' The topics short of approved questions under the sliders' values.
@@ -175,7 +175,7 @@ Private Function SaveRule() As Boolean
     ws.CommitTrans: inTrans = False
     On Error GoTo 0
     Me.txtDefault = CLng(t)
-    m_dirty = False
+    m_isDirty = False
     ShowState
     KitToast "Saved. New exams follow the new rule.", "success"
     SaveRule = True

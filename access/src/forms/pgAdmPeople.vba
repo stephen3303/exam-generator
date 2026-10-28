@@ -15,7 +15,7 @@ Option Explicit
 Private Const MSG_TITLE As String = "People and routing"
 
 Private m_pid As Long           ' the open person (0 when none)
-Private m_loading As Boolean    ' ShowPerson is setting the switches
+Private m_isLoading As Boolean  ' ShowPerson is setting the switches
 
 Private Sub Form_Load()
     On Error GoTo Err_Handler
@@ -93,9 +93,9 @@ End Sub
 Public Sub ActiveChanged()
     Dim v As Boolean
     On Error GoTo Err_Handler
-    If m_loading Or m_pid = 0 Then Exit Sub
+    If m_isLoading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    v = SwitchOn("tgActive")
+    v = IsSwitchOn("tgActive")
     If Not v Then
         If m_pid = SignedInPersonID() Then
             Refuse "tgActive", "You can't turn off your own access. Another admin can."
@@ -116,9 +116,9 @@ End Sub
 Public Sub AdminChanged()
     Dim v As Boolean
     On Error GoTo Err_Handler
-    If m_loading Or m_pid = 0 Then Exit Sub
+    If m_isLoading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    v = SwitchOn("tgAdmin")
+    v = IsSwitchOn("tgAdmin")
     If Not v Then
         If m_pid = SignedInPersonID() Then
             Refuse "tgAdmin", "You can't take away your own admin. Another admin can."
@@ -186,9 +186,9 @@ End Sub
 Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
     Dim v As Boolean, topics As String, ws As DAO.Workspace, inTrans As Boolean
     On Error GoTo Err_Handler
-    If m_loading Or m_pid = 0 Then Exit Sub
+    If m_isLoading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    v = SwitchOn(nm)
+    v = IsSwitchOn(nm)
     If code = "SME" And Not v Then
         topics = PersonTopicsText(m_pid)
         If Len(topics) > 0 Then
@@ -241,8 +241,8 @@ Private Sub Refuse(ByVal nm As String, ByVal why As String)
     KitMsgBox why, vbInformation, MSG_TITLE
 End Sub
 
-Private Function SwitchOn(ByVal nm As String) As Boolean
-    SwitchOn = CBool(Nz(Me.Controls(nm & "_val").Value, False))
+Private Function IsSwitchOn(ByVal nm As String) As Boolean
+    IsSwitchOn = CBool(Nz(Me.Controls(nm & "_val").Value, False))
 End Function
 
 ' Set a switch in code (no onChange).
@@ -288,7 +288,7 @@ Private Sub ShowPerson(ByVal pid As Long)
         If rs.EOF Then
             isOpen = False: m_pid = 0
         Else
-            m_loading = True
+            m_isLoading = True
             Me.lblName.Caption = Trim$(Nz(rs!rank, "") & " " & Nz(rs!first_name, "") & " " & Nz(rs!last_name, ""))
             s = "Signs in as " & Nz(rs!username, "?")
             If pid = SignedInPersonID() Then s = s & " (you)"
@@ -301,7 +301,7 @@ Private Sub ShowPerson(ByVal pid As Long)
             SetSwitch "tgSM", PersonHasRole(pid, "SM")
             s = PersonTopicsText(pid)
             Me.lblTopics.Caption = IIf(Len(s) > 0, s, "No topics yet. Add SMEs to a topic on the Topics page.")
-            m_loading = False
+            m_isLoading = False
         End If
         rs.Close: Set rs = Nothing
     End If
@@ -313,7 +313,7 @@ Private Sub ShowPerson(ByVal pid As Long)
     Exit Sub
 Fail:
     ' A failed look-up must not leave the switches ignoring every flip.
-    m_loading = False
+    m_isLoading = False
     If Not rs Is Nothing Then rs.Close
     RaiseAgain "pgAdmPeople.ShowPerson", pid
 End Sub
