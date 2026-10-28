@@ -55,7 +55,7 @@ Who may swap and sign off is checked again when you click: you must still be an 
 === review.swap | Swapping a question
 **Swap** opens a window listing the approved questions of the topic that aren't on the exam, those given lately last, and the newer version of the question you are swapping out, when it has one. Type in the search box to find one by its words or its number (Q12). Pick one to read it in full.
 
-The note under it says whether the overlap rule allows it. At most the admin's share (30% unless changed) of a topic's questions may have been on the exams generated before this one; a swap that would take the topic over that is refused, so pick a question that wasn't given lately, or swap out one that was. A topic already over the limit (the DH agreed to repeats when the exam was generated) can swap one question given lately for another, but can't take in more. The exams generated after this one count it in their own window, so a question one of them holds can't come in when that would take that exam's topic over the rule. **Swap** puts the picked question on the exam. The exam's history records who swapped which question for which; the admin sees it on the Logs page (build phase 10).
+The note under it says whether the overlap rule allows it. At most the admin's share (30% unless changed) of a topic's questions may have been on the exams generated before this one; a swap that would take the topic over that is refused, so pick a question that wasn't given lately, or swap out one that was. A topic already over the limit (the DH agreed to repeats when the exam was generated) can swap one question given lately for another, but can't take in more. The exams generated after this one count it in their own window, so a question one of them holds can't come in when that would take that exam's topic over the rule. **Swap** puts the picked question on the exam. The exam's history records who swapped which question for which; **History** on the **Exams** page shows it.
 
 === approvals | Approvals
 The questions waiting for your approval. Each approver has their own queue: a submitted question goes to the **DH**, then the **XO**, then the **SM**, and shows here while it waits at a step whose role you hold. The longest waiting is at the top. The **Exams** tab does the same for exams; see **Approving an exam**.
@@ -84,13 +84,13 @@ The question becomes **Rejected** and leaves every approver's queue. Its author 
 When the SMEs have signed off every topic of an exam, it goes to the **DH**, then the **XO**, then the **SM**, like a question. It shows on the **Exams** tab while it waits at a step whose role you hold.
 
 # Checking an exam
-Pick a row to see it on the right: where it is in the chain, who it is for, who generated it, and its highest portion marking. Under that is the whole exam: each topic with who signed it off, then every question in order with its parts, options and **the answers**, which the Word document leaves out. **History** shows who generated, signed off, approved and sent it back.
+Pick a row to see it on the right: where it is in the chain, who it is for, who generated it, and its highest portion marking. Under that is the whole exam: each topic with who signed it off, then every question in order with its parts, options and **the answers**, which the Word document leaves out. **History** shows who generated it, swapped its questions, signed off, approved and sent it back.
 
 # Approve or send back
 - **Approve** sends it to the next step. The **SM**'s approval is final: the app asks first, then stamps the exam's overall marking (its highest portion marking) and makes its Word document. If Word can't make it, the exam stays approved, and **Download a copy** on the **Exams** page makes it later.
-- **Reject** opens a window: pick one topic or **(Every topic)**, check who gets it back, and give the reason, which is required. Those topics lose their sign-off and their SMEs get new reviews under **My reviews**. The exam's version goes up by one (E12 v2), and once every topic is signed off again it starts again at the **DH**. A topic with no active SME can't be sent back until the admin adds one.
+- **Reject** opens a window: pick one topic or **(Every topic)**, check who gets it back, and give the reason, which is required. Those topics lose their sign-off and their SMEs get new reviews under **My reviews**. The exam's version goes up by one (E12 v2), and once every topic is signed off again it starts again at the **DH**. A topic with no active SME can't be sent back until the admin adds one; the window names it and keeps **Send back** greyed out.
 
-You can't approve or send back an exam if you signed off one of its topics: another holder of the same role has to. The DH who generated it may approve it, since its questions were drawn at random and checked by the SMEs.
+You can't approve or send back an exam if you signed off one of its topics: another holder of the same role has to, so it doesn't show on your list. The DH who generated it may approve it, since its questions were drawn at random and checked by the SMEs.
 
 === exams | Exams
 Every exam and where it stands, the newest first. The department head starts a new exam here with **New exam**; see **Generating an exam**.
@@ -102,13 +102,18 @@ Every exam and where it stands, the newest first. The department head starts a n
 # The exam on the right
 Pick a row to see it: where it is in the chain, who it is for and who generated it, and where it stands. A sent-back exam shows who sent it back and why; an approved one shows when and its overall marking. Under that, its topics: how many are signed off, and who signed off each.
 - **Download a copy** saves the approved exam's Word document; see **Downloading an exam**.
-- **History** shows who generated, signed off, approved, sent back and downloaded it, and when.
-- Right-click a row for the same actions, and to open **Approvals** when it waits on you.
+- **History** shows who generated it, swapped its questions, signed off, approved, sent back and downloaded it, and when.
+- Right-click a row for the same actions, and to open it in **Approvals** when it waits on you.
 
 === exams.download | Downloading an exam
 Only an approved exam has a document. **Download a copy** asks where to save it and saves a copy of the Word document made at the **SM**'s approval. The app keeps the original in an **Exam documents** folder beside the data file; if it is missing, Download makes it again, which needs Word on this computer. Every download is recorded in the exam's **History**.
 
 The document has a cover page (who it is for, the template, the exam's number and version, the date approved, and how many questions and points), then every question in order with its parts and options, but no answers. Each question and part starts with its portion marking, such as (C); its answer options count at the same marking. Each page is marked at the top and bottom with the highest marking on that page, the cover with the exam's overall marking, and the footer numbers the pages. If Word can't split the pages cleanly, every page carries the overall marking instead, and the app says so.
+
+=== exams.history | An exam's history
+Everything that happened to one exam, newest first: who generated it, swapped its questions, signed off its topics, approved it, sent it back with which reason, and downloaded it, when, at which approval step, and its version then. The rows are never changed or deleted.
+
+Click **Copy** to put the history on the clipboard as text, to paste into an email or a report.
 
 === exams.new | Generating an exam
 Only the department head (**DH**) generates exams. **New exam** opens a window:

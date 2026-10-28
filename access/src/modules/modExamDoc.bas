@@ -5,8 +5,10 @@ Option Explicit
 ' phase 8. Made when the SM gives an exam final approval (the Approvals
 ' page calls MakeExamDocument) and kept in the "Exam documents" folder next
 ' to the shared data file, so anyone can download a copy (Exams page,
-' modExamApprovals.DownloadExam). tblExams.OutputFile holds its path; a
-' missing file is made again from the exam (EnsureExamDocument).
+' modExamApprovals.DownloadExam). tblExams.OutputFile holds the file's
+' name only, found in ExamDocFolder, since each PC may reach the shared
+' folder by its own path; a missing file is made again from the exam
+' (EnsureExamDocument). Every document made writes an audit row.
 '
 ' The document holds a cover page, then the questions in the exam's order,
 ' numbered, each part and answer option indented under its question, with
@@ -49,9 +51,8 @@ Private Const wdAlertsNone As Long = 0
 
 Private m_doc As Object             ' the document being made
 Private m_used As Boolean           ' its first (empty) paragraph has been used
-Private m_pStart() As Long          ' each marked portion's paragraph: start,
-Private m_pEnd() As Long            '   end
-Private m_pRank() As Long           '   and LevelRank
+Private m_pRng() As Object          ' each marked portion's paragraph (a Word range, which moves with the text)
+Private m_pRank() As Long           '   and its LevelRank
 Private m_pN As Long
 
 ' ---------------------------------------------------------------------------
@@ -79,6 +80,14 @@ Private Function DocPathFor(ByVal examId As Long) As String
     DocPathFor = ExamDocFolder() & "\" & KitSafeFileName(Left$(nm, 120)) & ".docx"
 End Function
 
+' The stored document's full path in ExamDocFolder, or "" when none was
+' made. Older rows may hold a whole path; only its file name is used.
+Private Function StoredDocPath(ByVal examId As Long) As String
+    Dim p As String
+    p = Nz(DLookup("OutputFile", "tblExams", "ExamID=" & examId), "")
+    If Len(p) > 0 Then StoredDocPath = ExamDocFolder() & "\" & Mid$(p, InStrRev(p, "\") + 1)
+End Function
+
 ' The name a downloaded copy is offered under: "Exam E12 v2 USS Example.docx".
 Public Function ExamDocFileName(ByVal examId As Long) As String
     Dim p As String
@@ -90,16 +99,17 @@ End Function
 
 ' The path of exam examId's document, made first when it is missing (an
 ' approval whose document failed, or a file someone moved). Returns "" and
-' the path in docPath, or why there is none.
-Public Function EnsureExamDocument(ByVal examId As Long, ByRef docPath As String) As String
-    Dim p As String, note As String
-    docPath = ""
-    p = Nz(DLookup("OutputFile", "tblExams", "ExamID=" & examId), "")
+' the path in docPath, or why there is none; note as MakeExamDocument's
+' when it was made now.
+Public Function EnsureExamDocument(ByVal examId As Long, ByRef docPath As String, Optional ByRef note As String) As String
+    Dim p As String
+    docPath = "": note = ""
+    p = StoredDocPath(examId)
     If Len(p) > 0 Then
         If Len(Dir(p)) > 0 Then docPath = p: Exit Function
     End If
     EnsureExamDocument = MakeExamDocumentNow(examId, note)
-    If Len(EnsureExamDocument) = 0 Then docPath = Nz(DLookup("OutputFile", "tblExams", "ExamID=" & examId), "")
+    If Len(EnsureExamDocument) = 0 Then docPath = StoredDocPath(examId)
 End Function
 
 ' Make exam examId's document now, under the busy veil: after its final
@@ -134,29 +144,19 @@ End Function
 ' overall marking (see the top of the module), else "".
 ' Errors: Word's and the file system's pass up, after Word is closed.
 Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As String) As String
-    Dim rs As DAO.Recordset, wd As Object, path As String, st As String, unmarked As String
-    Dim overall As Long, num As Long, desc As String, src As String
+    Dim wd As Object, path As String, st As String
+    Dim overall As Long, num As Long, desc As String, src As String, lvl As Long, sameOrder As Boolean
     note = ""
     st = ExamStatusName(DLookup("StatusID", "tblExams", "ExamID=" & examId))
     If st <> ES_APPROVED Then MakeExamDocument = DownloadProblem(examId): Exit Function
-    ' Every question and part must carry a marking the lookup list knows.
-    Set rs = CurrentDb.OpenRecordset("SELECT q.QuestionKey, q.VersionNo FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
-        "ON eq.QuestionID=q.QuestionID) LEFT JOIN tblClassLevels AS c ON q.ClassLevelID=c.ClassLevelID WHERE eq.ExamID=" & examId & _
-        " AND c.ClassLevelID Is Null UNION SELECT q.QuestionKey, q.VersionNo FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
-        "ON eq.QuestionID=q.QuestionID) INNER JOIN tblQuestionParts AS pt ON pt.QuestionID=q.QuestionID) LEFT JOIN tblClassLevels AS c " & _
-        "ON pt.ClassLevelID=c.ClassLevelID WHERE eq.ExamID=" & examId & " AND c.ClassLevelID Is Null", dbOpenSnapshot)
-    Do While Not rs.EOF
-        unmarked = unmarked & IIf(Len(unmarked) > 0, ", ", "") & QuestionRef(rs!QuestionKey, rs!VersionNo)
-        rs.MoveNext
-    Loop
-    rs.Close
-    If Len(unmarked) > 0 Then
-        MakeExamDocument = unmarked & IIf(InStr(unmarked, ",") > 0, " have", " has") & " a question or part with no portion " & _
-            "marking the classification list knows, so the document can't be marked. The admin checks the list on the Rules and " & _
-            "lists page."
-        Exit Function
-    End If
-    overall = ClassRank(OverallLevelID(examId))
+    MakeExamDocument = UnmarkedProblem(examId)
+    If Len(MakeExamDocument) > 0 Then Exit Function
+    ' The marking the SM approved (stored then), not today's order; when the
+    ' admin reordered the levels since, every page carries that marking.
+    lvl = Nz(DLookup("OverallClassLevelID", "tblExams", "ExamID=" & examId), 0)
+    sameOrder = (lvl = 0 Or lvl = OverallLevelID(examId))
+    If lvl = 0 Then lvl = OverallLevelID(examId)
+    overall = ClassRank(lvl)
     path = DocPathFor(examId)
     On Error Resume Next
     If Len(Dir(path)) > 0 Then Kill path
@@ -179,21 +179,26 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
     Set m_doc = wd.Documents.Add
     m_used = False
     m_pN = 0
-    ReDim m_pStart(0 To 63): ReDim m_pEnd(0 To 63): ReDim m_pRank(0 To 63)
-    SetUpPage
+    ReDim m_pRng(0 To 63): ReDim m_pRank(0 To 63)
+    SetUpPage overall
     WriteCover examId, overall
     WriteQuestions examId
-    StampMarkings overall, note
+    StampMarkings overall, sameOrder, note
     m_doc.SaveAs2 path, wdFormatXMLDocument
     m_doc.Close wdDoNotSaveChanges
     Set m_doc = Nothing
     wd.Quit wdDoNotSaveChanges
     Set wd = Nothing
-    KitExecute "UPDATE tblExams SET OutputFile=" & Q(path) & " WHERE ExamID=" & examId
+    Erase m_pRng
+    ' Only the file's name: each PC may reach the shared folder by another path.
+    KitExecute "UPDATE tblExams SET OutputFile=" & Q(Mid$(path, InStrRev(path, "\") + 1)) & " WHERE ExamID=" & examId
+    AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_DOC_MADE, 0, _
+        Mid$(path, InStrRev(path, "\") + 1) & IIf(Len(note) > 0, ". " & note, "")
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
     On Error Resume Next
+    Erase m_pRng
     If Not m_doc Is Nothing Then m_doc.Close wdDoNotSaveChanges
     Set m_doc = Nothing
     If Not wd Is Nothing Then wd.Quit wdDoNotSaveChanges
@@ -206,7 +211,7 @@ End Function
 ' Margins, the Normal style, and a one-line header and two-line footer
 ' (marking; "Page n of m") so the layout has its final height before the
 ' pages are counted.
-Private Sub SetUpPage()
+Private Sub SetUpPage(ByVal overall As Long)
     Dim sec As Object
     With m_doc.PageSetup
         .TopMargin = 72: .BottomMargin = 72: .LeftMargin = 72: .RightMargin = 72
@@ -221,7 +226,7 @@ Private Sub SetUpPage()
         .ParagraphFormat.SpaceAfter = 4
     End With
     Set sec = m_doc.Sections(1)
-    SetBanner sec, "UNCLASSIFIED"
+    SetBanner sec, RankMarking(overall)
 End Sub
 
 ' Put marking in section sec's header and footer, the footer's second line
@@ -311,11 +316,10 @@ End Function
 
 ' Remember paragraph r as a portion marked at rank rk.
 Private Sub AddPortion(r As Object, ByVal rk As Long)
-    If m_pN > UBound(m_pStart) Then
-        ReDim Preserve m_pStart(0 To 2 * m_pN): ReDim Preserve m_pEnd(0 To 2 * m_pN): ReDim Preserve m_pRank(0 To 2 * m_pN)
+    If m_pN > UBound(m_pRng) Then
+        ReDim Preserve m_pRng(0 To 2 * m_pN): ReDim Preserve m_pRank(0 To 2 * m_pN)
     End If
-    m_pStart(m_pN) = r.Start
-    m_pEnd(m_pN) = r.End
+    Set m_pRng(m_pN) = r.Duplicate
     m_pRank(m_pN) = rk
     m_pN = m_pN + 1
 End Sub
@@ -327,7 +331,12 @@ Private Sub WriteCover(ByVal examId As Long, ByVal overall As Long)
     Set rs = CurrentDb.OpenRecordset("SELECT e.RecipientName, e.VersionNo, e.FinalApprovedOn, tm.TemplateName FROM tblExams AS e " & _
         "LEFT JOIN tblTemplates AS tm ON e.TemplateID=tm.TemplateID WHERE e.ExamID=" & examId, dbOpenSnapshot)
     nQ = DCount("*", "tblExamQuestions", "ExamID=" & examId)
-    pts = DSum("q.TotalPoints", "tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID", "eq.ExamID=" & examId)
+    ' DSum can't take a join as its domain, so sum with a query.
+    With CurrentDb.OpenRecordset("SELECT Sum(q.TotalPoints) AS pts FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
+        "ON eq.QuestionID=q.QuestionID WHERE eq.ExamID=" & examId, dbOpenSnapshot)
+        pts = .Fields("pts").Value
+        .Close
+    End With
     AddPara "INSPECTION EXAM", 26, True, True, 150, 24
     AddPara "for", 12, False, True, 0, 6
     AddPara Nz(rs!RecipientName, ""), 20, True, True, 0, 30
@@ -402,51 +411,52 @@ End Function
 ' Page markings
 ' ---------------------------------------------------------------------------
 
-' Lay the document out, work out each page's highest marking (the cover:
-' the overall one), make each page its own section and stamp its banner.
-' Falls back to the overall marking on every page when a page can't be
-' split cleanly or the layout moved; note then says so.
-Private Sub StampMarkings(ByVal overall As Long, ByRef note As String)
-    Dim nPages As Long, pageRk() As Long, starts() As Long, i As Long, p As Long, ps As Long, pe As Long
-    Dim ok As Boolean, pos As Long, sec As Object
+' Lay the document out, make each page its own section, and stamp each
+' section's banner with the highest marking of the portions in it (the
+' cover: the overall one). The portions are Word ranges, which move with the
+' text, so the ranks are read from the final layout, after the breaks went
+' in. Falls back to the overall marking on every page when a page can't be
+' split cleanly, the split didn't leave exactly one section per page, or
+' sameOrder is False (the classification order changed since the exam was
+' approved); note then says why.
+Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
+    Dim nPages As Long, secRk() As Long, starts() As Long, i As Long, p As Long, ok As Boolean, pos As Long
+    Dim sec As Object, r As Object, s0 As Long, s1 As Long
     m_doc.Repaginate
     nPages = m_doc.ComputeStatistics(wdStatisticPages)
-    ReDim pageRk(1 To nPages)
-    ReDim starts(1 To nPages)
-    pageRk(1) = overall
-    For i = 0 To m_pN - 1
-        ps = m_doc.Range(m_pStart(i), m_pStart(i)).Information(wdActiveEndPageNumber)
-        pe = m_doc.Range(m_pEnd(i) - 1, m_pEnd(i) - 1).Information(wdActiveEndPageNumber)
-        For p = ps To pe
-            If p >= 1 And p <= nPages Then
-                If m_pRank(i) > pageRk(p) Then pageRk(p) = m_pRank(i)
+    ok = sameOrder And nPages >= 1
+    If ok Then
+        ReDim starts(1 To nPages)
+        For p = 2 To nPages
+            pos = m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start
+            starts(p) = pos
+            If pos < 1 Then
+                ok = False
+            ElseIf m_doc.Range(pos - 1, pos).Text <> vbCr Then
+                ok = False                                 ' the page starts inside a paragraph
             End If
         Next
-    Next
-    ok = True
-    For p = 2 To nPages
-        If pageRk(p) = 0 Then pageRk(p) = overall          ' a page with no marked portion found
-        pos = m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start
-        starts(p) = pos
-        If pos < 1 Then
-            ok = False
-        ElseIf m_doc.Range(pos - 1, pos).Text <> vbCr Then
-            ok = False                                     ' the page starts inside a paragraph
-        End If
-    Next
+    End If
     If ok Then
         ' From the last page back, so the earlier positions stay put.
         For p = nPages To 2 Step -1
             m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
         Next
         m_doc.Repaginate
-        ok = (m_doc.Sections.Count = nPages And m_doc.ComputeStatistics(wdStatisticPages) = nPages)
-        If ok Then
-            For p = 1 To nPages
-                Set sec = m_doc.Sections(p)
-                If m_doc.Range(sec.Range.Start, sec.Range.Start).Information(wdActiveEndPageNumber) <> p Then ok = False
+        ok = SectionsArePages(nPages)
+    End If
+    If ok Then
+        ReDim secRk(1 To nPages)
+        secRk(1) = overall
+        For p = 2 To nPages
+            Set sec = m_doc.Sections(p)
+            s0 = sec.Range.Start: s1 = sec.Range.End
+            For i = 0 To m_pN - 1
+                Set r = m_pRng(i)
+                If r.Start < s1 And r.End > s0 And m_pRank(i) > secRk(p) Then secRk(p) = m_pRank(i)
             Next
-        End If
+            If secRk(p) = 0 Then secRk(p) = overall          ' a page with no marked portion found
+        Next
     End If
     For p = 1 To m_doc.Sections.Count
         Set sec = m_doc.Sections(p)
@@ -454,10 +464,37 @@ Private Sub StampMarkings(ByVal overall As Long, ByRef note As String)
             sec.Headers(wdHeaderFooterPrimary).LinkToPrevious = False
             sec.Footers(wdHeaderFooterPrimary).LinkToPrevious = False
         End If
-        If ok Then SetMarking sec, RankMarking(pageRk(p)) Else SetMarking sec, RankMarking(overall)
+        If ok Then SetMarking sec, RankMarking(secRk(p)) Else SetMarking sec, RankMarking(overall)
     Next
-    If Not ok Then note = "Word couldn't split the pages cleanly, so every page carries the exam's overall marking."
+    If Not sameOrder Then
+        note = "The classification order was changed after the SM approved this exam, so every page carries the overall " & _
+            "marking approved then."
+    ElseIf Not ok Then
+        note = "Word couldn't split the pages cleanly, so every page carries the exam's overall marking."
+    End If
 End Sub
+
+' True when the document has exactly nPages pages and nPages sections, and
+' each section starts at the top of its page and ends on it.
+Private Function SectionsArePages(ByVal nPages As Long) As Boolean
+    Dim p As Long, sec As Object, s0 As Long, s1 As Long
+    If m_doc.Sections.Count <> nPages Or m_doc.ComputeStatistics(wdStatisticPages) <> nPages Then Exit Function
+    For p = 1 To nPages
+        Set sec = m_doc.Sections(p)
+        s0 = sec.Range.Start: s1 = sec.Range.End - 1
+        If s1 < s0 Then Exit Function                      ' an empty section
+        If PageOf(s0) <> p Or PageOf(s1) <> p Then Exit Function
+        If p > 1 Then
+            If m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start <> s0 Then Exit Function
+        End If
+    Next
+    SectionsArePages = True
+End Function
+
+' The page character position pos is on.
+Private Function PageOf(ByVal pos As Long) As Long
+    PageOf = m_doc.Range(pos, pos).Information(wdActiveEndPageNumber)
+End Function
 
 ' The marking of the classification level of rank rk ("SECRET").
 Private Function RankMarking(ByVal rk As Long) As String

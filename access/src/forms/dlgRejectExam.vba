@@ -2,16 +2,18 @@ Option Compare Database
 Option Explicit
 
 ' Send an exam back (Build_dlgRejectExam), from the Approvals page's Exams
-' tab. OpenArgs "id=<ExamID>". The approver picks one topic or every topic,
-' sees whose reviews reopen (ExamReturnsToText) and gives the reason, which
-' is required. Send back calls modExamApprovals.RejectExam: those topics'
-' sign-offs are cleared, their SMEs get new reviews and the exam is Rejected,
-' its version one higher. RunDialog sees DialogResult "ok". Cancel, or Esc,
-' changes nothing.
+' tab. OpenArgs "id=<ExamID>;step=<the step's RoleID the page showed>". The
+' approver picks one topic or every topic, sees whose reviews reopen
+' (ExamReturnsToText) and gives the reason, which is required. Send back
+' calls modExamApprovals.RejectExam: those topics' sign-offs are cleared,
+' their SMEs get new reviews and the exam is Rejected, its version one
+' higher. RunDialog sees DialogResult "ok". Cancel, or Esc, changes
+' nothing.
 
 Private Const MSG_TITLE As String = "Send back"
 
 Private m_id As Long
+Private m_step As Long          ' the step the page showed: sends back from that step only
 
 Public Property Get HelpTopic() As String
     HelpTopic = "approvals.exams"
@@ -21,6 +23,7 @@ Private Sub Form_Load()
     Dim ref As String
     On Error GoTo Err_Handler
     m_id = ArgLong("id")
+    m_step = ArgLong("step")
     ref = ExamRef(m_id, DLookup("VersionNo", "tblExams", "ExamID=" & m_id))
     Me.Caption = "Send back " & ref
     Me.lblHead.Caption = "Send " & ref & " back to its SMEs?"
@@ -50,20 +53,16 @@ End Sub
 Private Sub btnReject_Click()
     Dim problem As String
     On Error GoTo Err_Handler
-    If Len(Nz(CleanText(Me.txtReason), "")) = 0 Then
-        problem = "Give the reason, so its SMEs know what to change."
-    Else
-        problem = ReasonProblem(Me.txtReason)
-    End If
+    problem = ReasonProblem(Me.txtReason, EXAM_REASON_WHO)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbExclamation, MSG_TITLE
         Me.txtReason.SetFocus
         Exit Sub
     End If
-    problem = RejectExam(m_id, Me.txtReason, Nz(Me.cboTopic, 0))
+    problem = RejectExam(m_id, Me.txtReason, Nz(Me.cboTopic, 0), m_step)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbInformation, MSG_TITLE
-        If Len(ExamApproveProblem(m_id)) > 0 Then DoCmd.Close acForm, Me.Name, acSaveNo   ' acted on first: nothing to fix here
+        If Len(ExamApproveProblem(m_id, m_step)) > 0 Then DoCmd.Close acForm, Me.Name, acSaveNo   ' acted on first: nothing to fix here
         Exit Sub
     End If
     TempVars("DialogResult") = "ok"
@@ -81,9 +80,11 @@ Err_Handler:
     HandleError "dlgRejectExam.btnCancel_Click"
 End Sub
 
-' Whose reviews reopen for the topic picked.
+' Whose reviews reopen for the topic picked; Send back waits while a topic
+' it would reopen has no SME.
 Private Sub ShowWho()
     Me.txtTo = ExamReturnsToText(m_id, Nz(Me.cboTopic, 0))
+    SetEnabled Me.btnReject, Len(ExamTopicsWithoutSme(m_id, Nz(Me.cboTopic, 0))) = 0
 End Sub
 
 ' The number after name= in OpenArgs ("id=3"), or 0.

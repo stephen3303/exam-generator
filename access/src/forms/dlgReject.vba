@@ -2,14 +2,16 @@ Option Compare Database
 Option Explicit
 
 ' Reject a question (Build_dlgReject), from the Approvals page. OpenArgs
-' "id=<QuestionID>". Shows who it goes back to and asks the reason, which is
-' required. Reject sends it back (modApprovals.RejectQuestion: Rejected, at
-' no step, the reason in the audit row); RunDialog sees DialogResult "ok".
-' Cancel, or Esc, changes nothing.
+' "id=<QuestionID>;step=<the step's RoleID the page showed>". Shows who it
+' goes back to and asks the reason, which is required. Reject sends it back
+' (modApprovals.RejectQuestion: Rejected, at no step, the reason in the
+' audit row); RunDialog sees DialogResult "ok". Cancel, or Esc, changes
+' nothing.
 
 Private Const MSG_TITLE As String = "Reject"
 
 Private m_qid As Long
+Private m_step As Long          ' the step the page showed: rejects at that step only
 
 Public Property Get HelpTopic() As String
     HelpTopic = "approvals.reject"
@@ -19,6 +21,7 @@ Private Sub Form_Load()
     Dim key As Variant, ver As Variant
     On Error GoTo Err_Handler
     m_qid = ArgLong("id")
+    m_step = ArgLong("step")
     key = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & m_qid)
     ver = DLookup("VersionNo", "tblQuestions", "QuestionID=" & m_qid)
     Me.Caption = "Reject " & QuestionRef(key, ver)
@@ -41,7 +44,7 @@ Private Sub btnReject_Click()
         Me.txtReason.SetFocus
         Exit Sub
     End If
-    problem = RejectQuestion(m_qid, Me.txtReason)
+    problem = RejectQuestion(m_qid, Me.txtReason, m_step)
     If Len(problem) > 0 Then                ' someone acted on it first: nothing to fix here
         KitMsgBox problem, vbInformation, MSG_TITLE
         DoCmd.Close acForm, Me.Name, acSaveNo

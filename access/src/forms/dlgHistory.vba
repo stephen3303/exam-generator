@@ -13,7 +13,7 @@ Private m_key As Long           ' the question's key (0 for an exam)
 Private m_exam As Long          ' the exam (0 for a question)
 
 Public Property Get HelpTopic() As String
-    HelpTopic = "questions.history"
+    HelpTopic = IIf(m_exam <> 0, "exams.history", "questions.history")
 End Property
 
 Private Sub Form_Load()
@@ -86,7 +86,7 @@ Private Sub btnCopy_Click()
     If KitCopyText(s) Then KitToast "History copied.", "success"
     Exit Sub
 Err_Handler:
-    HandleError "dlgHistory.btnCopy_Click", m_key
+    HandleError "dlgHistory.btnCopy_Click", Nz(Me.OpenArgs, "")
 End Sub
 
 Private Sub btnClose_Click()

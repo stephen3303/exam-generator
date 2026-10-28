@@ -18,20 +18,29 @@ Option Explicit
 ' exam, answers included, on the right. Approve sends it on; the SM's final
 ' approval makes its Word document (modExamDoc). Reject opens
 ' dlgRejectExam, which sends one topic or all of them back to their SMEs.
+' The Exams page can ask for an exam to open on this tab through
+' TempVars("ApprovalsExamID").
+'
+' Approve and reject act only at the step the person was shown (m_qstep,
+' m_xstep): one moved on since counts as someone else having acted.
 
 Private Const MSG_TITLE As String = "Approvals"
 
 Private m_tab As String         ' the open tab: q or x
 Private m_search As String
 Private m_qid As Long           ' the question shown on the right (0: none)
+Private m_qstep As Long         ' its step when shown: approve and reject act on that step only
 Private m_xsearch As String
 Private m_xid As Long           ' the exam shown on the right (0: none)
+Private m_xstep As Long         ' its step when shown, as m_qstep
+Private m_xprev As String       ' "ExamID|VersionNo" whose preview txtXPreview holds
 
 Public Property Get HelpTopic() As String
     HelpTopic = "approvals"
 End Property
 
 Private Sub Form_Load()
+    Dim openX As Long
     On Error GoTo Err_Handler
     m_tab = "q"
     SelectTab Me, "q"
@@ -45,8 +54,12 @@ Private Sub Form_Load()
         ShowQuestion 0
         Exit Sub
     End If
+    ' The Exams page may ask for an exam to be shown first.
+    openX = Nz(TempVars("ApprovalsExamID"), 0)
+    TempVars("ApprovalsExamID") = Null
+    If openX <> 0 Then m_tab = "x": SelectTab Me, "x"
     RefreshList 0
-    RefreshXList 0
+    RefreshXList openX
     ShowGroup
     Exit Sub
 Err_Handler:
@@ -198,7 +211,7 @@ Public Sub GridRightClick(ByVal grid As String)
     On Error GoTo Err_Handler
     If grid = "sfXList" Then
         If m_xid = 0 Then Exit Sub
-        ok = (Len(ExamApproveProblem(m_xid)) = 0)
+        ok = (Len(ExamApproveProblem(m_xid, m_xstep)) = 0)
         k = KitMenuAt(IIf(ok, "", "~") & "approve|Approve|E8FB", IIf(ok, "", "~") & "reject|!Reject|E711", "-", _
             "hist|History|E81C", "exams|Show on the Exams page|E8A5")
         Select Case k
@@ -234,9 +247,9 @@ End Sub
 Private Sub ApproveClicked()
     Dim problem As String, done As String, key As Long, ver As Long, oldVer As Variant
     If m_qid = 0 Then Exit Sub
-    problem = ApproveProblem(m_qid)
+    problem = ApproveProblem(m_qid, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
-    If NextStepRoleID(Nz(DLookup("CurrentStepRoleID", "tblQuestions", "QuestionID=" & m_qid), 0)) = 0 Then
+    If NextStepRoleID(m_qstep) = 0 Then
         key = Nz(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & m_qid), 0)
         ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & m_qid), 0)
         oldVer = DLookup("VersionNo", "tblQuestions", "QuestionKey=" & key & " AND IsCurrent AND QuestionID<>" & m_qid)
@@ -246,7 +259,7 @@ Private Sub ApproveClicked()
                     vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
         End If
     End If
-    problem = ApproveQuestion(m_qid, done)
+    problem = ApproveQuestion(m_qid, done, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
     KitToast done, "success"
     RefreshList m_qid                       ' still listed when the next step is also theirs
@@ -256,9 +269,9 @@ End Sub
 Private Sub RejectClicked()
     Dim problem As String
     If m_qid = 0 Then Exit Sub
-    problem = ApproveProblem(m_qid)
+    problem = ApproveProblem(m_qid, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
-    If RunDialog("dlgReject", "id=" & m_qid) Then
+    If RunDialog("dlgReject", "id=" & m_qid & ";step=" & m_qstep) Then
         KitToast "Sent back to its author with your reason.", "info"
     End If
     RefreshList m_qid                       ' gone from the list, or as it stands now
@@ -270,16 +283,16 @@ End Sub
 Private Sub XApproveClicked()
     Dim problem As String, done As String, isFinal As Boolean, note As String, mk As String
     If m_xid = 0 Then Exit Sub
-    problem = ExamApproveProblem(m_xid)
+    problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
-    If NextStepRoleID(Nz(DLookup("CurrentStepRoleID", "tblExams", "ExamID=" & m_xid), 0)) = 0 Then
+    If NextStepRoleID(m_xstep) = 0 Then
         mk = LevelMarking(OverallLevelID(m_xid))
         If KitMsgBox("Give " & ExamRef(m_xid, DLookup("VersionNo", "tblExams", "ExamID=" & m_xid)) & " final approval? " & _
                 IIf(Len(mk) > 0, "It is marked " & mk & " overall, its highest portion marking. ", "") & _
                 "Its Word document is made now, and anyone can download a copy from the Exams page.", _
                 vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     End If
-    problem = ApproveExam(m_xid, done, isFinal)
+    problem = ApproveExam(m_xid, done, isFinal, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     If isFinal Then
         problem = MakeExamDocumentNow(m_xid, note)
@@ -299,9 +312,9 @@ End Sub
 Private Sub XRejectClicked()
     Dim problem As String
     If m_xid = 0 Then Exit Sub
-    problem = ExamApproveProblem(m_xid)
+    problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
-    If RunDialog("dlgRejectExam", "id=" & m_xid) Then
+    If RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep) Then
         KitToast "Sent back to its SMEs with your reason. They find it under My reviews.", "info"
     End If
     RefreshXList m_xid
@@ -350,7 +363,7 @@ End Sub
 Private Sub ShowQuestion(ByVal qid As Long)
     Dim rs As DAO.Recordset, isOpen As Boolean, nm As Variant, c As Control, s As String, problem As String
     Dim stepNo As Long, author As String, last As Long, oldVer As Variant
-    m_qid = qid
+    m_qid = qid: m_qstep = 0
     isOpen = (qid <> 0)
     If isOpen Then
         Set rs = CurrentDb.OpenRecordset("SELECT q.QuestionKey, q.VersionNo, q.ReplacesQuestionID, q.CurrentStepRoleID, " & _
@@ -366,7 +379,8 @@ Private Sub ShowQuestion(ByVal qid As Long)
                 " AND ActionType=" & Q(AU_SUBMITTED)), 0)
             Me.lblQBy.Caption = "Written by " & IIf(Len(author) > 0, author, "someone no longer listed") & _
                 IIf(last <> 0, ". Submitted by " & AuditWho(last), "") & "."
-            stepNo = StepNumber(Nz(rs!CurrentStepRoleID, 0))
+            m_qstep = Nz(rs!CurrentStepRoleID, 0)
+            stepNo = StepNumber(m_qstep)
             problem = ApproveProblem(qid)
             If Len(problem) > 0 Then s = problem Else s = "Waiting on you as the " & RoleCodeOf(rs!CurrentStepRoleID) & "."
             If Nz(rs!ReplacesQuestionID, 0) <> 0 Then
@@ -432,8 +446,8 @@ End Sub
 ' Show exam examId on the right (0: the hint instead).
 Private Sub ShowExam(ByVal examId As Long)
     Dim rs As DAO.Recordset, isOpen As Boolean, nm As Variant, c As Control, s As String, problem As String
-    Dim nQ As Long, nT As Long, mk As String, by As String
-    m_xid = examId
+    Dim nQ As Long, nT As Long, mk As String, by As String, k As String
+    m_xid = examId: m_xstep = 0
     isOpen = (examId <> 0)
     If isOpen Then
         Set rs = CurrentDb.OpenRecordset("SELECT e.VersionNo, e.RecipientName, e.CreatedByPersonID, e.CreatedOn, e.CurrentStepRoleID, " & _
@@ -449,12 +463,19 @@ Private Sub ShowExam(ByVal examId As Long)
             Me.lblXBy.Caption = "From the template " & Nz(rs!TemplateName, "(deleted)") & ", generated by " & _
                 IIf(Len(by) > 0, by, "someone no longer listed") & " on " & Format$(rs!CreatedOn, "d mmm yyyy") & ". " & _
                 nQ & IIf(nQ = 1, " question", " questions") & " in " & nT & IIf(nT = 1, " topic", " topics") & "."
-            problem = ExamApproveProblem(examId)
-            If Len(problem) > 0 Then s = problem Else s = "Waiting on you as the " & RoleCodeOf(rs!CurrentStepRoleID) & "."
+            m_xstep = Nz(rs!CurrentStepRoleID, 0)
+            problem = ExamApproveProblem(examId, m_xstep)
+            If Len(problem) > 0 Then s = problem Else s = "Waiting on you as the " & RoleCodeOf(m_xstep) & "."
             mk = LevelMarking(OverallLevelID(examId))
             If Len(mk) > 0 Then s = s & " Its highest portion marking is " & mk & "."
             Me.lblXState.Caption = s
-            Me.txtXPreview = ExamPreview(examId)
+            ' The preview reads every question: built on the Exams tab only,
+            ' and again only when another exam or version is shown.
+            k = examId & "|" & rs!VersionNo
+            If m_tab = "x" And k <> m_xprev Then
+                Me.txtXPreview = ExamPreview(examId)
+                m_xprev = k
+            End If
             SetEnabled Me.btnXApprove, Len(problem) = 0
             SetEnabled Me.btnXReject, Len(problem) = 0
         End If

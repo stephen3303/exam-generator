@@ -147,7 +147,7 @@ Public Sub Build_pgExams()
     GridHeaders "hdrTopics", ExamTopicCols(), fx, y + px(262), w:=fw
     Set c = SubF("sfTopics", "subGridExamTopics", fx, y + px(284), fw, btnY - px(12) - (y + px(284)))
     c.TabStop = False
-    Set c = Btn("btnDownload", "Download", fx, btnY, px(112), px(30))
+    Set c = Btn("btnDownload", "Download a copy", fx, btnY, px(136), px(30))
     c.ControlTipText = "Save a copy of the approved exam's Word document"
     Set c = Btn("btnHistory", "History", fx + fw - px(88), btnY, px(88), px(30), "outline")
     c.ControlTipText = "Who generated, signed off, approved, sent back and downloaded it, and when"

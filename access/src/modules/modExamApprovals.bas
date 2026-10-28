@@ -26,6 +26,10 @@ Option Explicit
 ' both win, and writes an audit row (modQuestions.AddAudit).
 
 Public Const AU_DOWNLOADED As String = "Downloaded"
+Public Const AU_DOC_MADE As String = "Document made"
+Public Const EXAM_REASON_WHO As String = "its SMEs know"   ' ReasonProblem's who, for an exam
+Private Const PREVIEW_MAX As Long = 56000
+Private Const MOVED_ON_X As String = "Someone else approved or sent back this exam a moment ago. The list now shows where it stands."
 
 ' The Exams page's chips, in order.
 Public Const EXAM_CHIPS As String = "All|SME review|In review|Rejected|Approved"
@@ -79,8 +83,9 @@ End Function
 
 ' Why the signed-in person may not approve or reject exam examId now, or ""
 ' when they may. Reads the data file, so a role taken away since sign-in, or
-' a step someone else moved on, counts at once.
-Public Function ExamApproveProblem(ByVal examId As Long) As String
+' a step someone else moved on, counts at once. expectStep, when given, is
+' the step the person saw: one moved on since counts as acted on.
+Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectStep As Long = 0) As String
     Dim rs As DAO.Recordset, pid As Long, st As String, stepId As Long, code As String
     If Not DataLinked() Then ExamApproveProblem = "This copy has no data file.": Exit Function
     Set rs = CurrentDb.OpenRecordset("SELECT StatusID, CurrentStepRoleID FROM tblExams WHERE ExamID=" & examId, dbOpenSnapshot)
@@ -102,6 +107,7 @@ Public Function ExamApproveProblem(ByVal examId As Long) As String
         ExamApproveProblem = st & ", so it isn't waiting for an approval."
         Exit Function
     End If
+    If expectStep <> 0 And stepId <> expectStep Then ExamApproveProblem = MOVED_ON_X: Exit Function
     code = RoleCodeOf(stepId)
     pid = SignedInPersonID()
     If pid = 0 Or Not Nz(DLookup("IsActive", "tblPeople", "PersonID=" & pid), False) Or Not PersonHasRole(pid, code) Then
@@ -120,9 +126,9 @@ End Function
 
 ' Raise ERR_NOT_ALLOWED unless the signed-in person may approve or reject
 ' exam examId now (ExamApproveProblem). No side effects.
-Public Sub RequireExamApprover(ByVal examId As Long)
+Public Sub RequireExamApprover(ByVal examId As Long, Optional ByVal expectStep As Long = 0)
     Dim problem As String
-    problem = ExamApproveProblem(examId)
+    problem = ExamApproveProblem(examId, expectStep)
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modExamApprovals.RequireExamApprover", problem
 End Sub
 
@@ -137,14 +143,23 @@ End Sub
 ' caller makes the Word document (modExamDoc.MakeExamDocument). Returns ""
 ' and what happened, for the toast, in doneText; or why it can't be
 ' approved now (someone else acted on it first).
+' expectStep is the step the person saw (0: as it stands); moved on since,
+' it returns why instead.
 ' Errors: ERR_NOT_ALLOWED when the person may not approve it.
-Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRef isFinal As Boolean) As String
+Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRef isFinal As Boolean, _
+        Optional ByVal expectStep As Long = 0) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, stepId As Long, nextId As Long, ver As Variant, n As Long, lvl As Long
     Dim num As Long, desc As String, src As String
-    RequireExamApprover examId
     doneText = "": isFinal = False
+    ' One step for the rights check and the guarded write: the one shown.
     stepId = Nz(DLookup("CurrentStepRoleID", "tblExams", "ExamID=" & examId), 0)
+    If expectStep <> 0 And stepId <> expectStep Then ApproveExam = MOVED_ON_X: Exit Function
+    RequireExamApprover examId, stepId
     nextId = NextStepRoleID(stepId)
+    If nextId = 0 Then
+        ApproveExam = UnmarkedProblem(examId)
+        If Len(ApproveExam) > 0 Then Exit Function
+    End If
     ver = DLookup("VersionNo", "tblExams", "ExamID=" & examId)
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
@@ -183,13 +198,19 @@ End Function
 ' active SMEs get a new open review; the exam is Rejected at the SME step,
 ' its version one higher. Returns "" or why it can't be sent back now (no
 ' reason, a topic with no SME to review it, or someone else acted first).
+' expectStep is the step the person saw (0: as it stands); moved on since,
+' it returns why instead.
 ' Errors: ERR_NOT_ALLOWED when the person may not reject it.
-Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal etId As Long) As String
+Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal etId As Long, _
+        Optional ByVal expectStep As Long = 0) As String
     Dim ws As DAO.Workspace, rs As DAO.Recordset, inTrans As Boolean, stepId As Long, ver As Long, n As Long
     Dim r As String, where As String, topics As String, noSme As String, ids As Variant, v As Variant, sql As String
     Dim plan As Collection, p As Variant, num As Long, desc As String, src As String
-    RequireExamApprover examId
-    RejectExam = ReasonProblem(reason)
+    ' One step for the rights check and the guarded write: the one shown.
+    stepId = Nz(DLookup("CurrentStepRoleID", "tblExams", "ExamID=" & examId), 0)
+    If expectStep <> 0 And stepId <> expectStep Then RejectExam = MOVED_ON_X: Exit Function
+    RequireExamApprover examId, stepId
+    RejectExam = ReasonProblem(reason, EXAM_REASON_WHO)
     If Len(RejectExam) > 0 Then Exit Function
     r = CleanText(reason)
     where = "et.ExamID=" & examId & IIf(etId <> 0, " AND et.ExamTopicID=" & etId, "")
@@ -217,7 +238,6 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
             "then send it back."
         Exit Function
     End If
-    stepId = Nz(DLookup("CurrentStepRoleID", "tblExams", "ExamID=" & examId), 0)
     ver = Nz(DLookup("VersionNo", "tblExams", "ExamID=" & examId), 1)
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
@@ -237,7 +257,8 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
             KitExecute sql
         Next
     Next
-    AddAudit ITEM_EXAM, examId, ver, AU_REJECTED, stepId, "Sent back " & topics & ": " & r
+    ' The reason first, so the SMEs see it however many topics went back.
+    AddAudit ITEM_EXAM, examId, ver, AU_REJECTED, stepId, r & IIf(Right$(r, 1) Like "[.!?]", "", ".") & " Sent back: " & topics & "."
     ws.CommitTrans: inTrans = False
     Exit Function
 Fail:
@@ -245,6 +266,28 @@ Fail:
     If inTrans Then ws.Rollback
     Err.Number = num: Err.Description = desc: Err.Source = src
     RaiseAgain "modExamApprovals.RejectExam", examId
+End Function
+
+' Why exam examId can't be marked, or "": a question or part on it whose
+' portion marking the classification list doesn't know. The final approval
+' and the Word document both refuse such an exam.
+Public Function UnmarkedProblem(ByVal examId As Long) As String
+    Dim rs As DAO.Recordset, unmarked As String
+    Set rs = CurrentDb.OpenRecordset("SELECT q.QuestionKey, q.VersionNo FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
+        "ON eq.QuestionID=q.QuestionID) LEFT JOIN tblClassLevels AS c ON q.ClassLevelID=c.ClassLevelID WHERE eq.ExamID=" & examId & _
+        " AND c.ClassLevelID Is Null UNION SELECT q.QuestionKey, q.VersionNo FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
+        "ON eq.QuestionID=q.QuestionID) INNER JOIN tblQuestionParts AS pt ON pt.QuestionID=q.QuestionID) LEFT JOIN tblClassLevels AS c " & _
+        "ON pt.ClassLevelID=c.ClassLevelID WHERE eq.ExamID=" & examId & " AND c.ClassLevelID Is Null", dbOpenSnapshot)
+    Do While Not rs.EOF
+        unmarked = unmarked & IIf(Len(unmarked) > 0, ", ", "") & QuestionRef(rs!QuestionKey, rs!VersionNo)
+        rs.MoveNext
+    Loop
+    rs.Close
+    If Len(unmarked) > 0 Then
+        UnmarkedProblem = unmarked & IIf(InStr(unmarked, ",") > 0, " have", " has") & " a question or part with no portion " & _
+            "marking the classification list knows, so the document can't be marked. The admin checks the list on the Rules and " & _
+            "lists page."
+    End If
 End Function
 
 ' " WHERE" for an update that only touches exam examId while it is still in
@@ -271,10 +314,32 @@ Public Function LevelMarking(ByVal levelId As Variant) As String
     LevelMarking = Nz(DLookup("Marking", "tblClassLevels", "ClassLevelID=" & CLng(levelId)), "")
 End Function
 
+' The topics of exam examId (etId: that one only) that no active SME
+' reviews now, "Navigation, Damage control", or "": they can't be sent back.
+Public Function ExamTopicsWithoutSme(ByVal examId As Long, ByVal etId As Long) As String
+    Dim rs As DAO.Recordset, s As String
+    Set rs = CurrentDb.OpenRecordset("SELECT et.TopicID, tp.TopicName FROM tblExamTopics AS et LEFT JOIN tblTopics AS tp " & _
+        "ON et.TopicID=tp.TopicID WHERE et.ExamID=" & examId & IIf(etId <> 0, " AND et.ExamTopicID=" & etId, "") & _
+        " ORDER BY tp.TopicName", dbOpenSnapshot)
+    Do While Not rs.EOF
+        If Len(TopicReviewers(rs!TopicID)) = 0 Then s = s & IIf(Len(s) > 0, ", ", "") & Nz(rs!TopicName, "A topic")
+        rs.MoveNext
+    Loop
+    rs.Close
+    ExamTopicsWithoutSme = s
+End Function
+
 ' Who a sent-back exam goes back to, for the reject dialog: the SMEs of the
-' topic etId (0: of every topic) who would get a new review.
+' topic etId (0: of every topic) who would get a new review, or which
+' topics have none, so it can't go back yet.
 Public Function ExamReturnsToText(ByVal examId As Long, ByVal etId As Long) As String
-    Dim rs As DAO.Recordset, s As String, ids As String, n As Long, nm As String, v As Variant
+    Dim rs As DAO.Recordset, s As String, ids As String, n As Long, nm As String, v As Variant, noSme As String
+    noSme = ExamTopicsWithoutSme(examId, etId)
+    If Len(noSme) > 0 Then
+        ExamReturnsToText = "No active SME reviews " & noSme & " now, so " & IIf(etId <> 0, "it", "the exam") & _
+            " can't go back yet. The admin adds one on the Topics page first."
+        Exit Function
+    End If
     Set rs = CurrentDb.OpenRecordset("SELECT et.TopicID FROM tblExamTopics AS et WHERE et.ExamID=" & examId & _
         IIf(etId <> 0, " AND et.ExamTopicID=" & etId, ""), dbOpenSnapshot)
     Do While Not rs.EOF
@@ -301,8 +366,8 @@ Public Function ExamReturnsToText(ByVal examId As Long, ByVal etId As Long) As S
 End Function
 
 ' Why exam examId was last sent back, for its SMEs: "The XO sent the exam
-' back (Smith, J. at 14:05 on 27 Oct): Sent back Navigation: <reason>". ""
-' unless it is rejected now.
+' back (Smith, J. at 14:05 on 27 Oct). <reason>. Sent back: Navigation.".
+' "" unless it is rejected now.
 Public Function ExamRejectionText(ByVal examId As Long) As String
     Dim id As Long, rs As DAO.Recordset, cm As String
     If ExamStatusName(DLookup("StatusID", "tblExams", "ExamID=" & examId)) <> ES_REJECTED Then Exit Function
@@ -321,14 +386,13 @@ End Function
 ' What the pages show
 ' ---------------------------------------------------------------------------
 
-' The exams waiting for the signed-in person: in review at a step whose
-' role they hold now, the longest waiting first. Columns: id, ref, exam (who
+' The exams waiting for the signed-in person (QueueWhere), the longest
+' waiting first. Columns: id, ref, exam (who
 ' it is for), TemplateName, step, since, since_txt. search keeps those whose
 ' recipient, template or number (E12) has it.
 Public Function ExamQueueSql(ByVal search As String) As String
     Dim where As String, t As String
-    where = "e.StatusID=" & ExamStatusID(ES_REVIEW) & " AND e.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles WHERE PersonID=" & _
-        SignedInPersonID() & ")"
+    where = QueueWhere()
     If Len(search) > 0 Then
         t = Q("*" & LikeLiteral(search) & "*")
         where = where & " AND (e.RecipientName LIKE " & t & " OR tm.TemplateName LIKE " & t & " OR ('E' & e.ExamID) LIKE " & t & ")"
@@ -343,8 +407,18 @@ End Function
 ' How many exams wait for the signed-in person (the Exams tab's count).
 Public Function ExamApprovalCount() As Long
     If Not DataLinked() Then Exit Function
-    ExamApprovalCount = DCount("*", "tblExams", "StatusID=" & ExamStatusID(ES_REVIEW) & " AND CurrentStepRoleID IN " & _
-        "(SELECT RoleID FROM tblPersonRoles WHERE PersonID=" & SignedInPersonID() & ")")
+    ExamApprovalCount = CountOf("SELECT Count(*) FROM tblExams AS e WHERE " & QueueWhere())
+End Function
+
+' The exams (as e) the signed-in person can act on: in review at a step
+' whose role they hold, and none of whose topics they signed off (another
+' holder of the role approves those; ExamApproveProblem).
+Private Function QueueWhere() As String
+    Dim pid As Long
+    pid = SignedInPersonID()
+    QueueWhere = "e.StatusID=" & ExamStatusID(ES_REVIEW) & " AND e.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles " & _
+        "WHERE PersonID=" & pid & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS so WHERE so.ExamID=e.ExamID AND " & _
+        "so.SignedOffByPersonID=" & pid & ")"
 End Function
 
 ' The status a chip of the Exams page keeps (EXAM_CHIPS; 0, All: "").
@@ -421,6 +495,11 @@ Public Function ExamPreview(ByVal examId As Long) As String
         i = i + 1
         s = s & vbCrLf & vbCrLf & i & ". " & QuestionRef(rs!QuestionKey, rs!VersionNo) & vbCrLf & QuestionPreview(rs!QuestionID)
         rs.MoveNext
+        ' A text box holds about 64,000 characters.
+        If Len(s) > PREVIEW_MAX And Not rs.EOF Then
+            s = s & vbCrLf & vbCrLf & "(The exam goes on, but the rest is too long to show here.)"
+            Exit Do
+        End If
     Loop
     rs.Close
     ExamPreview = s
@@ -474,12 +553,13 @@ End Function
 
 ' Copy exam examId's document to dest (a path the person chose) and write
 ' the Downloaded audit row. The document is made first when it is missing
-' (modExamDoc.EnsureExamDocument). Returns "" or why it couldn't be copied.
-Public Function DownloadExam(ByVal examId As Long, ByVal dest As String) As String
+' (modExamDoc.EnsureExamDocument; note then says if its pages carry the
+' overall marking). Returns "" or why it couldn't be copied.
+Public Function DownloadExam(ByVal examId As Long, ByVal dest As String, Optional ByRef note As String) As String
     Dim problem As String, srcPath As String
     problem = DownloadProblem(examId)
     If Len(problem) > 0 Then DownloadExam = problem: Exit Function
-    problem = EnsureExamDocument(examId, srcPath)
+    problem = EnsureExamDocument(examId, srcPath, note)
     If Len(problem) > 0 Then DownloadExam = problem: Exit Function
     On Error GoTo Fail
     FileCopy srcPath, dest

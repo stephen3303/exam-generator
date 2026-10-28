@@ -151,7 +151,9 @@ Public Sub GridRightClick(ByVal grid As String)
     Select Case k
         Case "dl": DownloadClicked
         Case "hist": btnHistory_Click
-        Case "appr": NavTo "approvals"
+        Case "appr"
+            TempVars("ApprovalsExamID") = m_id
+            NavTo "approvals"
     End Select
     Exit Sub
 Err_Handler:
@@ -160,15 +162,15 @@ End Sub
 
 ' Save a copy of the shown exam's Word document where the person picks.
 Private Sub DownloadClicked()
-    Dim problem As String, dest As String
+    Dim problem As String, dest As String, note As String
     If m_id = 0 Then Exit Sub
     problem = DownloadProblem(m_id)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_id: Exit Sub
     dest = KitSaveAs("Download a copy of the exam", ExamDocFileName(m_id), "Word document|*.docx", "exams")
     If Len(dest) = 0 Then Exit Sub
-    problem = DownloadExam(m_id, dest)
+    problem = DownloadExam(m_id, dest, note)
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitToast "Saved " & Mid$(dest, InStrRev(dest, "\") + 1) & ".", "success"
+    KitToast "Saved " & Mid$(dest, InStrRev(dest, "\") + 1) & "." & IIf(Len(note) > 0, " " & note, ""), "success"
 End Sub
 
 ' ---------------------------------------------------------------------------
