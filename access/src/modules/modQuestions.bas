@@ -81,15 +81,21 @@ Private m_statusNames As Collection
 ' Lookups
 ' ---------------------------------------------------------------------------
 
-' A question status's id (tblStatuses, AppliesTo Question), 0 when missing.
-' Read from the cache LoadStatuses fills once.
+' A question status's id (tblStatuses, AppliesTo Question).
+'   nm   a QS_ constant: Draft, In Review, Approved, Rejected, Retired
+' Returns 0 when the data file has no such status.
+' Errors: the engine's, the first time the statuses are read (LoadStatuses
+'   then caches them for the session).
 Public Function QStatusID(ByVal nm As String) As Long
     LoadStatuses
     On Error Resume Next                    ' a name that isn't there: 0
     QStatusID = m_statusIds(nm)
 End Function
 
-' A status's name (any AppliesTo), "" when there is no such id.
+' A status's name (any AppliesTo).
+'   id   tblStatuses.StatusID
+' Returns "" when there is no such id.
+' Errors: the engine's, the first time the statuses are read.
 Public Function QStatusName(ByVal id As Long) As String
     LoadStatuses
     On Error Resume Next                    ' an id that isn't there: ""
@@ -114,15 +120,22 @@ Private Sub LoadStatuses()
     Set m_statusIds = ids
 End Sub
 
+' A question type's id.
+'   nm   a QT_ constant: Multiple Choice, True/False, Short Answer
+' Returns 0 when the data file has no such type. Errors: the engine's.
 Public Function QTypeID(ByVal nm As String) As Long
     QTypeID = Nz(DLookup("QuestionTypeID", "tblQuestionTypes", "TypeName=" & Q(nm)), 0)
 End Function
 
+' A question type's name.
+'   id   tblQuestionTypes.QuestionTypeID
+' Returns "" when there is no such id. Errors: the engine's.
 Public Function QTypeName(ByVal id As Long) As String
     QTypeName = Nz(DLookup("TypeName", "tblQuestionTypes", "QuestionTypeID=" & id), "")
 End Function
 
-' The editor's type switch keys (Segmented segType) and the type names.
+' The editor's type switch key (Segmented segType) for a type name: mc, tf
+' or sa; "" for anything else. Errors: none.
 Public Function TypeKey(ByVal typeName As String) As String
     Select Case typeName
         Case QT_MC: TypeKey = "mc"
@@ -131,6 +144,8 @@ Public Function TypeKey(ByVal typeName As String) As String
     End Select
 End Function
 
+' The type name for an editor type switch key (mc, tf, sa); "" for anything
+' else. Errors: none.
 Public Function TypeOfKey(ByVal key As String) As String
     Select Case key
         Case "mc": TypeOfKey = QT_MC
@@ -139,34 +154,44 @@ Public Function TypeOfKey(ByVal key As String) As String
     End Select
 End Function
 
-' "Q12 v2": how a question version is named everywhere.
+' How a question version is named everywhere: "Q12 v2".
+'   key, ver   QuestionKey and VersionNo ("?" for a Null)
+' Errors: none.
 Public Function QuestionRef(ByVal key As Variant, ByVal ver As Variant) As String
     QuestionRef = "Q" & Nz(key, "?") & " v" & Nz(ver, "?")
 End Function
 
-' A classification level's rank (tblClassLevels.LevelRank), 0 when none.
+' A classification level's rank (tblClassLevels.LevelRank).
+'   id   ClassLevelID, or Null
+' Returns 0 for Null or no such level. Errors: the engine's.
 Public Function ClassRank(ByVal id As Variant) As Long
     If IsNull(id) Then Exit Function
     ClassRank = Nz(DLookup("LevelRank", "tblClassLevels", "ClassLevelID=" & CLng(id)), 0)
 End Function
 
+' A classification level's portion mark, "(U)".
+'   id   ClassLevelID, or Null
+' Returns "" for Null or no such level. Errors: the engine's.
 Public Function ClassPortion(ByVal id As Variant) As String
     If IsNull(id) Then Exit Function
     ClassPortion = Nz(DLookup("PortionMark", "tblClassLevels", "ClassLevelID=" & CLng(id)), "")
 End Function
 
-' The open new version of question key: a version that is not current and
-' not retired (a draft, in review or rejected), or 0 when there is none. A
-' key has at most one, so a second "Edit as new version" is refused.
+' The open new version of a question: a version that is not current and not
+' retired (a draft, in review or rejected). A key has at most one, so a
+' second "Edit as new version" is refused.
+'   key   QuestionKey (0 gives 0)
+' Returns its QuestionID, or 0 when there is none. Errors: the engine's.
 Public Function OpenVersionID(ByVal key As Long) As Long
     If key = 0 Then Exit Function
     OpenVersionID = Nz(DMin("QuestionID", "tblQuestions", "QuestionKey=" & key & " AND Not IsCurrent AND StatusID<>" & _
         QStatusID(QS_RETIRED)), 0)
 End Function
 
-' Why question qid can't be started again as a new version ("" when it
-' can): it must be the approved, current version, with no other new
-' version of it open.
+' Why a question can't be started again as a new version, or "" when it can:
+' it must be the approved, current version, with no other new version open.
+'   qid   the version the new one would start from
+' Errors: the engine's.
 Public Function NewVersionProblem(ByVal qid As Long) As String
     Dim st As String, other As Long
     st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & qid), 0))
@@ -182,7 +207,10 @@ Public Function NewVersionProblem(ByVal qid As Long) As String
     End If
 End Function
 
-' True when a question in status nm may be changed in place.
+' True when a question in this status may be changed in place (Draft,
+' Rejected).
+'   nm   a status name (QStatusName)
+' Errors: none.
 Public Function StatusEditable(ByVal nm As String) As Boolean
     StatusEditable = (nm = QS_DRAFT Or nm = QS_REJECTED)
 End Function
@@ -236,14 +264,19 @@ Public Sub RequireQuestionWriter(ByVal qid As Long, Optional ByVal topicId As Lo
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modQuestions.RequireQuestionWriter", problem
 End Sub
 
-' True when the signed-in person may change question qid now: for the
-' pages, to grey out what they can't do.
+' True when the signed-in person may change a question now
+' (QuestionWriteProblem is ""), for the pages to grey out what they can't
+' do. The write itself checks again (RequireQuestionWriter).
+'   qid   the question, or 0 for a new one
+' Errors: the engine's.
 Public Function CanWriteQuestion(ByVal qid As Long) As Boolean
     CanWriteQuestion = (Len(QuestionWriteProblem(qid)) = 0)
 End Function
 
-' True when the signed-in person is an SME on topic topicId: the editor's
+' True when the signed-in person is an SME on a topic now: the editor's
 ' topic picker lists only these. True in a front end with no data file.
+'   topicId   TopicID, or Null (False)
+' Errors: the engine's.
 Public Function TopicWritable(ByVal topicId As Variant) As Boolean
     If Not DataLinked() Then TopicWritable = True: Exit Function
     If IsNull(topicId) Then Exit Function
@@ -251,8 +284,10 @@ Public Function TopicWritable(ByVal topicId As Variant) As Boolean
 End Function
 
 ' Raise ERR_NOT_ALLOWED unless the signed-in person is an active SME or the
-' admin now. Called before every write to the shared reference list.
+' admin now. Called first by every write to the shared reference list
+' (AddReference, ChangeReference, SetReferenceActive, DeleteReference).
 ' Errors: ERR_NOT_ALLOWED with the reason for the user.
+' Side effects: none of its own (RequireExamAdmin sets TempVars EGIsAdmin).
 Public Sub RequireReferenceWriter()
     If Not DataLinked() Then Exit Sub
     If IsActiveSME(SignedInPersonID()) Then Exit Sub
@@ -276,7 +311,16 @@ End Function
 ' Audit rows
 ' ---------------------------------------------------------------------------
 
-' Write an audit row for question (or exam) itemId, by the signed-in person.
+' Write one audit row (tblAuditTrail), by the signed-in person, now. Called
+' inside the caller's transaction, so the row and the change it records go
+' together.
+'   itemType     ITEM_QUESTION or ITEM_REFERENCE (exams: Phase 7 on)
+'   itemId       the question's QuestionID or the reference's RefID
+'   ver          the question's VersionNo, Null for a reference
+'   action       an AU_ constant
+'   stepRoleID   the approval step's RoleID, 0 for none
+'   comments     free text, "" for none
+' Errors: KitExecute's lock and write errors pass up.
 Public Sub AddAudit(ByVal itemType As String, ByVal itemId As Long, ByVal ver As Variant, ByVal action As String, _
         Optional ByVal stepRoleID As Long = 0, Optional ByVal comments As String = "")
     KitExecute "INSERT INTO tblAuditTrail (ItemType, ItemID, VersionNo, ActionType, StepRoleID, PersonID, ActionOn, Comments) " & _
@@ -285,15 +329,19 @@ Public Sub AddAudit(ByVal itemType As String, ByVal itemId As Long, ByVal ver As
         IIf(Len(comments) > 0, Q(comments), "Null") & ")"
 End Sub
 
-' The newest audit row of any version of question key, 0 for none: the
-' editor's stamp, to spot a save someone else made while it was open.
+' The newest audit row of any version of a question, the editor's stamp to
+' spot a save someone else made while it was open.
+'   key   QuestionKey (0 gives 0)
+' Returns its AuditID, 0 for none. Errors: the engine's.
 Public Function LastQuestionAudit(ByVal key As Long) As Long
     If key = 0 Then Exit Function
     LastQuestionAudit = Nz(DMax("AuditID", "tblAuditTrail", "ItemType='" & ITEM_QUESTION & "' AND ItemID IN " & _
         "(SELECT QuestionID FROM tblQuestions WHERE QuestionKey=" & key & ")"), 0)
 End Function
 
-' Who wrote audit row id and when: "Lt A. Smith at 14:05 on 27 Oct".
+' Who wrote an audit row and when: "Smith, John (LT) at 14:05 on 27 Oct".
+'   id   AuditID
+' Returns "" when there is no such row. Errors: the engine's.
 Public Function AuditWho(ByVal id As Long) As String
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset("SELECT a.ActionOn, " & PersonNameSql() & " AS person FROM tblAuditTrail AS a " & _
@@ -302,8 +350,11 @@ Public Function AuditWho(ByVal id As Long) As String
     rs.Close
 End Function
 
-' Every audit row of question key's versions, newest first, for a history
-' table: id, ActionOn, when_txt, ver, ActionType, person, step, Comments.
+' SQL for every audit row of a question's versions, newest first, for a
+' history table: id, ActionOn, when_txt, ver, ActionType, person, step,
+' Comments.
+'   key   QuestionKey
+' Errors: none (the query's errors come when it is opened).
 Public Function HistorySql(ByVal key As Long) As String
     HistorySql = "SELECT a.AuditID AS id, a.ActionOn, Format(a.ActionOn,'dd mmm yyyy hh:nn') AS when_txt, " & _
         "'v' & a.VersionNo AS ver, a.ActionType, " & PersonNameSql() & " AS person, r.RoleCode AS step, a.Comments " & _
@@ -312,7 +363,9 @@ Public Function HistorySql(ByVal key As Long) As String
         "WHERE a.ItemType='" & ITEM_QUESTION & "' AND q.QuestionKey=" & key & " ORDER BY a.ActionOn DESC, a.AuditID DESC"
 End Function
 
-' The history as plain text, one line per row, for Copy.
+' A question's history as plain text, one line per row, for Copy.
+'   key   QuestionKey
+' Errors: the engine's.
 Public Function HistoryText(ByVal key As Long) As String
     Dim rs As DAO.Recordset, s As String
     Set rs = CurrentDb.OpenRecordset(HistorySql(key), dbOpenSnapshot)
@@ -330,8 +383,12 @@ End Function
 ' The editor's working copy (local tables)
 ' ---------------------------------------------------------------------------
 
-' Make the three local tables when this front end lacks them (BuildAll's
-' "local tables" step, and the editor before it loads a question).
+' Make the editor's three local tables (wq_part, wq_option, wq_ref) when
+' this front end lacks them: BuildAll's "local tables" step, and the editor
+' before it loads a question. They live in each user's own copy of the front
+' end, which is why each user needs their own copy.
+' Errors: the engine's.
+' Side effects: creates tables in the front end.
 Public Sub EnsureWorkTables()
     If Not TableExists("wq_part", True) Then
         CurrentDb.Execute "CREATE TABLE wq_part (id COUNTER CONSTRAINT pk_wq_part PRIMARY KEY, PartLabel TEXT(5), " & _
@@ -346,13 +403,19 @@ Public Sub EnsureWorkTables()
     End If
 End Sub
 
+' Empty the editor's working copy (wq_option, wq_part, wq_ref).
+' Errors: the engine's.
 Public Sub ClearWork()
     CurrentDb.Execute "DELETE FROM wq_option", dbFailOnError
     CurrentDb.Execute "DELETE FROM wq_part", dbFailOnError
     CurrentDb.Execute "DELETE FROM wq_ref", dbFailOnError
 End Sub
 
-' Copy question qid's parts, options and references into the working copy.
+' Copy a question's parts, options and references into the working copy,
+' replacing what was there, with the options numbered 1, 2, ... per group.
+'   qid   the question's QuestionID (0 leaves the working copy empty)
+' Errors: the engine's.
+' Side effects: rewrites the three local tables.
 Public Sub LoadWork(ByVal qid As Long)
     Dim db As DAO.Database, src As DAO.Recordset, dst As DAO.Recordset, map As Object, k As Variant
     Set db = CurrentDb
@@ -392,7 +455,8 @@ Public Sub LoadWork(ByVal qid As Long)
     RenumberOptions
 End Sub
 
-' Number each option group's options 1, 2, ... in their order.
+' Number each option group's options 1, 2, ... in their present order (the
+' working copy's wq_option). Errors: the engine's.
 Public Sub RenumberOptions()
     Dim rs As DAO.Recordset, grp As Variant, n As Long
     Set rs = CurrentDb.OpenRecordset("SELECT part_id, SortOrder FROM wq_option ORDER BY Nz(part_id,0), SortOrder, id", dbOpenDynaset)
@@ -406,15 +470,18 @@ Public Sub RenumberOptions()
     rs.Close
 End Sub
 
+' How many parts the working copy has. Errors: the engine's.
 Public Function WorkPartCount() As Long
     WorkPartCount = DCount("*", "wq_part")
 End Function
 
+' The working copy's parts' points added up (0 for no parts). Errors: the engine's.
 Public Function WorkPointsSum() As Double
     WorkPointsSum = Nz(DSum("Points", "wq_part"), 0)
 End Function
 
-' The first letter A to Z no part uses yet.
+' The first letter A to Z no part in the working copy uses yet, "" when all
+' 26 are used. Errors: the engine's.
 Public Function NextPartLabel() As String
     Dim i As Long
     For i = 0 To 25
@@ -422,8 +489,8 @@ Public Function NextPartLabel() As String
     Next
 End Function
 
-' Letter the parts A, B, C... in their order (after a move or a removal),
-' and number them 1, 2, 3...
+' Letter the working copy's parts A, B, C... in their order and number them
+' 1, 2, 3..., after a move or a removal. Errors: the engine's.
 Public Sub RelabelParts()
     Dim rs As DAO.Recordset, n As Long
     Set rs = CurrentDb.OpenRecordset("SELECT PartLabel, SortOrder FROM wq_part ORDER BY SortOrder, PartLabel", dbOpenDynaset)
@@ -437,7 +504,11 @@ Public Sub RelabelParts()
     rs.Close
 End Sub
 
-' Open question qid in the editor (Ctrl+K's recent list calls this too).
+' Open a question in the editor, or say it is gone. An entry point (Ctrl+K's
+' recent list calls it too), so it handles its own errors.
+'   qid   the question's QuestionID
+' Side effects: sets TempVars EditQuestionID and EditMode and goes to the
+'   qedit page.
 Public Function OpenQuestion(ByVal qid As Long)
     On Error GoTo Err_Handler
     If DCount("*", "tblQuestions", "QuestionID=" & qid) = 0 Then
@@ -452,8 +523,9 @@ Err_Handler:
     HandleError "modQuestions.OpenQuestion", qid
 End Function
 
-' The highest marking among the parts (the question's, rolled up), Null
-' when there are no parts or none is marked.
+' The highest marking among the working copy's parts (the question's, rolled
+' up): a ClassLevelID, or Null when there are no parts or none is marked.
+' Errors: the engine's.
 Public Function RolledUpMarking() As Variant
     Dim rs As DAO.Recordset
     RolledUpMarking = Null
@@ -463,31 +535,40 @@ Public Function RolledUpMarking() As Variant
     rs.Close
 End Function
 
-' A part's letter for an option's group: "A", or "" for the question.
+' A working-copy part's letter for an option's group: "A", or "" for the
+' question itself (Null) or no such part.
+'   partId   wq_part.id, or Null
+' Errors: the engine's.
 Public Function PartLabelOf(ByVal partId As Variant) As String
     If IsNull(partId) Then Exit Function
     PartLabelOf = Nz(DLookup("PartLabel", "wq_part", "id=" & CLng(partId)), "")
 End Function
 
-' Option n's letter in its group: 1 is A.
+' An option's letter in its group: 1 is A, 26 is Z; "" outside 1 to 26.
+' Errors: none.
 Public Function OptionLetter(ByVal n As Variant) As String
     If Nz(n, 0) < 1 Or Nz(n, 0) > 26 Then Exit Function
     OptionLetter = Chr$(64 + CLng(n))
 End Function
 
-' The working copy's tables, for the editor's grids.
+' SQL for the working copy's parts, for the editor's grid: id, PartLabel,
+' PartText, Points, pts, mark, ans, SortOrder. Errors: none.
 Public Function WorkPartsSql() As String
     WorkPartsSql = "SELECT w.id, w.PartLabel, w.PartText, w.Points, PointsText(w.Points) AS pts, c.Marking AS mark, " & _
         "IIf(Len(Nz(w.ReferenceAnswer,''))>0,'Yes','') AS ans, w.SortOrder FROM wq_part AS w " & _
         "LEFT JOIN tblClassLevels AS c ON w.ClassLevelID=c.ClassLevelID ORDER BY w.SortOrder, w.PartLabel"
 End Function
 
+' SQL for the working copy's options, for the editor's grid: id, part,
+' letter, OptionText, correct, psort, SortOrder. Errors: none.
 Public Function WorkOptionsSql() As String
     WorkOptionsSql = "SELECT o.id, Nz(p.PartLabel,'') AS part, OptionLetter(o.SortOrder) AS letter, o.OptionText, " & _
         "IIf(o.IsCorrect,'Correct','') AS correct, Nz(p.SortOrder,0) AS psort, o.SortOrder FROM wq_option AS o " & _
         "LEFT JOIN wq_part AS p ON o.part_id=p.id ORDER BY Nz(p.SortOrder,0), o.SortOrder"
 End Function
 
+' SQL for the working copy's citations, for the editor's grid: id,
+' RefTitle, RefNumber, Revision, Paragraph. Errors: none.
 Public Function WorkRefsSql() As String
     WorkRefsSql = "SELECT w.id, r.RefTitle, r.RefNumber, r.Revision, w.Paragraph FROM wq_ref AS w " & _
         "INNER JOIN tblSourceRefs AS r ON w.RefID=r.RefID ORDER BY r.RefTitle"
@@ -499,7 +580,9 @@ End Function
 
 ' Text as it is saved: tabs as spaces, each line's trailing spaces and the
 ' whole's leading and trailing blank lines dropped, at most one empty line
-' in a row. Null for nothing left.
+' in a row.
+'   v   the text, or Null
+' Returns Null when nothing is left. Errors: none.
 Public Function CleanText(ByVal v As Variant) As Variant
     Dim s As String, lines() As String, i As Long, out As String, blank As Long
     CleanText = Null
@@ -523,8 +606,11 @@ Public Function CleanText(ByVal v As Variant) As Variant
     If Len(out) > 0 Then CleanText = out
 End Function
 
-' What is wrong with a points value ("" when fine): a number above 0, at most
-' MAX_POINTS, in whole or half points. what names it: "Points", "Part B's points".
+' What is wrong with a points value, or "" when it is fine: a number above
+' 0, at most MAX_POINTS, in whole or half points.
+'   v      the value as typed
+'   what   names it in the message: "Points", "Part B's points"
+' Errors: none.
 Public Function PointsProblem(ByVal v As Variant, ByVal what As String) As String
     Dim d As Double
     If IsNull(v) Then PointsProblem = what & " are missing.": Exit Function
@@ -539,18 +625,21 @@ Public Function PointsProblem(ByVal v As Variant, ByVal what As String) As Strin
     End If
 End Function
 
-' Points as the app shows them: 4, 1.5.
+' Points as the app shows them: 4, 1.5; "" for Null or text. Errors: none.
 Public Function PointsText(ByVal v As Variant) As String
     If IsNull(v) Then Exit Function
     PointsText = Format$(CDbl(v), "0.##")
     If Right$(PointsText, 1) = "." Then PointsText = Left$(PointsText, Len(PointsText) - 1)
 End Function
 
-' Every rule the question breaks, one per line ("" when none). The
+' Every rule a question breaks, one per line, or "" when none. The
 ' question's own fields come from the editor; its parts, options and
-' references from the working copy. forSubmit adds the rules a question
-' must meet before it goes for approval (references, and multiple choice
-' options with one correct answer); the others hold for every save.
+' references from the working copy.
+'   topicId .. text   the editor's fields as typed (any may be Null)
+'   forSubmit         True adds the rules a question must meet before it
+'                     goes for approval (references, and multiple choice
+'                     options with one correct answer)
+' Errors: the engine's.
 Public Function QuestionProblems(ByVal topicId As Variant, ByVal typeName As String, ByVal difficultyId As Variant, _
         ByVal points As Variant, ByVal classLevelId As Variant, ByVal text As Variant, ByVal forSubmit As Boolean) As String
     Dim s As String, p As String, rs As DAO.Recordset, nParts As Long, sum As Double, isMC As Boolean
@@ -651,12 +740,23 @@ End Function
 ' Save, submit, delete
 ' ---------------------------------------------------------------------------
 
-' Write the editor's question to the shared data file, with the working
-' copy's parts, options and references, in one transaction. qid is the
-' question being changed (0 for a new one); baseId is the approved question
-' a new version replaces (0 otherwise; qid is then 0). The question's rules
-' must already pass (QuestionProblems). Returns "" and the saved question's
-' id in savedId, or why it can't be saved now (someone moved it on).
+' Write the editor's question to the data file, with the working copy's
+' parts, options and references, in one transaction. Its rules must already
+' pass (QuestionProblems).
+'   qid            the question being changed, 0 for a new one
+'   baseId         for a new version, the approved version it replaces (qid
+'                  is then 0); else 0. The approved version stays current
+'                  until the new one is approved (Phase 6).
+'   topicId .. refAnswer   the editor's fields; with parts the marking is
+'                  the parts' highest (RolledUpMarking)
+'   savedId        returns the saved question's QuestionID (0 when not saved)
+' Returns "" when saved, else why it can't be saved now (someone moved it on,
+' deleted it, or started a new version at the same moment).
+' Errors: ERR_NOT_ALLOWED unless the signed-in person may write it
+'   (RequireQuestionWriter); others pass up through RaiseAgain after the
+'   rollback.
+' Side effects: replaces the question's parts, options and citations, and
+'   writes an Authored, Edited or New version audit row.
 Public Function SaveQuestion(ByVal qid As Long, ByVal baseId As Long, ByVal topicId As Long, ByVal typeName As String, _
         ByVal difficultyId As Long, ByVal points As Double, ByVal classLevelId As Variant, ByVal text As Variant, _
         ByVal refAnswer As Variant, ByRef savedId As Long) As String
@@ -814,12 +914,14 @@ Private Sub WriteParts(db As DAO.Database, ByVal qid As Long)
     src.Close: dst.Close
 End Sub
 
-' Send question qid to the approval chain: In Review, at the DH's step.
-' Its rules must already pass for submission. Returns "" or why not.
-' The status change and its Submitted audit row are one transaction, and
-' the change only matches a question still in draft or rejected: when
-' someone moved it on meanwhile nothing is written and the reason is
-' returned.
+' Send a question to the approval chain: In Review, at the DH's step. Its
+' rules must already pass for submission. The status change and its
+' Submitted audit row are one transaction, and the change only matches a
+' question still in draft or rejected.
+'   qid   the question's QuestionID
+' Returns "" when submitted, else why not (nothing is written).
+' Errors: ERR_NOT_ALLOWED unless the signed-in person may write it; others
+'   pass up through RaiseAgain after the rollback.
 Public Function SubmitQuestion(ByVal qid As Long) As String
     Dim st As String, dh As Long, ver As Long, ws As DAO.Workspace, inTrans As Boolean
     RequireQuestionWriter qid
@@ -845,8 +947,10 @@ Fail:
     RaiseAgain "modQuestions.SubmitQuestion", qid
 End Function
 
-' Why question qid can't be deleted ("" when it can): only a draft that was
+' Why a question can't be deleted, or "" when it can: only a draft that was
 ' never submitted and is on no exam.
+'   qid   the question's QuestionID
+' Errors: the engine's.
 Public Function DeleteProblem(ByVal qid As Long) As String
     Dim st As String
     st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & qid), 0))
@@ -859,9 +963,16 @@ Public Function DeleteProblem(ByVal qid As Long) As String
     End If
 End Function
 
-' Delete draft qid (DeleteProblem must be ""). Returns the question to show
-' instead: for a new version's draft, the approved version it would have
-' replaced, which stayed in use all along; else 0.
+' Delete a draft and its parts, options and citations (cascade), with a
+' Deleted audit row, in one transaction. The delete rules (DeleteProblem)
+' are checked again inside it, and only a draft is deleted.
+'   qid   the draft's QuestionID
+' Returns the question to show instead: for a new version's draft, the
+' approved version it would have replaced, which stayed in use all along;
+' else 0.
+' Errors: ERR_NOT_ALLOWED when the signed-in person may not write it or the
+'   rules now refuse (the reason is the message); others pass up through
+'   RaiseAgain after the rollback.
 Public Function DeleteDraft(ByVal qid As Long) As Long
     Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long, problem As String
     Dim num As Long, desc As String, src As String
@@ -900,8 +1011,12 @@ End Function
 ' References
 ' ---------------------------------------------------------------------------
 
-' What is wrong with a reference's fields ("" when fine). exceptId is the
-' reference being changed (0 for a new one).
+' What is wrong with a reference's fields, one per line, or "" when fine:
+' a title, the columns' sizes, and no other reference with the same title
+' and number.
+'   title, number, rev   the fields as typed (any may be Null)
+'   exceptId             the reference being changed, 0 for a new one
+' Errors: the engine's.
 Public Function RefProblem(ByVal title As Variant, ByVal number As Variant, ByVal rev As Variant, _
         Optional ByVal exceptId As Long = 0) As String
     Dim t As String, n As String, s As String, dup As Variant
@@ -920,9 +1035,14 @@ Public Function RefProblem(ByVal title As Variant, ByVal number As Variant, ByVa
     RefProblem = s
 End Function
 
-' Add a reference (its fields must pass RefProblem) and return its id.
-' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin now.
-' The new reference and its Added audit row are one transaction.
+' Add a reference to the shared list, turned on, with an Added audit row, in
+' one transaction. Its fields must pass RefProblem.
+'   title, number, rev   the fields as typed; an empty number or revision is
+'                        saved as Null
+' Returns the new RefID.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin
+'   now; 3022 when the same title and number was added at the same moment;
+'   others pass up through RaiseAgain after the rollback.
 Public Function AddReference(ByVal title As Variant, ByVal number As Variant, ByVal rev As Variant) As Long
     Dim rs As DAO.Recordset, ws As DAO.Workspace, inTrans As Boolean, id As Long
     RequireReferenceWriter
@@ -949,10 +1069,12 @@ Fail:
     RaiseAgain "modQuestions.AddReference"
 End Function
 
-' Correct reference refId's title, number and revision (they must pass
-' RefProblem with exceptId refId). Every question citing it shows the change,
-' approved ones included, so the change and an audit row with the old and
-' new text ("Was: ...; now: ...") are one transaction.
+' Correct a reference's title, number and revision, with a Changed audit
+' row holding the old and new text ("Was: ...; now: ..."), in one
+' transaction. Every question citing it shows the change, approved ones
+' included. The fields must pass RefProblem with exceptId refId.
+'   refId                the reference's RefID
+'   title, number, rev   the fields as typed
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin
 '   now; 3022 when another reference already has this title and number.
 Public Sub ChangeReference(ByVal refId As Long, ByVal title As Variant, ByVal number As Variant, ByVal rev As Variant)
@@ -972,10 +1094,13 @@ Fail:
     RaiseAgain "modQuestions.ChangeReference", refId
 End Sub
 
-' Turn reference refId on (it can be cited) or off (it can't be cited
-' again; questions citing it keep it), with an audit row, in one
-' transaction.
-' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin now.
+' Turn a reference on (it can be cited) or off (it can't be cited again;
+' questions citing it keep it), with a Turned on or Turned off audit row, in
+' one transaction.
+'   refId   the reference's RefID
+'   isOn    True to turn it on
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin
+'   now; others pass up through RaiseAgain after the rollback.
 Public Sub SetReferenceActive(ByVal refId As Long, ByVal isOn As Boolean)
     Dim ws As DAO.Workspace, inTrans As Boolean
     RequireReferenceWriter
@@ -991,8 +1116,9 @@ Fail:
     RaiseAgain "modQuestions.SetReferenceActive", refId
 End Sub
 
-' Delete reference refId, which no question may cite, with an audit row
-' that keeps its text, in one transaction.
+' Delete a reference no question cites, with a Deleted audit row that keeps
+' its text, in one transaction.
+'   refId   the reference's RefID
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an SME or the admin
 '   now; 3200 when a question cites it (the rQR_R relationship).
 Public Sub DeleteReference(ByVal refId As Long)
@@ -1016,11 +1142,17 @@ Private Function SqlOrNull(ByVal v As Variant) As String
     If IsNull(NullIfEmpty(v)) Then SqlOrNull = "Null" Else SqlOrNull = Q(NullIfEmpty(v))
 End Function
 
+' A typed value as it is saved: its text trimmed, or Null when it is empty
+' or only spaces.
+'   v   the value, or Null
+' Errors: none.
 Public Function NullIfEmpty(ByVal v As Variant) As Variant
     If Len(Trim$(Nz(v, ""))) = 0 Then NullIfEmpty = Null Else NullIfEmpty = Trim$(v)
 End Function
 
 ' A reference as one line: "NSTM 555 (S9086-S3-STM-010) rev 3".
+'   refId   the reference's RefID
+' Returns "" when there is no such reference. Errors: the engine's.
 Public Function RefText(ByVal refId As Long) As String
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset("SELECT RefTitle, RefNumber, Revision FROM tblSourceRefs WHERE RefID=" & refId, dbOpenSnapshot)
