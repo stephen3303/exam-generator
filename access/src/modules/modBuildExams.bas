@@ -36,7 +36,8 @@ Private Function ReviewCols() As Variant
 End Function
 
 Private Function ExamQCols() As Variant
-    ExamQCols = Array("ref|#|60|m", "QuestionText|Question|236|", "LevelName|Difficulty|76|m", "pts|Points|52|r", "note|Note|84|p")
+    ' The note's pill can read "Swapped, given lately"; it is the last column, so it takes the rest of the width.
+    ExamQCols = Array("ref|#|60|m", "QuestionText|Question|204|", "LevelName|Difficulty|76|m", "pts|Points|52|r", "note|Note|116|p")
 End Function
 
 Private Function PlanCols() As Variant

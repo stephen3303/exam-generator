@@ -13,7 +13,7 @@ Option Explicit
 ' mapped too. Review tasks: Open, Done, Closed. Admin lists: Active, Off,
 ' Short (a topic short of approved questions). The approvals queue's kinds:
 ' New, New version. A new exam's topics: Ready, Short, No SME, Repeats; and
-' the questions drawn: Swapped, Given lately. Matching ignores case
+' the questions drawn: Replaced, Swapped, Swapped, given lately, Given lately. Matching ignores case
 ' (Option Compare Database).
 
 ' Click on a "?" help mark (TitleTip): show its full explanation.
@@ -46,13 +46,46 @@ Public Function StatusVariant(ByVal status As Variant) As String
     Select Case Nz(status, "")
         Case "Approved", "Done", "Active", "Correct", "Ready", "Signed off": StatusVariant = "success"
         Case "In review", "SME review", "Open", "New", "Swapped": StatusVariant = "info"
-        Case "Returned", "Rejected", "Short", "Repeats", "Given lately": StatusVariant = "warning"
+        Case "Returned", "Rejected", "Short", "Repeats", "Given lately", "Swapped, given lately", "Replaced": StatusVariant = "warning"
         Case "Invalid", "No SME": StatusVariant = "destructive"
         Case "Draft", "Closed", "Retired", "Off", "New version", "Waiting": StatusVariant = "secondary"
     End Select
     Exit Function
 Gone:
     StatusVariant = ""
+End Function
+
+' ---------------------------------------------------------------------------
+' Helpers the pages share
+' ---------------------------------------------------------------------------
+
+' Select row id of the table in subform control sf (its RecordsetClone's id
+' field), set its txtSel and repaint. False, with nothing selected, when it
+' isn't listed (or id is 0).
+Public Function GridSelect(sf As Control, ByVal id As Long) As Boolean
+    Dim g As Form
+    Set g = sf.Form
+    g.txtSel = Null
+    If id <> 0 Then
+        With g.RecordsetClone
+            .FindFirst "id=" & id
+            If Not .NoMatch Then
+                g.Bookmark = .Bookmark
+                g.txtSel = id
+                GridSelect = True
+            End If
+        End With
+    End If
+    g.Recalc
+End Function
+
+' The number after name= in frm's OpenArgs ("eq=3;stamp=0"), or 0.
+Public Function OpenArgLong(frm As Form, ByVal name As String) As Long
+    Dim part As Variant, v As String
+    For Each part In Split(Nz(frm.OpenArgs, ""), ";")
+        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then v = Mid$(part, Len(name) + 2)
+    Next
+    If IsNumeric(v) Then OpenArgLong = CLng(v)
 End Function
 
 ' Band pill colors (BandCF). The app shows no bands; these keep the kit's

@@ -230,7 +230,7 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
         Exit Function
     End If
     For Each p In plan
-        KitExecute "UPDATE tblExamTopics SET SignedOffByPersonID=Null, SignedOffOn=Null WHERE ExamTopicID=" & p(0)
+        KitExecute "UPDATE tblExamTopics SET SignedOffByPersonID=Null, SignedOffOn=Null, ChangeNo=Nz(ChangeNo,0)+1 WHERE ExamTopicID=" & p(0)
         For Each v In Split(p(1), ",")
             sql = "INSERT INTO tblTasks (TaskType, ItemType, ItemID, ExamTopicID, AssignedPersonID, TaskStatus, CreatedOn) VALUES (" & _
                 Q(TASK_SME_REVIEW) & ", " & Q(ITEM_EXAM) & ", " & examId & ", " & p(0) & ", " & CLng(v) & ", " & Q(TS_OPEN) & ", Now())"

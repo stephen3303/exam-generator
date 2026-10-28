@@ -37,6 +37,7 @@ Private Sub Form_Load()
         ShowExam 0
         Exit Sub
     End If
+    SendSignedOffExams                      ' an exam a failed step left signed off but not sent on
     openId = Nz(TempVars("ExamsExamID"), 0)
     TempVars("ExamsExamID") = Null
     RefreshList openId

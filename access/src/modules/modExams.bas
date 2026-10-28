@@ -12,12 +12,14 @@ Option Explicit
 '
 ' The overlap rule (see the top of modAdmin): of the n questions a topic
 ' gets, at most Int(n * OverlapMaxPct / 100) may have been on any of the
-' last OverlapWindowExams exams generated, whatever their template or
-' recipient. A question counts by its QuestionKey, so a new version of a
-' question given lately counts as given. The draw takes questions not given
+' OverlapWindowExams exams generated before it (for a new exam, the last
+' ones), whatever their template or recipient; that is "given lately". The
+' order is ExamID's (the autonumber goes up), not CreatedOn, which each
+' copy takes from its own PC's clock. A question counts by its QuestionKey,
+' so a new version of a question given lately counts as given. The draw takes questions not given
 ' lately first, at random, and fills the rest from the ones given lately; a
 ' topic that can only be filled by going over the limit is drawn that way
-' only when the DH says so (allowRepeats).
+' only when the DH says so (repeatTopics).
 '
 ' Review: an SME with an open task checks the questions drawn for the
 ' topic, swaps any for another approved question of the topic (a swap may
@@ -31,7 +33,11 @@ Option Explicit
 ' Every write checks the person's right in the data file at the moment of
 ' the write (RequireExamMaker, RequireReviewer) and raises ERR_NOT_ALLOWED
 ' when they have none. Two people acting at once can't both win: each
-' update is guarded by the state it expects, and the loser is told.
+' update is guarded by the state it expects, and the loser is told. An exam
+' topic's ChangeNo goes up with every swap and its sign-off; My reviews keeps
+' the number it showed (TopicChangeNo), and a swap or sign-off goes through
+' only while the topic still has it, so nobody signs off or swaps on a list
+' another SME has changed since.
 
 Public Const ITEM_EXAM As String = "Exam"
 
@@ -59,25 +65,40 @@ Public Const MAX_RECIPIENT As Long = 150        ' tblExams.RecipientName is TEXT
 ' ---------------------------------------------------------------------------
 
 ' An exam status's id (tblStatuses, AppliesTo Exam), 0 when missing.
+' Errors: none of its own; a data error passes up.
 Public Function ExamStatusID(ByVal nm As String) As Long
     ExamStatusID = Nz(DLookup("StatusID", "tblStatuses", "StatusName=" & Q(nm) & " AND AppliesTo='Exam'"), 0)
 End Function
 
+' The exam statuses in which its topics are still with their SMEs (they can
+' be swapped and signed off, and the last sign-off sends the exam to the DH):
+' SME Review, and Rejected (sent back by an approver), as ids for IN (...).
+' Every "still in SME review" check uses this list.
+' Errors: none of its own; a data error passes up.
+Public Function SmeReviewStatusIDs() As String
+    SmeReviewStatusIDs = ExamStatusID(ES_SME_REVIEW) & "," & ExamStatusID(ES_REJECTED)
+End Function
+
 ' How many of the n questions a topic gets may have been given lately.
+' n <= 0 gives 0. Reads OverlapMaxPct (30 when it isn't set).
+' Errors: none of its own; a data error passes up.
 Public Function RepeatsAllowed(ByVal n As Long) As Long
     If n <= 0 Then Exit Function
     RepeatsAllowed = Int(n * SettingLong(SET_OVERLAP_PCT, 30) / 100)
 End Function
 
-' The QuestionKeys of the questions on the last OverlapWindowExams exams
-' generated, leaving out exam notExamId, as a list for IN (...): "12,15,40",
-' or "0" when there are none.
-Public Function RecentKeysList(Optional ByVal notExamId As Long = 0) As String
+' The QuestionKeys of the questions given lately for exam forExamId: those on
+' the OverlapWindowExams exams generated before it (0, for a new exam: the
+' last ones generated), as a list for IN (...): "12,15,40", or "0" when there
+' are none. Exams generated after it don't count against it: their own
+' windows hold it (see LaterExamProblem).
+' Errors: none of its own; a data error passes up.
+Public Function RecentKeysList(Optional ByVal forExamId As Long = 0) As String
     Dim w As Long, ids As String, keys As String
     w = SettingLong(SET_OVERLAP_WINDOW, 10)
     If w > 0 Then
-        ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams WHERE ExamID<>" & notExamId & _
-            " ORDER BY CreatedOn DESC, ExamID DESC")
+        ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams" & IIf(forExamId <> 0, " WHERE ExamID<" & forExamId, "") & _
+            " ORDER BY ExamID DESC")
         If Len(ids) > 0 Then
             keys = ColumnList("SELECT DISTINCT q.QuestionKey FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
                 "ON eq.QuestionID=q.QuestionID WHERE eq.ExamID IN (" & ids & ") AND q.QuestionKey Is Not Null")
@@ -87,6 +108,8 @@ Public Function RecentKeysList(Optional ByVal notExamId As Long = 0) As String
 End Function
 
 ' True when key is in list (a RecentKeysList).
+' A Null key is never in it.
+' Errors: none.
 Public Function InKeyList(ByVal list As String, ByVal key As Variant) As Boolean
     If IsNull(key) Then Exit Function
     InKeyList = InStr("," & list & ",", "," & CLng(key) & ",") > 0
@@ -114,6 +137,8 @@ Private Function CountOf(ByVal sql As String) As Long
 End Function
 
 ' "Damage Control on the exam for USS Example": an exam topic, named.
+' "" when there is no such exam topic.
+' Errors: none of its own; a data error passes up.
 Public Function ExamTopicName(ByVal etId As Long) As String
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset("SELECT tp.TopicName, e.RecipientName FROM (tblExamTopics AS et INNER JOIN tblExams AS e " & _
@@ -128,6 +153,7 @@ End Function
 
 ' Why the signed-in person can't generate an exam now, or "": only an active
 ' DH whom the Personnel file lets use the app can.
+' Errors: none of its own; a data error passes up.
 Public Function ExamMakerProblem() As String
     Dim pid As Long
     If Not DataLinked() Then ExamMakerProblem = "This copy has no data file.": Exit Function
@@ -149,7 +175,16 @@ Public Sub RequireExamMaker()
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modExams.RequireExamMaker", problem
 End Sub
 
-' Why recipient (already cleaned) won't do as who the exam is for, or "".
+' Who the exam is for, cleaned (CleanText) for its one-line field: a line
+' break pasted in becomes a space. "" for none.
+' Errors: none.
+Public Function CleanRecipient(ByVal v As Variant) As String
+    CleanRecipient = Replace(Replace(Nz(CleanText(v), ""), vbCrLf & vbCrLf, " "), vbCrLf, " ")
+End Function
+
+' Why recipient (already cleaned, CleanRecipient) won't do as who the exam
+' is for, or "".
+' Errors: none.
 Public Function RecipientProblem(ByVal recipient As String) As String
     If Len(recipient) = 0 Then
         RecipientProblem = "Type who the exam is for: the boat, schoolhouse or other command."
@@ -176,48 +211,67 @@ End Function
 ' The topics template tplId draws from, in its order, for the new exam
 ' window's table: id (TopicID), TopicName, per_exam, on_hand (approved
 ' questions in use), fresh (of those, not given lately; keys is
-' RecentKeysList()), smes (active SMEs) and state: No SME, Short (fewer
-' approved questions than it gets), Repeats (it can only be filled with more
+' RecentKeysList()), smes (1 when an SME may review it now, as TopicReviewers
+' counts them for the draw, else 0) and state: No SME, Short (fewer approved
+' questions than it gets), Repeats (it can only be filled with more
 ' questions given lately than the overlap rule allows) or Ready. Topics
 ' turned off are left out, as the draw leaves them out.
+' Errors: none of its own; a data error passes up.
 Public Function DrawPlanSql(ByVal tplId As Long, ByVal keys As String) As String
-    Dim ap As Long
+    Dim ap As Long, rs As DAO.Recordset, withSME As String
     ap = ApprovedStatusID()
+    ' The topics with a reviewer, by the same check as the draw (Personnel included).
+    Set rs = CurrentDb.OpenRecordset("SELECT t.TopicID FROM tblTemplateTopics AS tt INNER JOIN tblTopics AS t " & _
+        "ON tt.TopicID=t.TopicID WHERE tt.TemplateID=" & tplId & " AND t.IsActive", dbOpenSnapshot)
+    Do While Not rs.EOF
+        If Len(TopicReviewers(rs!TopicID)) > 0 Then withSME = withSME & IIf(Len(withSME) > 0, ",", "") & rs!TopicID
+        rs.MoveNext
+    Loop
+    rs.Close
+    If Len(withSME) = 0 Then withSME = "0"
     DrawPlanSql = "SELECT x.*, IIf(x.smes=0,'No SME',IIf(x.on_hand<x.per_exam,'Short'," & _
         "IIf(x.fresh+Int(x.per_exam*" & SettingLong(SET_OVERLAP_PCT, 30) & "/100)<x.per_exam,'Repeats','Ready'))) AS state FROM (" & _
         "SELECT t.TopicID AS id, t.TopicName, tt.QuestionCount AS per_exam, tt.SortOrder, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ap & ") AS on_hand, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ap & _
         " AND q.QuestionKey NOT IN (" & keys & ")) AS fresh, " & _
-        "(SELECT Count(*) FROM tblTopicSMEs AS s INNER JOIN tblPeople AS pp ON s.PersonID=pp.PersonID WHERE s.TopicID=t.TopicID " & _
-        "AND pp.IsActive AND s.PersonID IN (SELECT PersonID FROM tblPersonRoles WHERE RoleID=" & RoleID("SME") & ")) AS smes " & _
+        "IIf(t.TopicID IN (" & withSME & "),1,0) AS smes " & _
         "FROM tblTemplateTopics AS tt INNER JOIN tblTopics AS t ON tt.TopicID=t.TopicID " & _
         "WHERE tt.TemplateID=" & tplId & " AND t.IsActive) AS x ORDER BY x.SortOrder, x.TopicName"
 End Function
 
 ' How many of template tplId's topics are turned off (the draw leaves them out).
+' Errors: none of its own; a data error passes up.
 Public Function TopicsOffCount(ByVal tplId As Long) As Long
     TopicsOffCount = CountOf("SELECT Count(*) FROM tblTemplateTopics AS tt INNER JOIN tblTopics AS t ON tt.TopicID=t.TopicID " & _
         "WHERE tt.TemplateID=" & tplId & " AND NOT t.IsActive")
 End Function
 
 ' Draw template tplId for recipient, as the signed-in DH, and give each
-' topic's SMEs a review task, all in one transaction. allowRepeats lets a
-' topic that can't meet the overlap rule take more questions given lately
-' than the rule allows (the DH was asked). Returns "" with the new exam's id
+' topic's SMEs a review task, all in one transaction. repeatTopics lists the
+' TopicIDs (joined with commas, "" for none) the DH agreed may take more
+' questions given lately than the overlap rule allows, because they can't be
+' filled otherwise; any other topic over the rule stops the draw. The draw
+' is made inside the transaction, after its first write locks the overlap
+' window's settings row, so two DHs generating at once run one after the
+' other and each exam's draw sees the other; every question is inserted only
+' while it is still approved and in use. Returns "" with the new exam's id
 ' in examId, or why it can't be generated (who it is for, the template, or
 ' a topic short of questions, of SMEs, or over the rule); then nothing is
 ' written.
+' Writes: the exam (SME Review, at the SME step), its topics, questions and
+' review tasks (one per reviewer of each topic), and an audit row on the
+' exam (Generated, at the DH step).
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an active DH now
 '   (RequireExamMaker); a data error rolls back and passes up.
-Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, ByVal allowRepeats As Boolean, _
+Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, ByVal repeatTopics As String, _
         ByRef examId As Long) As String
     Dim ws As DAO.Workspace, db As DAO.Database, rs As DAO.Recordset, plan As Collection, p As Variant, v As Variant
-    Dim r As String, tplName As String, problem As String, inTrans As Boolean, etId As Long, i As Long
+    Dim r As String, tplName As String, problem As String, inTrans As Boolean, etId As Long, i As Long, ap As Long
     Dim num As Long, desc As String, src As String
     RequireExamMaker
     examId = 0
-    r = Nz(CleanText(recipient), "")
+    r = CleanRecipient(recipient)
     GenerateExam = RecipientProblem(r)
     If Len(GenerateExam) > 0 Then Exit Function
     tplName = Nz(DLookup("TemplateName", "tblTemplates", "TemplateID=" & tplId & " AND IsActive"), "")
@@ -225,11 +279,20 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
         GenerateExam = "Pick a template. Only templates that are turned on can be used."
         Exit Function
     End If
-    Set plan = DrawPlan(tplId, RecentKeysList(), allowRepeats, problem)
-    If Len(problem) > 0 Then GenerateExam = problem: Exit Function
+    ap = ApprovedStatusID()
+    DBEngine.Idle dbRefreshCache            ' the draw reads other copies' latest commits, not Jet's cache
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
+    ' Lock the overlap window's settings row until commit: another DH's
+    ' Generate waits here, then draws with this exam in its window.
+    KitExecute "UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey=" & Q(SET_OVERLAP_WINDOW)
+    Set plan = DrawPlan(tplId, RecentKeysList(), repeatTopics, problem)
+    If Len(problem) > 0 Then
+        ws.Rollback: inTrans = False
+        GenerateExam = problem
+        Exit Function
+    End If
     Set db = CurrentDb
     Set rs = db.OpenRecordset("tblExams", dbOpenDynaset)
     rs.AddNew
@@ -250,14 +313,24 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
         rs!ExamID = examId
         rs!TopicID = p(0)
         rs!QuestionCount = p(2)
+        rs!ChangeNo = 0
         rs.Update
         rs.Bookmark = rs.LastModified
         etId = rs!ExamTopicID
         rs.Close
         For Each v In Split(p(3), ",")
             i = i + 1                       ' the exam's order, topic after topic
-            KitExecute "INSERT INTO tblExamQuestions (ExamID, ExamTopicID, QuestionID, SortOrder, WasSwapped) VALUES (" & _
-                examId & ", " & etId & ", " & CLng(v) & ", " & i & ", False)"
+            ' Only while it is still approved and in use: a question retired since
+            ' the draw stops the exam rather than land on it.
+            If KitExecute("INSERT INTO tblExamQuestions (ExamID, ExamTopicID, QuestionID, SortOrder, WasSwapped) SELECT " & _
+                    examId & ", " & etId & ", QuestionID, " & i & ", False FROM tblQuestions WHERE QuestionID=" & CLng(v) & _
+                    " AND IsCurrent AND StatusID=" & ap) = 0 Then
+                ws.Rollback: inTrans = False
+                examId = 0
+                GenerateExam = "A question was replaced or retired while the exam was being drawn, so nothing was saved. " & _
+                    "Generate again."
+                Exit Function
+            End If
         Next
         For Each v In Split(p(4), ",")
             KitExecute "INSERT INTO tblTasks (TaskType, ItemType, ItemID, ExamTopicID, AssignedPersonID, TaskStatus, CreatedOn) " & _
@@ -280,8 +353,9 @@ End Function
 ' The draw for template tplId (keys: RecentKeysList()): one Array(TopicID,
 ' TopicName, n, question ids, SME ids) per active topic in the template's
 ' order, each list joined with commas, the questions in a random order.
+' repeatTopics: the TopicIDs that may go over the overlap rule (GenerateExam).
 ' problem returns why it can't be drawn, or "" when it can.
-Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allowRepeats As Boolean, _
+Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal repeatTopics As String, _
         ByRef problem As String) As Collection
     Dim rs As DAO.Recordset, plan As New Collection, fresh As Variant, given As Variant, smes As String, ap As Long
     Dim n As Long, nFresh As Long, nGiven As Long, need As Long, noSME As String, shortOnes As String, over As String
@@ -305,8 +379,8 @@ Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allow
             shortOnes = shortOnes & IIf(Len(shortOnes) > 0, ", ", "") & rs!TopicName & " (" & (nFresh + nGiven) & " of " & n & ")"
         Else
             need = n - IIf(nFresh < n, nFresh, n)       ' questions given lately it has to take
-            If need > RepeatsAllowed(n) And Not allowRepeats Then over = over & IIf(Len(over) > 0, ", ", "") & rs!TopicName
-            plan.Add Array(rs!TopicID, rs!TopicName, n, PickIds(fresh, given, n), smes)
+            If need > RepeatsAllowed(n) And Not InKeyList(repeatTopics, rs!TopicID) Then over = over & IIf(Len(over) > 0, ", ", "") & rs!TopicName
+            plan.Add Array(CLng(rs!TopicID), CStr(rs!TopicName), n, PickIds(fresh, given, n), smes)
         End If
         rs.MoveNext
     Loop
@@ -315,7 +389,7 @@ Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allow
     If Len(shortOnes) > 0 Then problem = problem & IIf(Len(problem) > 0, vbCrLf & vbCrLf, "") & _
         "Not enough approved questions in " & shortOnes & "."
     If Len(problem) = 0 And Len(over) > 0 Then problem = "These topics can only be filled with more questions from recent " & _
-        "exams than the overlap rule allows: " & over & "."
+        "exams than the overlap rule allows: " & over & ". The plan now shows them; Generate asks before it goes over."
     If Len(problem) = 0 And plan.Count = 0 Then problem = "This template has no topics that are turned on."
     Set DrawPlan = plan
 End Function
@@ -375,6 +449,8 @@ End Function
 ' CreatedOn, since_txt and status (Open, Done or Closed). done False lists
 ' the open ones, oldest first; True the done and closed ones, newest first.
 ' search matches who it is for, the template and the topic.
+' Builds the SQL only (it reads the signed-in person's id).
+' Errors: none.
 Public Function ReviewTasksSql(ByVal done As Boolean, ByVal search As String) As String
     Dim where As String, t As String
     where = "tk.AssignedPersonID=" & SignedInPersonID() & " AND tk.TaskType=" & Q(TASK_SME_REVIEW) & " AND tk.ItemType=" & _
@@ -393,6 +469,8 @@ End Function
 
 ' How many open (done False) or done and closed review tasks the signed-in
 ' person has (the chips' counts).
+' 0 when no data file is linked.
+' Errors: none of its own; a data error passes up.
 Public Function ReviewCount(ByVal done As Boolean) As Long
     If Not DataLinked() Then Exit Function
     ReviewCount = DCount("*", "tblTasks", "AssignedPersonID=" & SignedInPersonID() & " AND TaskType=" & Q(TASK_SME_REVIEW) & _
@@ -401,29 +479,41 @@ End Function
 
 ' The questions on exam topic etId, in the exam's order, for the review
 ' table: id (ExamQuestionID), QuestionID, ref, QuestionText, LevelName, pts
-' and note: Swapped, Given lately (its key is in keys, the RecentKeysList
-' for the exam) or "".
+' and note: Replaced (no longer the approved version in use: a newer version
+' was approved since the draw, or it was retired), Swapped, given lately,
+' Swapped, Given lately (its key is in keys, the RecentKeysList for the
+' exam) or "". A swapped question given lately says both, so the SME can
+' see every question that counts against the overlap rule.
+' Builds the SQL only (it reads the approved status's id).
+' Errors: none of its own; a data error passes up.
 Public Function ExamTopicQsSql(ByVal etId As Long, ByVal keys As String) As String
     ExamTopicQsSql = "SELECT eq.ExamQuestionID AS id, eq.QuestionID, 'Q' & q.QuestionKey & ' v' & q.VersionNo AS ref, " & _
         "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, d.LevelName, q.TotalPoints AS pts, " & _
-        "IIf(eq.WasSwapped,'Swapped',IIf(q.QuestionKey IN (" & keys & "),'Given lately','')) AS note, eq.SortOrder " & _
+        "IIf(Not (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & "),'Replaced'," & _
+        "IIf(q.QuestionKey IN (" & keys & "),IIf(eq.WasSwapped,'Swapped, given lately','Given lately')," & _
+        "IIf(eq.WasSwapped,'Swapped',''))) AS note, eq.SortOrder " & _
         "FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
         "LEFT JOIN tblDifficultyLevels AS d ON q.DifficultyID=d.DifficultyID " & _
         "WHERE eq.ExamTopicID=" & etId & " ORDER BY eq.SortOrder, eq.ExamQuestionID"
 End Function
 
-' The approved questions in use that could replace one on exam topic etId,
-' for the swap window's table: id (QuestionID), ref, QuestionText, qsort,
+' The approved questions in use that could replace exam question eqId, for
+' the swap window's table: id (QuestionID), ref, QuestionText, qsort,
 ' LevelName, pts and note (Given lately, from keys, or ""). Questions with a
-' version on the exam already are left out. search matches the text and
-' the number (Q12).
-Public Function SwapCandidatesSql(ByVal etId As Long, ByVal keys As String, ByVal search As String) As String
-    Dim examId As Long, topicId As Long, where As String, t As String
+' version elsewhere on the exam are left out; the newer version of the
+' question in the slot itself is listed, so a replaced one can be updated.
+' search matches the text and the number (Q12).
+' Errors: none of its own; a data error passes up.
+Public Function SwapCandidatesSql(ByVal eqId As Long, ByVal keys As String, ByVal search As String) As String
+    Dim examId As Long, etId As Long, topicId As Long, slotQid As Long, where As String, t As String
+    etId = Nz(DLookup("ExamTopicID", "tblExamQuestions", "ExamQuestionID=" & eqId), 0)
+    slotQid = Nz(DLookup("QuestionID", "tblExamQuestions", "ExamQuestionID=" & eqId), 0)
     examId = Nz(DLookup("ExamID", "tblExamTopics", "ExamTopicID=" & etId), 0)
     topicId = Nz(DLookup("TopicID", "tblExamTopics", "ExamTopicID=" & etId), 0)
-    where = "q.TopicID=" & topicId & " AND q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & " AND q.QuestionKey NOT IN " & _
+    where = "q.TopicID=" & topicId & " AND q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & " AND q.QuestionID<>" & slotQid & _
+        " AND q.QuestionKey NOT IN " & _
         "(SELECT q2.QuestionKey FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q2 ON eq.QuestionID=q2.QuestionID " & _
-        "WHERE eq.ExamID=" & examId & " AND q2.QuestionKey Is Not Null)"
+        "WHERE eq.ExamID=" & examId & " AND eq.ExamQuestionID<>" & eqId & " AND q2.QuestionKey Is Not Null)"
     If Len(search) > 0 Then
         t = Q("*" & LikeLiteral(search) & "*")
         where = where & " AND (q.QuestionText LIKE " & t & " OR ('Q' & q.QuestionKey) LIKE " & t & ")"
@@ -440,6 +530,7 @@ End Function
 ' (or sent back to it),
 ' and the person must be an active SME of the topic with an open review
 ' task for it, whom the Personnel file lets use the app.
+' Errors: none of its own; a data error passes up.
 Public Function ReviewProblem(ByVal etId As Long) As String
     Dim rs As DAO.Recordset, pid As Long, topicId As Long, s As String
     If Not DataLinked() Then ReviewProblem = "This copy has no data file.": Exit Function
@@ -450,7 +541,7 @@ Public Function ReviewProblem(ByVal etId As Long) As String
     ElseIf Not IsNull(rs!SignedOffByPersonID) Then
         s = "Signed off by " & SignerName(rs!SignedOffByPersonID) & " on " & Format$(rs!SignedOffOn, "d mmm yyyy") & _
             ", so its questions are settled."
-    ElseIf rs!StatusID <> ExamStatusID(ES_SME_REVIEW) And rs!StatusID <> ExamStatusID(ES_REJECTED) Then
+    ElseIf Not InKeyList(SmeReviewStatusIDs(), rs!StatusID) Then
         s = "The exam is past SME review, so its questions can't be changed here."
     Else
         topicId = rs!TopicID
@@ -471,8 +562,20 @@ Public Function ReviewProblem(ByVal etId As Long) As String
     ReviewProblem = s
 End Function
 
-' "Lt A. Smith", or "someone no longer listed".
-Private Function SignerName(ByVal pid As Variant) As String
+' Exam topic etId's change number (ChangeNo), read past Jet's cache so another
+' copy's swap or sign-off of a moment ago counts. Read it before the topic's
+' questions, keep it, and pass it to SwapQuestion and SignOffTopic.
+' 0 when there is no such topic (or its number is Null).
+' Errors: none of its own; a data error passes up.
+Public Function TopicChangeNo(ByVal etId As Long) As Long
+    DBEngine.Idle dbRefreshCache
+    TopicChangeNo = Nz(DLookup("ChangeNo", "tblExamTopics", "ExamTopicID=" & etId), 0)
+End Function
+
+' Person pid's name ("Lt A. Smith"), or "someone no longer listed" when the
+' Personnel file has no such person: who signed off or generated an exam.
+' Errors: none of its own; a data error passes up.
+Public Function SignerName(ByVal pid As Variant) As String
     SignerName = PersonName(pid)
     If Len(SignerName) = 0 Then SignerName = "someone no longer listed"
 End Function
@@ -486,22 +589,36 @@ Public Sub RequireReviewer(ByVal etId As Long)
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modExams.RequireReviewer", problem
 End Sub
 
+' How many questions on exam topic etId are no longer the approved version in
+' use (the Replaced note: a newer version was approved since the draw, or it
+' was retired).
+' Errors: none of its own; a data error passes up.
+Public Function ReplacedCount(ByVal etId As Long) As Long
+    ReplacedCount = CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
+        "WHERE eq.ExamTopicID=" & etId & " AND NOT (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ")")
+End Function
+
 ' How many questions on exam topic etId were given lately (keys: the
 ' RecentKeysList for its exam).
+' Errors: none of its own; a data error passes up.
 Public Function GivenLatelyCount(ByVal etId As Long, ByVal keys As String) As Long
     GivenLatelyCount = CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
         "WHERE eq.ExamTopicID=" & etId & " AND q.QuestionKey IN (" & keys & ")")
 End Function
 
 ' Why question newQid can't replace exam question eqId, or "": it must be an
-' approved question in use of the same topic with no version on the exam,
-' and the swap may not take the topic's questions given lately over what
-' the overlap rule allows (nor over how many it has now, when it is over
-' already).
+' approved question in use of the same topic, other than the one in the slot,
+' with no version elsewhere on the exam (the slot's own question may come
+' back as its newer version), and the swap may not take the topic's
+' questions given lately over what the overlap rule allows (nor over how
+' many it has now, when it is over already), nor a topic of a later exam
+' (LaterExamProblem).
+' Reads only; also called inside SwapQuestion's transaction.
+' Errors: none of its own; a data error passes up.
 Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     Dim rs As DAO.Recordset, examId As Long, etId As Long, topicId As Long, n As Long, oldKey As Variant, newKey As Variant
-    Dim keys As String, have As Long, after As Long, allowed As Long
-    Set rs = CurrentDb.OpenRecordset("SELECT eq.ExamID, eq.ExamTopicID, et.TopicID, et.QuestionCount, q.QuestionKey " & _
+    Dim keys As String, have As Long, after As Long, allowed As Long, oldQid As Long
+    Set rs = CurrentDb.OpenRecordset("SELECT eq.ExamID, eq.ExamTopicID, eq.QuestionID, et.TopicID, et.QuestionCount, q.QuestionKey " & _
         "FROM (tblExamQuestions AS eq INNER JOIN tblExamTopics AS et ON eq.ExamTopicID=et.ExamTopicID) " & _
         "INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID WHERE eq.ExamQuestionID=" & eqId, dbOpenSnapshot)
     If rs.EOF Then
@@ -509,9 +626,11 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
         SwapProblem = "That question is no longer on the exam. The list now shows what is."
         Exit Function
     End If
-    examId = rs!ExamID: etId = rs!ExamTopicID: topicId = rs!TopicID: n = rs!QuestionCount: oldKey = rs!QuestionKey
+    examId = rs!ExamID: etId = rs!ExamTopicID: oldQid = rs!QuestionID: topicId = rs!TopicID: n = rs!QuestionCount
+    oldKey = rs!QuestionKey
     rs.Close
     If newQid = 0 Then SwapProblem = "Pick the question to put in its place.": Exit Function
+    If newQid = oldQid Then SwapProblem = "That is the question in its place now. Pick another.": Exit Function
     If DCount("*", "tblQuestions", "QuestionID=" & newQid & " AND TopicID=" & topicId & " AND IsCurrent AND StatusID=" & _
             ApprovedStatusID()) = 0 Then
         SwapProblem = "That question isn't an approved question of this topic now. It may have been replaced or retired."
@@ -519,7 +638,7 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     End If
     newKey = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & newQid)
     If CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
-            "WHERE eq.ExamID=" & examId & " AND q.QuestionKey=" & Nz(newKey, 0)) > 0 Then
+            "WHERE eq.ExamID=" & examId & " AND eq.ExamQuestionID<>" & eqId & " AND q.QuestionKey=" & Nz(newKey, 0)) > 0 Then
         SwapProblem = "That question is on this exam already."
         Exit Function
     End If
@@ -528,18 +647,61 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     after = have - IIf(InKeyList(keys, oldKey), 1, 0) + IIf(InKeyList(keys, newKey), 1, 0)
     allowed = RepeatsAllowed(n)
     If after > allowed And after > have Then
-        SwapProblem = "That question was on one of the last " & SettingLong(SET_OVERLAP_WINDOW, 10) & " exams. With it, " & after & _
-            " of this topic's " & n & " questions would have been given lately; the overlap rule allows " & allowed & _
-            ". Pick one that wasn't given lately, or swap out one that was."
+        SwapProblem = "That question was on one of the " & SettingLong(SET_OVERLAP_WINDOW, 10) & " exams generated before this " & _
+            "one. With it, " & after & " of this topic's " & n & " questions would have been given lately; the overlap rule " & _
+            "allows " & allowed & ". Pick one that wasn't given lately, or swap out one that was."
+        Exit Function
     End If
+    SwapProblem = LaterExamProblem(examId, newKey)
+End Function
+
+' Why putting question key newKey on exam examId would take a topic of an
+' exam generated after it over the overlap rule, or "". The next
+' OverlapWindowExams exams count this one in their window, so a question one
+' of them holds becomes given lately for it (unless it was already). The
+' question this swap takes out is still counted for them: that can only
+' refuse a swap, never let one through over the rule.
+' Errors: none of its own; a data error passes up.
+Private Function LaterExamProblem(ByVal examId As Long, ByVal newKey As Variant) As String
+    Dim rs As DAO.Recordset, w As Long, ids As String, keys As String, have As Long, n As Long, allowed As Long
+    w = SettingLong(SET_OVERLAP_WINDOW, 10)
+    If w <= 0 Or IsNull(newKey) Then Exit Function
+    ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams WHERE ExamID>" & examId & " ORDER BY ExamID")
+    If Len(ids) = 0 Then Exit Function
+    Set rs = CurrentDb.OpenRecordset("SELECT eq.ExamID, eq.ExamTopicID, et.QuestionCount, e.RecipientName " & _
+        "FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
+        "INNER JOIN tblExamTopics AS et ON eq.ExamTopicID=et.ExamTopicID) INNER JOIN tblExams AS e ON eq.ExamID=e.ExamID " & _
+        "WHERE q.QuestionKey=" & CLng(newKey) & " AND eq.ExamID IN (" & ids & ") ORDER BY eq.ExamID", dbOpenSnapshot)
+    Do While Not rs.EOF
+        keys = RecentKeysList(rs!ExamID)
+        If Not InKeyList(keys, newKey) Then
+            have = GivenLatelyCount(rs!ExamTopicID, keys)
+            n = rs!QuestionCount
+            allowed = RepeatsAllowed(n)
+            If have + 1 > allowed Then
+                LaterExamProblem = "That question is on the exam for " & rs!RecipientName & ", generated after this one. With it " & _
+                    "here too, " & (have + 1) & " of that exam's " & n & " questions in this topic would have been given lately; " & _
+                    "the overlap rule allows " & allowed & ". Pick another question."
+                Exit Do
+            End If
+        End If
+        rs.MoveNext
+    Loop
+    rs.Close
 End Function
 
 ' Put question newQid on the exam in place of exam question eqId, as the
-' signed-in SME. Returns "" with doneText for the toast, or why it wasn't
-' swapped (SwapProblem, or someone changed the topic a moment ago).
+' signed-in SME, while the topic still has change number stamp (the
+' TopicChangeNo the page showed). Returns "" with doneText for the toast, or
+' why it wasn't swapped (SwapProblem, or someone changed the topic since).
+' Claiming the topic (ChangeNo + 1) is the transaction's first write, so two
+' swaps of one topic run one after the other and the rule is checked again
+' with nothing else changing it. Writes: the slot's QuestionID and
+' WasSwapped, the topic's ChangeNo, and an audit row on the exam (Swapped,
+' at the SME step, "<topic>: Q12 v1 out, Q15 v2 in.").
 ' Errors: ERR_NOT_ALLOWED when the person may not change the topic now
 '   (RequireReviewer); a data error rolls back and passes up.
-Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByRef doneText As String) As String
+Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByVal stamp As Long, ByRef doneText As String) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, etId As Long, examId As Long, oldQid As Long, n As Long
     Dim oldRef As String, newRef As String, topic As String, num As Long, desc As String, src As String
     doneText = ""
@@ -556,10 +718,22 @@ Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByRef don
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
-    ' Only while it still holds the question shown and the topic isn't signed off.
+    ' Claim the topic: only while nobody has swapped or signed it off since the
+    ' SME's list was loaded. A second swap or a sign-off at the same moment
+    ' changes no row here and is told to look again.
+    n = KitExecute("UPDATE tblExamTopics SET ChangeNo=Nz(ChangeNo,0)+1 WHERE ExamTopicID=" & etId & _
+        " AND SignedOffByPersonID Is Null AND Nz(ChangeNo,0)=" & stamp)
+    If n = 0 Then
+        ws.Rollback: inTrans = False
+        SwapQuestion = "Another SME swapped a question on this topic or signed it off a moment ago. The list now shows where it stands."
+        Exit Function
+    End If
+    ' With the topic claimed nothing else can change it: check the rule again.
+    SwapQuestion = SwapProblem(eqId, newQid)
+    If Len(SwapQuestion) > 0 Then ws.Rollback: inTrans = False: Exit Function
+    ' Only while it still holds the question shown.
     n = KitExecute("UPDATE tblExamQuestions SET QuestionID=" & newQid & ", WasSwapped=True WHERE ExamQuestionID=" & eqId & _
-        " AND QuestionID=" & oldQid & " AND ExamTopicID IN (SELECT ExamTopicID FROM tblExamTopics WHERE ExamTopicID=" & etId & _
-        " AND SignedOffByPersonID Is Null)")
+        " AND QuestionID=" & oldQid)
     If n = 0 Then
         ws.Rollback: inTrans = False
         SwapQuestion = "Another SME swapped this question or signed off the topic a moment ago. The list now shows where it stands."
@@ -586,14 +760,19 @@ Private Function RefOf(ByVal qid As Long) As String
     RefOf = QuestionRef(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid))
 End Function
 
-' Sign off exam topic etId as the signed-in SME: the topic is complete, the
-' person's task is Done and the other SMEs' tasks on it are Closed. When it
-' was the exam's last topic, the exam goes to the DH for approval. Returns
-' "" with doneText for the toast, or why it wasn't signed off (another SME
-' signed it off a moment ago).
+' Sign off exam topic etId as the signed-in SME, while it still has change
+' number stamp (the TopicChangeNo the page showed, so the sign-off covers
+' exactly the questions the SME saw): the topic is complete, the person's
+' task is Done and the other SMEs' tasks on it are Closed. When it was the
+' exam's last topic, the exam goes to the DH for approval. Returns "" with
+' doneText for the toast, or why it wasn't signed off (another SME swapped
+' a question or signed it off since). Writes: the topic's sign-off and
+' ChangeNo, the topic's open tasks (Done or Closed), an audit row on the
+' exam (Signed off, at the SME step, the topic's name) and, for the last
+' topic, the exam's status and step with its own audit row (Submitted).
 ' Errors: ERR_NOT_ALLOWED when the person may not sign it off now
 '   (RequireReviewer); a data error rolls back and passes up.
-Public Function SignOffTopic(ByVal etId As Long, ByRef doneText As String) As String
+Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef doneText As String) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, pid As Long, examId As Long, n As Long, nLeft As Long, ver As Variant
     Dim topic As String, num As Long, desc As String, src As String
     RequireReviewer etId
@@ -605,12 +784,23 @@ Public Function SignOffTopic(ByVal etId As Long, ByRef doneText As String) As St
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
-    ' One sign-off wins: only while no one has signed it off.
-    n = KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=" & pid & ", SignedOffOn=Now() WHERE ExamTopicID=" & etId & _
-        " AND SignedOffByPersonID Is Null")
+    ' Take the exam's row first, while it is still in SME review: two sign-offs
+    ' of one exam's topics then run one after the other, so the later one sees
+    ' the earlier one's topic signed off.
+    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
+            SmeReviewStatusIDs() & ")") = 0 Then
+        ws.Rollback: inTrans = False
+        SignOffTopic = "The exam is past SME review, so this topic can't be signed off now."
+        Exit Function
+    End If
+    ' One sign-off wins, and only on the questions shown: only while no one
+    ' has signed it off or swapped a question since the page loaded it.
+    n = KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=" & pid & ", SignedOffOn=Now(), ChangeNo=Nz(ChangeNo,0)+1 " & _
+        "WHERE ExamTopicID=" & etId & " AND SignedOffByPersonID Is Null AND Nz(ChangeNo,0)=" & stamp)
     If n = 0 Then
         ws.Rollback: inTrans = False
-        SignOffTopic = "Another SME signed off this topic a moment ago, so your review of it is closed."
+        SignOffTopic = "Another SME swapped a question on this topic or signed it off a moment ago. The list now shows where " & _
+            "it stands; check the questions before you sign off."
         Exit Function
     End If
     KitExecute "UPDATE tblTasks SET TaskStatus=IIf(AssignedPersonID=" & pid & "," & Q(TS_DONE) & "," & Q(TS_CLOSED) & "), " & _
@@ -618,9 +808,10 @@ Public Function SignOffTopic(ByVal etId As Long, ByRef doneText As String) As St
     AddAudit ITEM_EXAM, examId, ver, AU_SIGNED_OFF, RoleID("SME"), topic
     SendWhenSignedOff examId
     ws.CommitTrans: inTrans = False
-    SendWhenSignedOff examId                ' a last topic signed off at the same moment as this one
-    nLeft = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
-    If nLeft = 0 Then
+    nLeft = SendAfterSignOff(examId)        ' and a last topic signed off at the same moment as this one; never raises
+    If nLeft < 0 Then
+        doneText = "Signed off."
+    ElseIf nLeft = 0 Then
         doneText = "Signed off. That was the exam's last topic, so it goes to the DH for approval."
     Else
         doneText = "Signed off. " & nLeft & IIf(nLeft = 1, " more topic on this exam waits", " more topics on this exam wait") & _
@@ -635,13 +826,61 @@ Fail:
 End Function
 
 ' Send exam examId to the DH for approval (In Review, at the DH's step) when
-' every topic is signed off and it is still in SME review, or sent back.
-' Safe to call twice: only the call that moves it writes the audit row.
+' every topic is signed off and it is still in SME review or sent back (SmeReviewStatusIDs).
+' Safe to call twice: only the call that moves it writes the audit row
+' (Submitted). Call it inside a transaction, so the move and its audit row
+' are written together.
+' Errors: a data error passes up (the caller rolls back).
 Private Sub SendWhenSignedOff(ByVal examId As Long)
     Dim n As Long
     If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Sub
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REVIEW) & ", CurrentStepRoleID=" & RoleID("DH") & _
-        " WHERE ExamID=" & examId & " AND StatusID IN (" & ExamStatusID(ES_SME_REVIEW) & "," & ExamStatusID(ES_REJECTED) & ")")
+        " WHERE ExamID=" & examId & " AND StatusID IN (" & SmeReviewStatusIDs() & ")")
     If n > 0 Then AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_SUBMITTED, RoleID("DH"), _
         "Every topic signed off"
+End Sub
+
+' After a sign-off of exam examId has committed: read past Jet's cache, so
+' another copy's sign-off of a moment ago counts, and send the exam to the DH
+' when every topic is signed off now (SendWhenSignedOff, in its own
+' transaction). Returns how many topics still wait, or -1 when this failed.
+' Never raises: the sign-off is saved whatever happens here, so a failure is
+' logged and the sweep (SendSignedOffExams) moves the exam later.
+Private Function SendAfterSignOff(ByVal examId As Long) As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean
+    On Error GoTo Fail
+    DBEngine.Idle dbRefreshCache
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    SendWhenSignedOff examId
+    ws.CommitTrans: inTrans = False
+    SendAfterSignOff = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
+    Exit Function
+Fail:
+    If inTrans Then ws.Rollback
+    LogError "modExams.SendAfterSignOff", "exam " & examId
+    SendAfterSignOff = -1
+End Function
+
+' Send every exam still in SME review whose topics are all signed off to the
+' DH. Idempotent and guarded by status, so any page may run it at any time
+' (My reviews does when it opens; the Exams list should too): it moves on an
+' exam that two last sign-offs at the same moment, or a failed step after a
+' sign-off, left behind. The audit row names whoever ran it.
+' Never raises: a failure is logged.
+Public Sub SendSignedOffExams()
+    Dim ids As String, v As Variant
+    On Error GoTo Fail
+    If Not DataLinked() Then Exit Sub
+    DBEngine.Idle dbRefreshCache
+    ids = ColumnList("SELECT e.ExamID FROM tblExams AS e WHERE e.StatusID IN (" & SmeReviewStatusIDs() & ") " & _
+        "AND EXISTS (SELECT * FROM tblExamTopics AS et WHERE et.ExamID=e.ExamID) " & _
+        "AND NOT EXISTS (SELECT * FROM tblExamTopics AS et WHERE et.ExamID=e.ExamID AND et.SignedOffByPersonID Is Null)")
+    If Len(ids) = 0 Then Exit Sub
+    For Each v In Split(ids, ",")
+        SendAfterSignOff CLng(v)
+    Next
+    Exit Sub
+Fail:
+    LogError "modExams.SendSignedOffExams"
 End Sub

@@ -19,6 +19,10 @@ Option Explicit
 ' help_topic holds the help text the admin edits in the app (seeded from
 ' help.txt the first time, build phase 3); its columns match the kit's zz_help.
 ' error_log is the kit's error log (modErrors), so admins see every user's errors.
+'
+' The schema version (tblSettings SchemaVersion) is the app's DATA_VERSION
+' (modSignIn). A change here bumps both and adds a step to modSignIn.UpgradeData,
+' which brings an existing data file up to date. 2: tblExamTopics.ChangeNo.
 
 Private db As DAO.Database
 
@@ -103,11 +107,13 @@ Private Sub CreateTables()
     X "CREATE TABLE tblQuestionRefs (QuestionID LONG NOT NULL, RefID LONG NOT NULL, Paragraph TEXT(100), CONSTRAINT pkQuestionRefs PRIMARY KEY (QuestionID, RefID))"
 
     ' ---- Exams ----
+    ' tblExamTopics.ChangeNo counts the swaps and the sign-off on the topic, so a
+    ' swap or sign-off only goes through on the questions the SME was shown.
     X "CREATE TABLE tblExams (ExamID AUTOINCREMENT PRIMARY KEY, TemplateID LONG NOT NULL, RecipientName TEXT(150) NOT NULL, VersionNo INTEGER, " & _
       "StatusID LONG NOT NULL, CurrentStepRoleID LONG, OverallClassLevelID LONG, CreatedByPersonID LONG NOT NULL, CreatedOn DATETIME, " & _
       "FinalApprovedOn DATETIME, OutputFile MEMO)"
     X "CREATE TABLE tblExamTopics (ExamTopicID AUTOINCREMENT PRIMARY KEY, ExamID LONG NOT NULL, TopicID LONG NOT NULL, QuestionCount INTEGER NOT NULL, " & _
-      "SignedOffByPersonID LONG, SignedOffOn DATETIME)"
+      "SignedOffByPersonID LONG, SignedOffOn DATETIME, ChangeNo LONG)"
     X "CREATE TABLE tblExamQuestions (ExamQuestionID AUTOINCREMENT PRIMARY KEY, ExamID LONG NOT NULL, ExamTopicID LONG NOT NULL, QuestionID LONG NOT NULL, " & _
       "SortOrder INTEGER, WasSwapped YESNO)"
     X "CREATE TABLE tblTasks (TaskID AUTOINCREMENT PRIMARY KEY, TaskType TEXT(20) NOT NULL, ItemType TEXT(10) NOT NULL, ItemID LONG NOT NULL, " & _
@@ -212,5 +218,5 @@ Private Sub SeedData()
     X "INSERT INTO tblSettings VALUES ('OverlapMaxPct','30','Max % of an exam''s questions that may appear in the lookback window')"
     X "INSERT INTO tblSettings VALUES ('OverlapWindowExams','10','Number of most recent exams checked for overlap')"
     X "INSERT INTO tblSettings VALUES ('DefaultQuestionCount','4','Default questions per topic in a template')"
-    X "INSERT INTO tblSettings VALUES ('SchemaVersion','1','Back-end schema version')"
+    X "INSERT INTO tblSettings VALUES ('SchemaVersion','2','Back-end schema version')"
 End Sub
