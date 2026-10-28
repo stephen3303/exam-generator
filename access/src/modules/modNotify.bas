@@ -36,7 +36,7 @@ Option Explicit
 ' windows: the app's dim doesn't cover them, but they can open behind
 ' Access, so the busy text says Outlook may ask. A failed email is logged,
 ' the step stands, and TakeNoticeNote gives the page a line for its toast;
-' a batch stops at its first failed email. Outlook is driven by late
+' a batch stops after two failed emails in a row. Outlook is driven by late
 ' binding (no reference), from the copy that took the step: the running
 ' Outlook, else one started here and kept for the session (OpenOutlook).
 '
@@ -173,9 +173,9 @@ End Sub
 ' action that queued them, once its own busy pop-up has ended and its dialog
 ' has closed, before its toast; WithNoticeNote then says what wasn't sent.
 ' Shows "Sending N email notices..." while it works. The batch stops when
-' the first email fails or two fail in a row, so a denied prompt isn't asked
-' again for each one; a later lone failure (one person's address) is logged
-' and the rest still go. One note says how many weren't sent.
+' two emails fail in a row, so a denied prompt is asked at most twice; a
+' lone failure (one person's address) is logged and the rest still go. One
+' note says how many weren't sent.
 ' Errors: none (a failure is logged and noted).
 Public Sub SendQueuedNotices()
     Dim batch As Collection, ol As Object, started As Boolean, isNew As Boolean, it As Variant, n As Long, nSent As Long
@@ -199,7 +199,7 @@ Public Sub SendQueuedNotices()
                 nSent = nSent + 1: nFail = 0
             Else                                ' logged there
                 nFail = nFail + 1
-                If k = 1 Or nFail >= 2 Then Exit For    ' Outlook refuses them all: the rest aren't tried
+                If nFail >= 2 Then Exit For         ' Outlook refuses them all: the rest aren't tried
             End If
         Next
         If nSent < n And n = 1 Then

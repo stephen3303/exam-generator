@@ -71,7 +71,7 @@ End Sub
 Private Sub SendSweepNotices()
     If Me.TimerInterval = 0 Then Exit Sub
     Me.TimerInterval = 0
-    SendNoticesWithToast "An exam went on to the DH."
+    SendNoticesWithToast "Emails for an exam's sign-offs:"
 End Sub
 
 ' The shell asks before it leaves the page (or closes the app): the opening
