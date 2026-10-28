@@ -61,6 +61,7 @@ Public Const MAX_RECIPIENT As Long = 150        ' tblExams.RecipientName is TEXT
 ' ---------------------------------------------------------------------------
 
 ' An exam status's id (tblStatuses, AppliesTo Exam), 0 when missing.
+' Errors: none of its own; a data error passes up.
 Public Function ExamStatusID(ByVal nm As String) As Long
     ExamStatusID = Nz(DLookup("StatusID", "tblStatuses", "StatusName=" & Q(nm) & " AND AppliesTo='Exam'"), 0)
 End Function
@@ -68,11 +69,14 @@ End Function
 ' The exam statuses in which its topics are still with their SMEs (they can
 ' be swapped and signed off, and the last sign-off sends the exam to the DH),
 ' as ids for IN (...). Every "still in SME review" check uses this list.
+' Errors: none of its own; a data error passes up.
 Public Function SmeReviewStatusIDs() As String
     SmeReviewStatusIDs = CStr(ExamStatusID(ES_SME_REVIEW))
 End Function
 
 ' How many of the n questions a topic gets may have been given lately.
+' n <= 0 gives 0. Reads OverlapMaxPct (30 when it isn't set).
+' Errors: none of its own; a data error passes up.
 Public Function RepeatsAllowed(ByVal n As Long) As Long
     If n <= 0 Then Exit Function
     RepeatsAllowed = Int(n * SettingLong(SET_OVERLAP_PCT, 30) / 100)
@@ -99,6 +103,8 @@ Public Function RecentKeysList(Optional ByVal forExamId As Long = 0) As String
 End Function
 
 ' True when key is in list (a RecentKeysList).
+' A Null key is never in it.
+' Errors: none.
 Public Function InKeyList(ByVal list As String, ByVal key As Variant) As Boolean
     If IsNull(key) Then Exit Function
     InKeyList = InStr("," & list & ",", "," & CLng(key) & ",") > 0
@@ -126,6 +132,8 @@ Private Function CountOf(ByVal sql As String) As Long
 End Function
 
 ' "Damage Control on the exam for USS Example": an exam topic, named.
+' "" when there is no such exam topic.
+' Errors: none of its own; a data error passes up.
 Public Function ExamTopicName(ByVal etId As Long) As String
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset("SELECT tp.TopicName, e.RecipientName FROM (tblExamTopics AS et INNER JOIN tblExams AS e " & _
@@ -140,6 +148,7 @@ End Function
 
 ' Why the signed-in person can't generate an exam now, or "": only an active
 ' DH whom the Personnel file lets use the app can.
+' Errors: none of its own; a data error passes up.
 Public Function ExamMakerProblem() As String
     Dim pid As Long
     If Not DataLinked() Then ExamMakerProblem = "This copy has no data file.": Exit Function
@@ -163,12 +172,14 @@ End Sub
 
 ' Who the exam is for, cleaned (CleanText) for its one-line field: a line
 ' break pasted in becomes a space. "" for none.
+' Errors: none.
 Public Function CleanRecipient(ByVal v As Variant) As String
     CleanRecipient = Replace(Replace(Nz(CleanText(v), ""), vbCrLf & vbCrLf, " "), vbCrLf, " ")
 End Function
 
 ' Why recipient (already cleaned, CleanRecipient) won't do as who the exam
 ' is for, or "".
+' Errors: none.
 Public Function RecipientProblem(ByVal recipient As String) As String
     If Len(recipient) = 0 Then
         RecipientProblem = "Type who the exam is for: the boat, schoolhouse or other command."
@@ -225,6 +236,7 @@ Public Function DrawPlanSql(ByVal tplId As Long, ByVal keys As String) As String
 End Function
 
 ' How many of template tplId's topics are turned off (the draw leaves them out).
+' Errors: none of its own; a data error passes up.
 Public Function TopicsOffCount(ByVal tplId As Long) As Long
     TopicsOffCount = CountOf("SELECT Count(*) FROM tblTemplateTopics AS tt INNER JOIN tblTopics AS t ON tt.TopicID=t.TopicID " & _
         "WHERE tt.TemplateID=" & tplId & " AND NOT t.IsActive")
@@ -242,6 +254,9 @@ End Function
 ' in examId, or why it can't be generated (who it is for, the template, or
 ' a topic short of questions, of SMEs, or over the rule); then nothing is
 ' written.
+' Writes: the exam (SME Review, at the SME step), its topics, questions and
+' review tasks (one per reviewer of each topic), and an audit row on the
+' exam (Generated, at the DH step).
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an active DH now
 '   (RequireExamMaker); a data error rolls back and passes up.
 Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, ByVal repeatTopics As String, _
@@ -429,6 +444,8 @@ End Function
 ' CreatedOn, since_txt and status (Open, Done or Closed). done False lists
 ' the open ones, oldest first; True the done and closed ones, newest first.
 ' search matches who it is for, the template and the topic.
+' Builds the SQL only (it reads the signed-in person's id).
+' Errors: none.
 Public Function ReviewTasksSql(ByVal done As Boolean, ByVal search As String) As String
     Dim where As String, t As String
     where = "tk.AssignedPersonID=" & SignedInPersonID() & " AND tk.TaskType=" & Q(TASK_SME_REVIEW) & " AND tk.ItemType=" & _
@@ -447,6 +464,8 @@ End Function
 
 ' How many open (done False) or done and closed review tasks the signed-in
 ' person has (the chips' counts).
+' 0 when no data file is linked.
+' Errors: none of its own; a data error passes up.
 Public Function ReviewCount(ByVal done As Boolean) As Long
     If Not DataLinked() Then Exit Function
     ReviewCount = DCount("*", "tblTasks", "AssignedPersonID=" & SignedInPersonID() & " AND TaskType=" & Q(TASK_SME_REVIEW) & _
@@ -460,6 +479,8 @@ End Function
 ' Swapped, Given lately (its key is in keys, the RecentKeysList for the
 ' exam) or "". A swapped question given lately says both, so the SME can
 ' see every question that counts against the overlap rule.
+' Builds the SQL only (it reads the approved status's id).
+' Errors: none of its own; a data error passes up.
 Public Function ExamTopicQsSql(ByVal etId As Long, ByVal keys As String) As String
     ExamTopicQsSql = "SELECT eq.ExamQuestionID AS id, eq.QuestionID, 'Q' & q.QuestionKey & ' v' & q.VersionNo AS ref, " & _
         "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, d.LevelName, q.TotalPoints AS pts, " & _
@@ -503,6 +524,7 @@ End Function
 ' "": the topic must still wait for its sign-off on an exam in SME review,
 ' and the person must be an active SME of the topic with an open review
 ' task for it, whom the Personnel file lets use the app.
+' Errors: none of its own; a data error passes up.
 Public Function ReviewProblem(ByVal etId As Long) As String
     Dim rs As DAO.Recordset, pid As Long, topicId As Long, s As String
     If Not DataLinked() Then ReviewProblem = "This copy has no data file.": Exit Function
@@ -537,6 +559,8 @@ End Function
 ' Exam topic etId's change number (ChangeNo), read past Jet's cache so another
 ' copy's swap or sign-off of a moment ago counts. Read it before the topic's
 ' questions, keep it, and pass it to SwapQuestion and SignOffTopic.
+' 0 when there is no such topic (or its number is Null).
+' Errors: none of its own; a data error passes up.
 Public Function TopicChangeNo(ByVal etId As Long) As Long
     DBEngine.Idle dbRefreshCache
     TopicChangeNo = Nz(DLookup("ChangeNo", "tblExamTopics", "ExamTopicID=" & etId), 0)
@@ -544,6 +568,7 @@ End Function
 
 ' Person pid's name ("Lt A. Smith"), or "someone no longer listed" when the
 ' Personnel file has no such person: who signed off or generated an exam.
+' Errors: none of its own; a data error passes up.
 Public Function SignerName(ByVal pid As Variant) As String
     SignerName = PersonName(pid)
     If Len(SignerName) = 0 Then SignerName = "someone no longer listed"
@@ -569,6 +594,7 @@ End Function
 
 ' How many questions on exam topic etId were given lately (keys: the
 ' RecentKeysList for its exam).
+' Errors: none of its own; a data error passes up.
 Public Function GivenLatelyCount(ByVal etId As Long, ByVal keys As String) As Long
     GivenLatelyCount = CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
         "WHERE eq.ExamTopicID=" & etId & " AND q.QuestionKey IN (" & keys & ")")
@@ -581,6 +607,8 @@ End Function
 ' questions given lately over what the overlap rule allows (nor over how
 ' many it has now, when it is over already), nor a topic of a later exam
 ' (LaterExamProblem).
+' Reads only; also called inside SwapQuestion's transaction.
+' Errors: none of its own; a data error passes up.
 Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     Dim rs As DAO.Recordset, examId As Long, etId As Long, topicId As Long, n As Long, oldKey As Variant, newKey As Variant
     Dim keys As String, have As Long, after As Long, allowed As Long, oldQid As Long
@@ -662,7 +690,9 @@ End Function
 ' why it wasn't swapped (SwapProblem, or someone changed the topic since).
 ' Claiming the topic (ChangeNo + 1) is the transaction's first write, so two
 ' swaps of one topic run one after the other and the rule is checked again
-' with nothing else changing it.
+' with nothing else changing it. Writes: the slot's QuestionID and
+' WasSwapped, the topic's ChangeNo, and an audit row on the exam (Swapped,
+' at the SME step, "<topic>: Q12 v1 out, Q15 v2 in.").
 ' Errors: ERR_NOT_ALLOWED when the person may not change the topic now
 '   (RequireReviewer); a data error rolls back and passes up.
 Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByVal stamp As Long, ByRef doneText As String) As String
@@ -730,7 +760,10 @@ End Function
 ' task is Done and the other SMEs' tasks on it are Closed. When it was the
 ' exam's last topic, the exam goes to the DH for approval. Returns "" with
 ' doneText for the toast, or why it wasn't signed off (another SME swapped
-' a question or signed it off since).
+' a question or signed it off since). Writes: the topic's sign-off and
+' ChangeNo, the topic's open tasks (Done or Closed), an audit row on the
+' exam (Signed off, at the SME step, the topic's name) and, for the last
+' topic, the exam's status and step with its own audit row (Submitted).
 ' Errors: ERR_NOT_ALLOWED when the person may not sign it off now
 '   (RequireReviewer); a data error rolls back and passes up.
 Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef doneText As String) As String
