@@ -106,20 +106,22 @@ Fail:
 End Sub
 
 ' Exam examId has open review tasks (it was generated, or sent back to its
-' SMEs): tell each SME with one, naming their topics. Never raises.
-Public Sub NoticeReviews(ByVal examId As Long)
+' SMEs): tell each SME with one, naming their topics. afterTaskId limits it
+' to tasks made after that one (the sweep's reissued tasks), so SMEs told
+' before aren't told again. Never raises.
+Public Sub NoticeReviews(ByVal examId As Long, Optional ByVal afterTaskId As Long = 0)
     Dim rs As DAO.Recordset, who As DAO.Recordset, what As String, topics As String, nTopics As Long
     On Error GoTo Fail
     what = ExamWhat(examId)
     If Len(what) = 0 Then Exit Sub
     Set who = Recipients("SELECT AssignedPersonID FROM tblTasks WHERE ItemType=" & Q(ITEM_EXAM) & " AND ItemID=" & examId & _
-        " AND TaskType=" & Q(TASK_SME_REVIEW) & " AND TaskStatus=" & Q(TS_OPEN))
+        " AND TaskType=" & Q(TASK_SME_REVIEW) & " AND TaskStatus=" & Q(TS_OPEN) & " AND TaskID>" & afterTaskId)
     Do While Not who.EOF
         topics = "": nTopics = 0
         Set rs = CurrentDb.OpenRecordset("SELECT tp.TopicName FROM (tblTasks AS tk INNER JOIN tblExamTopics AS et " & _
             "ON tk.ExamTopicID=et.ExamTopicID) INNER JOIN tblTopics AS tp ON et.TopicID=tp.TopicID WHERE tk.ItemType=" & _
-            Q(ITEM_EXAM) & " AND tk.ItemID=" & examId & " AND tk.TaskStatus=" & Q(TS_OPEN) & " AND tk.AssignedPersonID=" & _
-            who!PersonID & " ORDER BY tp.TopicName", dbOpenSnapshot)
+            Q(ITEM_EXAM) & " AND tk.ItemID=" & examId & " AND tk.TaskStatus=" & Q(TS_OPEN) & " AND tk.TaskID>" & afterTaskId & _
+            " AND tk.AssignedPersonID=" & who!PersonID & " ORDER BY tp.TopicName", dbOpenSnapshot)
         Do While Not rs.EOF
             topics = topics & IIf(Len(topics) > 0, ", ", "") & rs!TopicName
             nTopics = nTopics + 1
