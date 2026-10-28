@@ -22,11 +22,13 @@ Option Explicit
 ' cover the exam's overall marking (the highest on the exam). Page breaks
 ' are only known once Word has laid the document out, so the code lays it
 ' out first, finds the pages each portion falls on, and then makes each page
-' a section of its own by turning the paragraph mark that ends the page into
-' a continuous section break, which takes no room, so the layout doesn't
-' move. Paragraphs are kept whole on a page so every page starts a new
-' paragraph. If a page can't be split that way, or the layout moved, every
-' page carries the overall marking instead: never lower than its content.
+' a section of its own by putting a continuous section break in place of
+' the paragraph mark that ends the page (Word puts the break in front of
+' the mark, so the mark is then deleted): the break ends that paragraph
+' instead and takes no room, so the layout doesn't move. Paragraphs are
+' kept whole on a page so every page starts a new paragraph. If a page
+' can't be split that way, or the layout moved, every page carries the
+' overall marking instead: never lower than its content.
 '
 ' Word is driven by late binding (no reference to set), hidden, and quit
 ' when done, also on an error.
@@ -105,18 +107,30 @@ Public Function ExamDocFileName(ByVal examId As Long) As String
 End Function
 
 ' The path of exam examId's document, made first when it is missing (an
-' approval whose document failed, or a file someone moved). Returns "" and
-' the path in docPath, or why there is none; note as MakeExamDocument's
-' when it was made now.
+' approval whose document failed, or a file someone moved), or when the
+' admin reordered the classification levels so that the exam's content now
+' ranks above the marking it was approved with: the stored file may then
+' mark a page lower than its content, so it is made again (each time, as
+' nothing records which order a file was made under). Returns "" and the
+' path in docPath, or why there is none; note as MakeExamDocument's when it
+' was made now.
 Public Function EnsureExamDocument(ByVal examId As Long, ByRef docPath As String, Optional ByRef note As String) As String
     Dim p As String
     docPath = "": note = ""
     p = StoredDocPath(examId)
     If Len(p) > 0 Then
-        If Len(Dir(p)) > 0 Then docPath = p: Exit Function
+        If Len(Dir(p)) > 0 And Not RankedUpSince(examId) Then docPath = p: Exit Function
     End If
     EnsureExamDocument = MakeExamDocumentNow(examId, note)
     If Len(EnsureExamDocument) = 0 Then docPath = StoredDocPath(examId)
+End Function
+
+' True when exam examId's content ranks above the overall marking stored at
+' its final approval under today's classification order.
+Private Function RankedUpSince(ByVal examId As Long) As Boolean
+    Dim lvl As Long
+    lvl = Nz(DLookup("OverallClassLevelID", "tblExams", "ExamID=" & examId), 0)
+    If lvl <> 0 Then RankedUpSince = (ClassRank(OverallLevelID(examId)) > ClassRank(lvl))
 End Function
 
 ' Make exam examId's document now, under the busy veil: after its final
@@ -207,7 +221,7 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
     ' Only the file's name: each PC may reach the shared folder by another path.
     KitExecute "UPDATE tblExams SET OutputFile=" & Q(Mid$(path, InStrRev(path, "\") + 1)) & " WHERE ExamID=" & examId
     AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_DOC_MADE, 0, _
-        Mid$(path, InStrRev(path, "\") + 1) & IIf(Len(note) > 0, ". " & note, "")
+        Mid$(path, InStrRev(path, "\") + 1) & ", marked " & RankMarking(overall) & IIf(Len(note) > 0, ". " & note, "")
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
@@ -437,7 +451,7 @@ End Function
 ' approved); note then says why.
 Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
     Dim nPages As Long, secRk() As Long, starts() As Long, i As Long, p As Long, ok As Boolean, pos As Long
-    Dim sec As Object, r As Object, s0 As Long, s1 As Long
+    Dim sec As Object, r As Object, s0 As Long, s1 As Long, rr As Object
     ' The portions as ranges, now that nothing more is added after them: the
     ' text before a position never changed while later paragraphs were
     ' added, so each range is exactly its paragraph. From here they move
@@ -462,9 +476,14 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
         Next
     End If
     If ok Then
-        ' From the last page back, so the earlier positions stay put.
+        ' From the last page back, so the earlier positions stay put. Word
+        ' puts the break in front of the range, leaving the page's last
+        ' paragraph mark after it, where it would be an empty line at the top
+        ' of the next page: delete it, so the break ends that paragraph.
         For p = nPages To 2 Step -1
             m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
+            Set rr = m_doc.Range(starts(p), starts(p) + 1)
+            If rr.Text = vbCr Then rr.Delete
         Next
         m_doc.Repaginate
         ok = SectionsArePages(nPages)
@@ -475,9 +494,11 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
         For p = 2 To nPages
             Set sec = m_doc.Sections(p)
             s0 = sec.Range.Start: s1 = sec.Range.End
+            ' By where each portion starts: a paragraph is kept whole on its
+            ' page, and its end can take in the break that follows it.
             For i = 0 To m_pN - 1
                 Set r = m_pRng(i)
-                If r.Start < s1 And r.End > s0 And m_pRank(i) > secRk(p) Then secRk(p) = m_pRank(i)
+                If r.Start >= s0 And r.Start < s1 And m_pRank(i) > secRk(p) Then secRk(p) = m_pRank(i)
             Next
             If secRk(p) = 0 Then secRk(p) = overall          ' a page with no marked portion found
         Next
