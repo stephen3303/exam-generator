@@ -66,6 +66,7 @@ End Function
 Public Sub SearchFor(ByVal text As String)
     On Error GoTo Err_Handler
     m_search = Trim$(text)
+    Me.TimerInterval = 0                    ' restart the wait at each keystroke
     Me.TimerInterval = SEARCH_WAIT_MS       ' Form_Timer loads the list once the typing pauses
     Me.txtSearch.SetFocus
     Me.txtSearch.SelStart = Len(text)
@@ -205,7 +206,6 @@ Private Sub ShowAll()
     ClearGridFilters Me.Controls(ListName())
     Me.dtFrom = Null: Me.dtTo = Null
     SetSearch Me, "txtSearch", ""           ' calls SearchFor, which sets m_search
-    Me.TimerInterval = 0
     RefreshList
 End Sub
 
@@ -234,6 +234,7 @@ End Sub
 ' Load the open tab's list for the search and the dates.
 Private Sub RefreshList()
     Dim sf As Control, n As Long, dFrom As Variant, dTo As Variant, nm As Variant
+    Me.TimerInterval = 0                    ' a search still waiting is loaded now
     Set sf = Me.Controls(ListName())
     If Not m_ok Then
         ' Nothing to sort or filter: the open tab's column captions and funnels go too.
@@ -285,19 +286,23 @@ End Sub
 Private Function ShownCount(sf As Control) As Long
     Dim rs As DAO.Recordset
     Set rs = sf.Form.RecordsetClone
-    If Not rs.EOF Then rs.MoveLast
+    If rs.BOF And rs.EOF Then Exit Function
+    rs.MoveLast
     ShownCount = rs.RecordCount
 End Function
 
 ' After the rows shown changed: the count in the subtitle, the empty state,
 ' and the entry shown kept when still listed (else the first).
 Private Sub AfterFilter()
-    Dim sf As Control, n As Long, keep As Long, emp As String, funnels As Boolean
+    Dim sf As Control, n As Long, keep As Long, emp As String, funnels As Boolean, noRows As Boolean
     Set sf = Me.Controls(ListName())
     n = ShownCount(sf)
     funnels = Len(GridFilterWhere(sf)) > 0
     If m_total < 0 Then
         Me.lblSubtitle.Caption = "The first date is after the second: swap them to see entries."
+    ElseIf m_total > LOG_MAX And funnels Then
+        Me.lblSubtitle.Caption = Format$(n, "#,##0") & IIf(n = 1, " entry", " entries") & " (column filters on) of the newest " & _
+            Format$(LOG_MAX, "#,##0") & ". " & Format$(m_total, "#,##0") & " match the search and dates: narrow them to see older ones."
     ElseIf m_total > LOG_MAX Then
         Me.lblSubtitle.Caption = "Showing the newest " & Format$(LOG_MAX, "#,##0") & " of " & Format$(m_total, "#,##0") & _
             " entries that match the search and dates. Narrow them to see older ones."
@@ -305,7 +310,8 @@ Private Sub AfterFilter()
         Me.lblSubtitle.Caption = Format$(n, "#,##0") & IIf(n = 1, " entry", " entries") & IIf(funnels, " (column filters on)", "")
     End If
     emp = IIf(m_tab = "e", "emptyEList", "emptyList")
-    If n = 0 And m_total = 0 And Len(m_search) = 0 And IsNull(Me.dtFrom) And IsNull(Me.dtTo) And Not funnels Then
+    If n = 0 And m_total = 0 And Not funnels Then noRows = LogIsEmpty()    ' (VBA's And would run the lookup every time)
+    If noRows Then
         ShowEmpty Me, emp, True, IIf(m_tab = "e", "The error log is empty", "The audit trail is empty"), "Nothing has been recorded yet."
         SetVisible Me.Controls(emp & "_b"), False
     ElseIf m_tab = "e" Then
@@ -323,6 +329,11 @@ Private Sub AfterFilter()
         ShowEntry 0
     End If
 End Sub
+
+' True when the open tab's log has no entry at all, whatever the filters.
+Private Function LogIsEmpty() As Boolean
+    LogIsEmpty = IsNull(DLookup(IIf(m_tab = "e", "id", "AuditID"), IIf(m_tab = "e", "error_log", "tblAuditTrail")))
+End Function
 
 ' Show entry id of the open tab in full (0: the hint instead).
 Private Sub ShowEntry(ByVal id As Long)
