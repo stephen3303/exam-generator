@@ -560,6 +560,6 @@ Public Function RecentActivitySql(Optional ByVal n As Long = 20) As String
     RecentActivitySql = "SELECT TOP " & n & " a.AuditID AS id, Format(a.ActionOn,'d mmm h:nn') AS when_txt, " & _
         PersonNameSql() & " AS who, a.ActionType & ' ' & IIf(a.ItemType=" & Q(ITEM_QUESTION) & ", IIf(IsNull(q.QuestionKey), " & _
         "'a question', 'Q' & q.QuestionKey & ' v' & a.VersionNo), IIf(a.ItemType=" & Q(ITEM_EXAM) & ", 'E' & a.ItemID & ' v' & " & _
-        "a.VersionNo, 'a reference')) AS what, a.ActionOn FROM (tblAuditTrail AS a LEFT JOIN " & PERSON_TABLE & _
-        " AS p ON a.PersonID=p.person_id) LEFT JOIN tblQuestions AS q ON a.ItemID=q.QuestionID" & mine & " ORDER BY a.AuditID DESC"
+        "a.VersionNo, IIf(a.ItemType=" & Q(ITEM_BANK) & ", 'the question bank', 'a reference'))) AS what, a.ActionOn " & _
+        "FROM (tblAuditTrail AS a LEFT JOIN " & PERSON_TABLE & " AS p ON a.PersonID=p.person_id) LEFT JOIN tblQuestions AS q ON a.ItemID=q.QuestionID" & mine & " ORDER BY a.AuditID DESC"
 End Function

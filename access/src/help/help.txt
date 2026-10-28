@@ -153,7 +153,7 @@ Every question in the bank, and the references they cite. Everyone can look; SME
 - Type in the **search box** to find questions by their words, their topic or their number (Q12).
 - The **chips** show questions by status. **All** shows every version that isn't retired: each approved question, and a new version of it while that is being written or approved; **Retired** shows the versions a newer version replaced.
 - The **funnel** on a column header shows only the rows with the values you tick. The chips' counts follow the search and the funnels.
-- **Export** saves the rows shown as a CSV file or an Excel workbook.
+- **Export** saves the rows shown as a CSV file or an Excel workbook. The admin also gets **Export the question bank** and **Import questions** there (see Exporting and importing the bank).
 
 # The question on the right
 Pick a row to see the question: its status and who last acted on it, its text, topic, type, difficulty, points, portion marking, parts and references. **History** shows every version and who wrote, changed, submitted, approved or rejected it.
@@ -185,6 +185,32 @@ Each addition, correction, turn off or on and deletion is kept in the audit reco
 Every version of one question, newest first: who wrote, changed, submitted, approved, rejected and retired it, when, at which approval step, and any comments. The rows are never changed or deleted. A draft that was deleted no longer shows here, but its rows stay in the audit record.
 
 Click **Copy** to put the history on the clipboard as text, to paste into an email or a report.
+
+=== questions.bank | Exporting and importing the bank
+The admin can save the whole question bank, or some topics of it, as one Excel workbook, and import questions from a workbook in the same layout. Both are under **Export** on the **Question bank** page, and both need Excel on this computer.
+
+# The workbook
+- **Read me** says what the file is, when it was saved, by whom, which topics are in it and the highest portion marking in it. Handle the file at that marking.
+- **Questions**: one row per question, with its **Question ID** (the number that links the other sheets to it), topic, type, difficulty, points, marking, text and reference answer. **Status** and **Bank ref** are filled in by export only; import ignores them.
+- **Parts**: the parts (A, B...) of a question that has them, with each part's points, marking, text and reference answer. A question with parts leaves its own marking empty: it is the highest of its parts'.
+- **Options**: the answer options of a multiple choice question (or of each of its parts), lettered A, B, C in order, with **Yes** under **Correct** for the right one.
+- **References** and **Citations**: the documents the questions cite, and which question cites which, with the paragraph.
+- **Lists**: the bank's topics, types, difficulties and markings, for the dropdowns. Import doesn't read it.
+Commas, quotes, line breaks, numbers like 0800 and text starting with = come back as exported. Export reads every cell of the data sheets back and stops if Excel changed one. Points use a dot for a half point (1.5). When you type or edit a text in Excel that starts with = or looks like a number (0800), put an apostrophe in front of it.
+
+# Exporting
+**Export** > **Export the question bank** lists every topic with how many questions it has, ticked except the topics turned off (import takes no new questions in those). Untick the topics you don't want and click **Export**. Each question's version in use is written; a new version still being written or approved stays in the bank. The export is kept in the audit record.
+
+# Importing
+**Export** > **Import questions** asks for the workbook, then checks every row before anything is saved.
+- If any row has a problem, nothing is imported. The message lists the problems with their sheet and row, and offers to copy the full list. Fix them in the file and import it again.
+- Otherwise it says how many questions it will import and into which topics, which references are already in the bank and which are new, and which questions it skips. Click **OK** to import them all, or **Cancel**.
+- Each question comes in as a new **Draft** in its topic, with you as its author, and goes through the SMEs and the approval chain like any other. It can't be drawn for an exam until it is approved.
+- A question already in its topic, with the same text, parts and options (ignoring spaces and capitals), is skipped, and so is a second copy in the same file.
+- A topic turned off, or a reference turned off in the bank, takes no new questions. A question in one is a problem unless it would be skipped anyway.
+- A reference with the same title and number as one in the bank is that one; any other is added to the shared list.
+- The **Question ID** numbers in the file only link its sheets; the bank gives each imported question its own number.
+- Each imported question, each new reference and the import itself are kept in the audit record.
 
 === qedit | Question editor
 Write a question with its parts, portion markings, answer options and references. Nothing reaches the bank until you click **Save**, so no one else sees a half-written question.

@@ -4,7 +4,8 @@ Option Explicit
 ' Exam Generator (Access edition) - the question bank of build phase 5: the
 ' Question bank page (pgQuestions), the Question editor (pgQuestionEdit) and
 ' its dialogs dlgPart, dlgReference and dlgHistory; and the question
-' approvals of build phase 6: the Approvals page (pgApprovals) and dlgReject.
+' approvals of build phase 6: the Approvals page (pgApprovals) and dlgReject;
+' and dlgBankExport, the topics to export the bank from (modBank).
 ' modBuild.BuildPages calls BuildQuestionGrids first, then the pages;
 ' BuildUserInterface builds the dialogs.
 '
@@ -117,7 +118,7 @@ Public Sub Build_pgQuestions()
     Set c = Btn("btnNew", "New question", PAGE_W - PAGE_PAD - px(132), px(24), px(132), px(32), "outline")
     c.ControlTipText = "New question (Ctrl+N)": Anchor c, 1, 0
     Set c = Btn("btnExport", "Export", PAGE_W - PAGE_PAD - px(132) - px(88), px(24), px(80), px(32), "ghost")
-    c.ControlTipText = "Save the rows shown as a CSV file or Excel workbook": Anchor c, 1, 0
+    c.ControlTipText = "Save the rows shown as a CSV file or Excel workbook. The admin also exports and imports the whole bank here": Anchor c, 1, 0
     TabStrip PAGE_PAD, px(76), ContentW(), "TabPick", "q|Questions|0", "r|References|0"
     SearchBox "txtSearch", PAGE_PAD, px(120), px(260), "SearchFor", "Search...", px(28)
     y = BANK_Y: h = PAGE_H - y - px(16)
@@ -533,4 +534,32 @@ Public Sub Build_dlgReject()
     Set c = Btn("btnCancel", "Cancel", w - px(20) - px(88), px(346), px(88), px(30), "outline")
     c.Cancel = True
     SaveForm "dlgReject"
+End Sub
+
+' Export the question bank: the topics to export (a list to tick, all but
+' those turned off ticked at first, with Select all and Select none; its
+' hidden fourth column is is_on), how many questions
+' that is, and Export, which asks where to save the workbook (modBank).
+Public Sub Build_dlgBankExport()
+    Dim c As Control, w As Long, iw As Long
+    w = px(480): iw = w - px(40)
+    NewDialog "Export the question bank", w, px(470)
+    Ev F, "OnLoad"
+    Lbl "lblHead", "Export the question bank", px(20), px(20), iw, px(24), 11, True
+    Lbl "lblSub", "The questions in use in the topics ticked, with their parts, options and references, in one Excel workbook. " & _
+        "Import reads the same layout.", px(20), px(46), iw, px(36), 9, False, CLR_MUTED_FG
+    FieldLbl "capTopics", "TOPICS", px(20), px(92), px(200)
+    Link "lnkAll", "Select all", iw - px(170), px(90), px(80), px(18), "=SelectAll(True)", 9
+    Link "lnkNone", "Select none", iw - px(84), px(90), px(104), px(18), "=SelectAll(False)", 9
+    Set c = Lst("lstTopics", "", px(20), px(112), iw, px(232), 4, "0;" & (iw - px(110)) & ";" & px(90) & ";0")
+    c.ColumnHeads = False
+    c.MultiSelect = 1                           ' simple: a click ticks or unticks a row
+    c.FontSize = 10
+    Ev c, "OnClick"
+    Lbl "lblCount", "", px(20), px(352), iw, px(36), 9, False, CLR_MUTED_FG
+    Set c = Btn("btnExport", "Export...", w - px(20) - 2 * px(88) - px(8), px(416), px(88), px(30))
+    c.Default = True
+    Set c = Btn("btnCancel", "Cancel", w - px(20) - px(88), px(416), px(88), px(30), "outline")
+    c.Cancel = True
+    SaveForm "dlgBankExport"
 End Sub
