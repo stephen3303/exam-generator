@@ -209,6 +209,10 @@ Private Sub btnDiffAdd_Click()
     KitToast "Level added.", "success"
     Exit Sub
 Err_Handler:
+    If Err.Number = 3022 Then               ' added by someone else at this moment (uxLevelName)
+        KitMsgBox "There is already a difficulty level called """ & Trim$(Nz(v, "")) & """.", vbExclamation, MSG_TITLE
+        Exit Sub
+    End If
     HandleError "pgAdmRules.btnDiffAdd_Click"
 End Sub
 
@@ -231,6 +235,10 @@ Private Sub btnClassAdd_Click()
     KitToast "Added as the highest level, at the bottom of the list. Move it up if it ranks lower.", "success"
     Exit Sub
 Err_Handler:
+    If Err.Number = 3022 Then               ' added by someone else at this moment (uxMarking, uxPortionMark)
+        KitMsgBox "There is already a classification level with that marking or portion mark.", vbExclamation, MSG_TITLE
+        Exit Sub
+    End If
     HandleError "pgAdmRules.btnClassAdd_Click"
 End Sub
 

@@ -612,12 +612,36 @@ Private Function SaveRef() As Boolean
                 "Save the change?", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Function
     End If
     RequireReferenceWriter                  ' the right is checked now, not as of sign-in
+    On Error GoTo Fail
     KitExecute "UPDATE tblSourceRefs SET RefTitle=" & Q(Trim$(Me.txtRefTitle)) & ", RefNumber=" & _
         IIf(IsNull(NullIfEmpty(Me.txtRefNumber)), "Null", Q(NullIfEmpty(Me.txtRefNumber))) & ", Revision=" & _
         IIf(IsNull(NullIfEmpty(Me.txtRefRev)), "Null", Q(NullIfEmpty(Me.txtRefRev))) & " WHERE RefID=" & m_rid
+    On Error GoTo 0
     RefreshRefs m_rid
     Me.lblRefState.Caption = "Saved."
     SaveRef = True
+    Exit Function
+Fail:
+    If Err.Number = 3022 Then               ' another reference got this title and number at this moment
+        KitMsgBox "There is already a reference with this title and number, so this one wasn't changed.", vbExclamation, MSG_TITLE
+        Exit Function
+    End If
+    RaiseAgain "pgQuestions.SaveRef", m_rid
+End Function
+
+' Delete reference rid. False when a question has cited it since the check
+' before the confirm (error 3200 on the rQR_R relationship): the user is told.
+Private Function DeleteRef(ByVal rid As Long) As Boolean
+    On Error GoTo Fail
+    KitExecute "DELETE FROM tblSourceRefs WHERE RefID=" & rid
+    DeleteRef = True
+    Exit Function
+Fail:
+    If Err.Number = 3200 Then
+        KitMsgBox "A question has just cited this reference, so it can't be deleted. Turn it off instead.", vbInformation, MSG_TITLE
+        Exit Function
+    End If
+    RaiseAgain "pgQuestions.DeleteRef", rid
 End Function
 
 ' Before the shown reference is left: save, drop or stay.
@@ -657,7 +681,7 @@ Private Sub RefActions(ByVal atPointer As Boolean)
             End If
             If KitMsgBox("Delete the reference """ & nm & """? No question cites it.", vbYesNo + vbQuestion + vbDefaultButton2, _
                     MSG_TITLE) <> vbYes Then Exit Sub
-            KitExecute "DELETE FROM tblSourceRefs WHERE RefID=" & m_rid
+            If Not DeleteRef(m_rid) Then Exit Sub
             m_rid = 0
             RefreshRefs 0
             KitToast "Reference deleted.", "destructive"

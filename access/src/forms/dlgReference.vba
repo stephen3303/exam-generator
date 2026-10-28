@@ -115,6 +115,11 @@ Private Sub btnOK_Click()
     Done
     Exit Sub
 Err_Handler:
+    If Err.Number = 3022 Then               ' the same title and number added at this moment (uxRefTitleNumber)
+        KitMsgBox "Someone else has just added that reference, so it is in the list now. Pick it from the list instead.", _
+            vbInformation, MSG_TITLE
+        Exit Sub
+    End If
     HandleError "dlgReference.btnOK_Click", rid
 End Sub
 
