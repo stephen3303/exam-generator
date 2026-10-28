@@ -68,7 +68,7 @@ Start-Process .\build\ExamGenerator.accdb
 4. **Topics.** **New topic** and name it `Smoke test`. Set questions per exam to **1** and **Save**. Under SMEs, pick Test SME and **Add**.
 5. **Templates.** **New template** and name it `Smoke`. **Add topic**, pick Smoke test, set the slider to **1**, and **Add**.
 6. **Switching people.** **My settings**, then **Sign out**, brings up the sign-in screen, where you sign in as `testsme` or as yourself.
-   - The first time, Sign out asks you to set an app password for your Windows account, so the next person can't choose one for you.
+   - Closing Access and opening it again signs you straight back in by your Windows account, so use Sign out to switch.
 
 ## 5. Smoke path
 
