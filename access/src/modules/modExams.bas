@@ -866,7 +866,7 @@ End Sub
 ' Returns how many topics went back. Call it inside a transaction.
 ' Errors: a data error passes up (the caller rolls back).
 Private Function ReopenReplacedTopics(ByVal examId As Long) As Long
-    Dim rs As DAO.Recordset, v As Variant, ver As Variant, n As Long, smes As String, note As String
+    Dim rs As DAO.Recordset, ver As Variant, n As Long, smes As String, note As String
     If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
             SmeReviewStatusIDs() & ")") = 0 Then Exit Function
     Set rs = CurrentDb.OpenRecordset("SELECT et.ExamTopicID, et.TopicID, tp.TopicName FROM tblExamTopics AS et " & _
@@ -904,40 +904,49 @@ Private Sub AddReviewTasks(ByVal examId As Long, ByVal etId As Long, ByVal smes 
     Next
 End Sub
 
-' Exam examId's topics that wait on a sign-off but have no open review task
-' (reopened when the topic had no active SME, or its SMEs have all left
-' since), given tasks for the topic's active SMEs now, while the exam is in
-' SME review. Returns how many tasks were made. Runs in its own transaction.
-' Errors: a data error rolls back and passes up.
+' Exam examId's topics that wait on a sign-off, given an open review task
+' for each of the topic's active SMEs (TopicReviewers) who holds none on it:
+' a topic reopened when it had no active SME, or whose SMEs have changed
+' since (the tasks of SMEs who left stay as they are). Checked first without
+' a lock, then again under the exam's row lock, so two copies make each task
+' once. Returns how many tasks were made; runs in its own transaction.
+' Never raises: a failure (another copy holding the exam a moment) is logged
+' and the next sweep tries again.
 Private Function ReissueReviews(ByVal examId As Long) As Long
-    Dim ws As DAO.Workspace, inTrans As Boolean, rs As DAO.Recordset, smes As String, n As Long
-    Dim num As Long, desc As String, src As String
-    Set ws = DBEngine.Workspaces(0)
+    Dim ws As DAO.Workspace, inTrans As Boolean, n As Long
     On Error GoTo Fail
+    If MissingReviewTasks(examId, False) = 0 Then Exit Function    ' nothing to do: no lock taken
+    Set ws = DBEngine.Workspaces(0)
     ws.BeginTrans: inTrans = True
     If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
-            SmeReviewStatusIDs() & ")") > 0 Then
-        Set rs = CurrentDb.OpenRecordset("SELECT et.ExamTopicID, et.TopicID FROM tblExamTopics AS et WHERE et.ExamID=" & examId & _
-            " AND et.SignedOffByPersonID Is Null AND NOT EXISTS (SELECT * FROM tblTasks AS tk WHERE tk.ExamTopicID=et.ExamTopicID " & _
-            "AND tk.TaskStatus=" & Q(TS_OPEN) & ")", dbOpenSnapshot)
-        Do While Not rs.EOF
-            smes = TopicReviewers(rs!TopicID)
-            If Len(smes) > 0 Then
-                AddReviewTasks examId, rs!ExamTopicID, smes
-                n = n + UBound(Split(smes, ",")) + 1
-            End If
-            rs.MoveNext
-        Loop
-        rs.Close
-    End If
+            SmeReviewStatusIDs() & ")") > 0 Then n = MissingReviewTasks(examId, True)
     ws.CommitTrans: inTrans = False
     ReissueReviews = n
     Exit Function
 Fail:
-    num = Err.Number: desc = Err.Description: src = Err.Source
     If inTrans Then ws.Rollback
-    Err.Number = num: Err.Description = desc: Err.Source = src
-    RaiseAgain "modExams.ReissueReviews", examId
+    LogError "modExams.ReissueReviews", "exam " & examId
+End Function
+
+' How many review tasks exam examId's unsigned topics lack: one for each of
+' a topic's active SMEs who holds no open task on it. With doAdd, makes them.
+' Errors: a data error passes up.
+Private Function MissingReviewTasks(ByVal examId As Long, ByVal doAdd As Boolean) As Long
+    Dim rs As DAO.Recordset, v As Variant, n As Long
+    Set rs = CurrentDb.OpenRecordset("SELECT ExamTopicID, TopicID FROM tblExamTopics WHERE ExamID=" & examId & _
+        " AND SignedOffByPersonID Is Null", dbOpenSnapshot)
+    Do While Not rs.EOF
+        For Each v In Split(TopicReviewers(rs!TopicID), ",")
+            If CountOf("SELECT Count(*) FROM tblTasks WHERE ExamTopicID=" & rs!ExamTopicID & " AND AssignedPersonID=" & CLng(v) & _
+                    " AND TaskStatus=" & Q(TS_OPEN)) = 0 Then
+                If doAdd Then AddReviewTasks examId, rs!ExamTopicID, CStr(CLng(v))
+                n = n + 1
+            End If
+        Next
+        rs.MoveNext
+    Loop
+    rs.Close
+    MissingReviewTasks = n
 End Function
 
 ' After a sign-off of exam examId has committed: read past Jet's cache, so
@@ -967,8 +976,8 @@ End Function
 ' (My reviews does when it opens; the Exams list should too): it moves on an
 ' exam that two last sign-offs at the same moment, or a failed step after a
 ' sign-off, left behind. The audit row names whoever ran it. Then it gives
-' review tasks to topics that wait on a sign-off with none open, once the
-' topic has an active SME (ReissueReviews).
+' each topic that waits on a sign-off a review task for every active SME who
+' holds none on it (ReissueReviews).
 ' Never raises: a failure is logged.
 Public Sub SendSignedOffExams()
     Dim ids As String, v As Variant
@@ -981,11 +990,10 @@ Public Sub SendSignedOffExams()
     For Each v In Split(ids, ",")
         SendAfterSignOff CLng(v)
     Next
-    ' Topics that wait on a sign-off with no one to give it get tasks once
-    ' they have an active SME again.
+    ' Topics that wait on a sign-off get a task for each active SME who holds
+    ' none, so a topic whose SMEs left or changed isn't stuck (ReissueReviews).
     ids = ColumnList("SELECT DISTINCT et.ExamID FROM tblExamTopics AS et INNER JOIN tblExams AS e ON et.ExamID=e.ExamID " & _
-        "WHERE e.StatusID IN (" & SmeReviewStatusIDs() & ") AND et.SignedOffByPersonID Is Null AND NOT EXISTS " & _
-        "(SELECT * FROM tblTasks AS tk WHERE tk.ExamTopicID=et.ExamTopicID AND tk.TaskStatus=" & Q(TS_OPEN) & ")")
+        "WHERE e.StatusID IN (" & SmeReviewStatusIDs() & ") AND et.SignedOffByPersonID Is Null")
     For Each v In Split(ids, ",")
         ReissueReviews CLng(v)
     Next
