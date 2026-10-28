@@ -137,7 +137,13 @@ Public Sub Build_pgAdmRules()
     Lbl "lblRuleIntro", "A new exam may reuse questions given in recent exams, up to a limit. These settings set " & _
         "that limit for every topic.", fx, y + px(40), fw, px(36), 9, False, CLR_MUTED_FG
     FieldLbl "lblPct", "MOST OF A TOPIC'S QUESTIONS THAT MAY REPEAT", fx, y + px(88), fw
-    Slider "sldPct", "", fx, y + px(108), fw, 0, 100, 5, "RuleChanged", True, "0""%"""   ' a quoted %: Access drops the backslash of 0\%, and a bare % multiplies by 100
+    Slider "sldPct", "", fx, y + px(108), fw, 0, 100, 5, "RuleChanged", True, "0"
+    ' The value shown with a % sign added as text: a Format property with a %
+    ' in it (0%, 0\% or 0"%") shows the value times 100 in Access.
+    With F.Controls("sldPct_lbl")
+        .Format = ""
+        .ControlSource = "=Nz([sldPct_val],0) & ""%"""
+    End With
     Lbl "lblPctHint", "0% means every question must be fresh; 100% means repeats are never limited.", _
         fx, y + px(132), fw, px(18), 9, False, CLR_MUTED_FG
     FieldLbl "lblWindow", "RECENT EXAMS CHECKED", fx, y + px(168), fw
