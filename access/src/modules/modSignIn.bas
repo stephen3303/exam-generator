@@ -251,10 +251,11 @@ End Function
 
 ' True for an error that means another copy has the data file or one of its
 ' tables open (closing the other copies clears it): the kit's lock errors,
-' and 3045, 3050, 3051 and 3734 (file in use, locked, opened exclusively).
+' and 3006, 3045, 3050, 3051 and 3734 (file in use, locked, opened
+' exclusively; 3051 can also mean no permission to the file).
 Private Function IsOpenElsewhere(ByVal n As Long) As Boolean
     Select Case n
-        Case 3045, 3050, 3051, 3734: IsOpenElsewhere = True
+        Case 3006, 3045, 3050, 3051, 3734: IsOpenElsewhere = True
         Case Else: IsOpenElsewhere = IsLockError(n)
     End Select
 End Function

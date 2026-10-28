@@ -107,30 +107,33 @@ Public Function ExamDocFileName(ByVal examId As Long) As String
 End Function
 
 ' The path of exam examId's document, made first when it is missing (an
-' approval whose document failed, or a file someone moved), or when the
-' admin reordered the classification levels so that the exam's content now
-' ranks above the marking it was approved with: the stored file may then
-' mark a page lower than its content, so it is made again (each time, as
-' nothing records which order a file was made under). Returns "" and the
-' path in docPath, or why there is none; note as MakeExamDocument's when it
-' was made now.
+' approval whose document failed, or a file someone moved), or once after
+' the admin reordered the classification levels: the stored file was
+' marked under the old order and may mark a page lower than its content.
+' Returns "" and the path in docPath, or why there is none; note as
+' MakeExamDocument's when it was made now.
 Public Function EnsureExamDocument(ByVal examId As Long, ByRef docPath As String, Optional ByRef note As String) As String
     Dim p As String
     docPath = "": note = ""
     p = StoredDocPath(examId)
     If Len(p) > 0 Then
-        If Len(Dir(p)) > 0 And Not RankedUpSince(examId) Then docPath = p: Exit Function
+        If Len(Dir(p)) > 0 And Not MadeBeforeReorder(examId) Then docPath = p: Exit Function
     End If
     EnsureExamDocument = MakeExamDocumentNow(examId, note)
     If Len(EnsureExamDocument) = 0 Then docPath = StoredDocPath(examId)
 End Function
 
-' True when exam examId's content ranks above the overall marking stored at
-' its final approval under today's classification order.
-Private Function RankedUpSince(ByVal examId As Long) As Boolean
-    Dim lvl As Long
-    lvl = Nz(DLookup("OverallClassLevelID", "tblExams", "ExamID=" & examId), 0)
-    If lvl <> 0 Then RankedUpSince = (ClassRank(OverallLevelID(examId)) > ClassRank(lvl))
+' True when exam examId's stored document was made before the admin last
+' reordered the classification levels (setting ClassOrderChangedAt, written
+' by Admin: Rules), going by its newest "Document made" audit row (none:
+' made before that row was kept, so True). Both times come from the PCs'
+' clocks.
+Private Function MadeBeforeReorder(ByVal examId As Long) As Boolean
+    Dim stamp As String, made As Variant
+    stamp = SettingText(SET_CLASS_ORDER_AT)
+    If Not IsDate(stamp) Then Exit Function
+    made = DMax("ActionOn", "tblAuditTrail", "ItemType=" & Q(ITEM_EXAM) & " AND ItemID=" & examId & " AND ActionType=" & Q(AU_DOC_MADE))
+    If IsNull(made) Then MadeBeforeReorder = True Else MadeBeforeReorder = (made < CDate(stamp))
 End Function
 
 ' Make exam examId's document now, under the busy veil: after its final
@@ -451,7 +454,7 @@ End Function
 ' approved); note then says why.
 Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
     Dim nPages As Long, secRk() As Long, starts() As Long, i As Long, p As Long, ok As Boolean, pos As Long
-    Dim sec As Object, r As Object, s0 As Long, s1 As Long, rr As Object
+    Dim sec As Object, r As Object, s0 As Long, s1 As Long, rr As Object, fmt As Object
     ' The portions as ranges, now that nothing more is added after them: the
     ' text before a position never changed while later paragraphs were
     ' added, so each range is exactly its paragraph. From here they move
@@ -480,10 +483,17 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
         ' puts the break in front of the range, leaving the page's last
         ' paragraph mark after it, where it would be an empty line at the top
         ' of the next page: delete it, so the break ends that paragraph.
+        ' Deleting a paragraph mark can give the merged paragraph the deleted
+        ' one's format (Word 2013 on), so page p's first paragraph gets its
+        ' own back (its page break and indent).
         For p = nPages To 2 Step -1
+            Set fmt = m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format.Duplicate
             m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
             Set rr = m_doc.Range(starts(p), starts(p) + 1)
-            If rr.Text = vbCr Then rr.Delete
+            If rr.Text = vbCr Then
+                rr.Delete
+                m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format = fmt
+            End If
         Next
         m_doc.Repaginate
         ok = SectionsArePages(nPages)
