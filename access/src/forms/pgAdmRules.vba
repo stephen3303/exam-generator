@@ -156,7 +156,7 @@ End Sub
 ' Save the three settings. False when the default count isn't a whole
 ' number from MIN_ to MAX_QUESTIONS_PER_TOPIC (the admin is told).
 Private Function SaveRule() As Boolean
-    Dim t As String
+    Dim t As String, ws As DAO.Workspace, inTrans As Boolean
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     t = Trim$(FieldText(Me, Me.txtDefault))
     If Not IsWhole(t, MIN_QUESTIONS_PER_TOPIC, MAX_QUESTIONS_PER_TOPIC) Then
@@ -165,14 +165,24 @@ Private Function SaveRule() As Boolean
         Me.txtDefault.SetFocus
         Exit Function
     End If
+    ' The three settings are one rule: all of them are saved, or none.
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
     SetSetting SET_OVERLAP_PCT, CStr(SliderValue(Me, "sldPct"))
     SetSetting SET_OVERLAP_WINDOW, CStr(SliderValue(Me, "sldWindow"))
     SetSetting SET_DEFAULT_COUNT, CStr(CLng(t))
+    ws.CommitTrans: inTrans = False
+    On Error GoTo 0
     Me.txtDefault = CLng(t)
     m_dirty = False
     ShowState
     KitToast "Saved. New exams follow the new rule.", "success"
     SaveRule = True
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmRules.SaveRule"
 End Function
 
 ' True when t is a whole number from lo to hi.
@@ -194,9 +204,8 @@ Private Sub btnDiffAdd_Click()
     If IsNull(v) Then Exit Sub
     problem = NameProblem(v, MAX_LEVEL_NAME, "tblDifficultyLevels", "LevelName", "difficulty level")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblDifficultyLevels (LevelName, SortOrder, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
-        NextOrder("tblDifficultyLevels", "SortOrder") & ", True)"
-    GridSelect Me.sfDiff, DLookup("DifficultyID", "tblDifficultyLevels", "LevelName=" & Q(Trim$(v))), True
+    GridSelect Me.sfDiff, InsertRow("INSERT INTO tblDifficultyLevels (LevelName, SortOrder, IsActive) VALUES (" & _
+        Q(Trim$(v)) & ", " & NextOrder("tblDifficultyLevels", "SortOrder") & ", True)"), True
     KitToast "Level added.", "success"
     Exit Sub
 Err_Handler:
@@ -215,9 +224,8 @@ Private Sub btnClassAdd_Click()
     If IsNull(pm) Then Exit Sub
     problem = NameProblem(pm, MAX_PORTION_MARK, "tblClassLevels", "PortionMark", "portion mark")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & Q(Trim$(m)) & ", " & _
-        Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"
-    GridSelect Me.sfClass, DLookup("ClassLevelID", "tblClassLevels", "Marking=" & Q(Trim$(m))), True
+    GridSelect Me.sfClass, InsertRow("INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & _
+        Q(Trim$(m)) & ", " & Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"), True
     ' A new level gets the next LevelRank, so it ranks highest and sits last in
     ' this lowest-first list; Move up makes it rank lower.
     KitToast "Added as the highest level, at the bottom of the list. Move it up if it ranks lower.", "success"

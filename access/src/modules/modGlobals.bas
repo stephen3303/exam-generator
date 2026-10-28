@@ -3,7 +3,8 @@ Option Explicit
 
 ' Exam Generator (Access edition) - app constants, build-time silence and the
 ' small helpers every module uses: Notify (messages), Q (SQL text), NavTo,
-' and at the end FieldText, Plural and TableExists.
+' and at the end FieldText, Plural, TableExists, InsertRow and
+' RollbackKeepingError.
 ' The names the kit calls on the app (README, "What the app must provide")
 ' are here and in modUI; MeasureText comes from the kit's modTextMeasure
 ' adapter (kit\adapters), which build.ps1 loads with the kit.
@@ -83,3 +84,40 @@ Public Function TableExists(ByVal nm As String, Optional ByVal localOnly As Bool
         End If
     Next
 End Function
+
+' Run one INSERT that adds one row and return the row's AutoNumber id. The
+' id is read with SELECT @@IDENTITY on the Database object that ran the
+' insert, which is the only object that sees it (each CurrentDb is a new
+' one), so a new row is found without a look-up by name. Inside a
+' DBEngine.Workspaces(0) transaction the insert is part of it.
+'   sql   the INSERT ... VALUES or INSERT ... SELECT statement
+' Returns the new id.
+' Errors: 5 when the statement added no row or more than one; the engine's
+'   error when the insert fails (a lock is not retried, unlike KitExecute).
+Public Function InsertRow(ByVal sql As String) As Long
+    Dim db As DAO.Database, rs As DAO.Recordset
+    On Error GoTo Fail
+    Set db = CurrentDb
+    db.Execute sql, dbFailOnError
+    If db.RecordsAffected <> 1 Then Err.Raise 5, "modGlobals.InsertRow", "Expected to add one row, added " & db.RecordsAffected & "."
+    Set rs = db.OpenRecordset("SELECT @@IDENTITY", dbOpenSnapshot)
+    InsertRow = Nz(rs.Fields(0).Value, 0)
+    rs.Close
+    Exit Function
+Fail:
+    RaiseAgain "modGlobals.InsertRow", Left$(sql, 200)
+End Function
+
+' Roll back ws's transaction from an error handler and leave the error being
+' handled as it was, so the handler can still pass it on (RaiseAgain) or show
+' it (HandleError). A failed rollback is ignored: the error that caused it is
+' the one to report.
+'   ws   the workspace whose BeginTrans is open, DBEngine.Workspaces(0)
+Public Sub RollbackKeepingError(ws As DAO.Workspace)
+    Dim num As Long, desc As String, src As String
+    num = Err.Number: desc = Err.Description: src = Err.Source
+    On Error Resume Next
+    ws.Rollback
+    On Error GoTo 0
+    Err.Number = num: Err.Description = desc: Err.Source = src
+End Sub

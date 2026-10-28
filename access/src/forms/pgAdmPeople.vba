@@ -160,7 +160,7 @@ End Sub
 ' A role switch: give the role or take it away. Taking SME from someone who
 ' is an SME of topics takes them off those topics too, once the admin says so.
 Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
-    Dim v As Boolean, topics As String
+    Dim v As Boolean, topics As String, ws As DAO.Workspace, inTrans As Boolean
     On Error GoTo Err_Handler
     If m_loading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
@@ -174,13 +174,18 @@ Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
                 SetSwitch nm, True
                 Exit Sub
             End If
-            KitExecute "DELETE FROM tblTopicSMEs WHERE PersonID=" & m_pid
         End If
     End If
+    ' Off their topics and the role itself go together, or neither.
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    If Len(topics) > 0 Then KitExecute "DELETE FROM tblTopicSMEs WHERE PersonID=" & m_pid
     SetPersonRole m_pid, code, v
+    ws.CommitTrans: inTrans = False
     Changed
     Exit Sub
 Err_Handler:
+    If inTrans Then RollbackKeepingError ws
     HandleError "pgAdmPeople.RoleChanged", code & " " & m_pid
     ShowSaved
 End Sub

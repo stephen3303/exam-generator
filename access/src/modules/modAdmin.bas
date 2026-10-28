@@ -149,31 +149,49 @@ End Function
 
 ' Give pid a row in tblPeople if they have none (active, dashboard notices
 ' on), and access to the Exam Generator in the Personnel file, so a role
-' given to them lets them sign in.
+' given to them lets them sign in. The two writes (the data file and the
+' Personnel file) are one transaction: both are made, or neither.
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now.
 Public Sub EnsurePerson(ByVal pid As Long)
+    Dim ws As DAO.Workspace, inTrans As Boolean
     RequireExamAdmin
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
     If DCount("*", "tblPeople", "PersonID=" & pid) = 0 Then
         KitExecute "INSERT INTO tblPeople (PersonID, IsAdmin, IsActive, NotifyDashboard, NotifyEmail) " & _
             "VALUES (" & pid & ", False, True, True, False)"
     End If
     If Not PersonCanUse(pid, APP_CODE) Then SetPersonApp pid, APP_CODE, True
+    ws.CommitTrans: inTrans = False
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modAdmin.EnsurePerson", pid
 End Sub
 
 ' Give pid role code, or take it away.
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now; 5
 '   when the data file has no role code.
 Public Sub SetPersonRole(ByVal pid As Long, ByVal code As String, ByVal hasIt As Boolean)
-    Dim rid As Long
+    Dim rid As Long, ws As DAO.Workspace, inTrans As Boolean
     RequireExamAdmin
     rid = RoleID(code)
     If rid = 0 Then Err.Raise 5, "modAdmin.SetPersonRole", "There is no role " & code & " in the data file."
     If hasIt Then
+        On Error GoTo Fail
+        Set ws = DBEngine.Workspaces(0)
+        ws.BeginTrans: inTrans = True          ' the person, their access and the role together
         EnsurePerson pid
         If Not PersonHasRole(pid, code) Then KitExecute "INSERT INTO tblPersonRoles (PersonID, RoleID) VALUES (" & pid & ", " & rid & ")"
+        ws.CommitTrans: inTrans = False
     Else
         KitExecute "DELETE FROM tblPersonRoles WHERE PersonID=" & pid & " AND RoleID=" & rid
     End If
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modAdmin.SetPersonRole", code & " " & pid
 End Sub
 
 ' The people who hold role code and are active, "Smith, John (LT); Jones,
@@ -253,9 +271,12 @@ End Function
 ' -1) or down (1) a place among the rows matching where ("" for all). The
 ' rows are numbered 1, 2, 3... in their present order first, so ties and
 ' gaps sort themselves out. False when the row is already at that end.
+' The renumbering is one transaction, so a failure part-way leaves the old
+' order, not half of the new one.
 Public Function MoveRow(ByVal tbl As String, ByVal idField As String, ByVal orderField As String, ByVal id As Long, _
         ByVal delta As Long, Optional ByVal where As String = "") As Boolean
     Dim rs As DAO.Recordset, ids() As Long, n As Long, i As Long, at As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean
     Set rs = CurrentDb.OpenRecordset("SELECT " & idField & " FROM " & tbl & IIf(Len(where) > 0, " WHERE " & where, "") & _
         " ORDER BY " & orderField & ", " & idField, dbOpenSnapshot)
     at = -1
@@ -269,11 +290,19 @@ Public Function MoveRow(ByVal tbl As String, ByVal idField As String, ByVal orde
     rs.Close
     If at < 0 Or at + delta < 0 Or at + delta >= n Then Exit Function
     ids(at) = ids(at + delta): ids(at + delta) = id
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
     For i = 0 To n - 1
         KitExecute "UPDATE " & tbl & " SET " & orderField & "=" & (i + 1) & " WHERE " & idField & "=" & ids(i) & _
             IIf(Len(where) > 0, " AND " & where, "")
     Next
+    ws.CommitTrans: inTrans = False
     MoveRow = True
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modAdmin.MoveRow", tbl & " " & id
 End Function
 
 ' The next order number for a row added at the end of tbl's rows matching

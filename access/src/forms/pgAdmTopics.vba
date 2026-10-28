@@ -181,9 +181,8 @@ Private Sub NewTopic()
     If IsNull(v) Then Exit Sub
     problem = NameProblem(v, MAX_TOPIC_NAME, "tblTopics", "TopicName", "topic")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblTopics (TopicName, DefaultCount, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
-        DefaultQuestionCount() & ", True)"
-    id = DLookup("TopicID", "tblTopics", "TopicName=" & Q(Trim$(v)))
+    id = InsertRow("INSERT INTO tblTopics (TopicName, DefaultCount, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
+        DefaultQuestionCount() & ", True)")
     If Len(m_search) > 0 Then m_search = "": SetSearch Me, "txtSearch", ""
     RefreshList id
     KitToast "Topic added. Add its SMEs on the right.", "success"

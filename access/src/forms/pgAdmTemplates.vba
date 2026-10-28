@@ -209,12 +209,31 @@ Private Sub NewTemplate()
     If IsNull(v) Then Exit Sub
     problem = NameProblem(v, MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblTemplates (TemplateName, IsActive) VALUES (" & Q(Trim$(v)) & ", True)"
-    id = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q(Trim$(v)))
+    id = InsertRow("INSERT INTO tblTemplates (TemplateName, IsActive) VALUES (" & Q(Trim$(v)) & ", True)")
     If Len(m_search) > 0 Then m_search = "": SetSearch Me, "txtSearch", ""
     RefreshList id
     KitToast "Template added. Add its topics with Add topic.", "success"
 End Sub
+
+' Copy template fromId, with its topics, as an active template called nm.
+' Both inserts are one transaction, so a failure leaves no empty copy.
+' Returns the copy's TemplateID.
+Private Function CopyTemplate(ByVal fromId As Long, ByVal nm As String) As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean, id As Long
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    id = InsertRow("INSERT INTO tblTemplates (TemplateName, Description, IsActive) SELECT " & Q(nm) & _
+        ", Description, True FROM tblTemplates WHERE TemplateID=" & fromId)
+    KitExecute "INSERT INTO tblTemplateTopics (TemplateID, TopicID, QuestionCount, SortOrder) SELECT " & id & _
+        ", TopicID, QuestionCount, SortOrder FROM tblTemplateTopics WHERE TemplateID=" & fromId
+    ws.CommitTrans: inTrans = False
+    CopyTemplate = id
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmTemplates.CopyTemplate", fromId & " as " & nm
+End Function
 
 ' The open template's actions: copy it, or delete it.
 Private Sub TemplateActions(ByVal atPointer As Boolean)
@@ -233,11 +252,7 @@ Private Sub TemplateActions(ByVal atPointer As Boolean)
             If IsNull(v) Then Exit Sub
             problem = NameProblem(v, MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template")
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-            KitExecute "INSERT INTO tblTemplates (TemplateName, Description, IsActive) SELECT " & Q(Trim$(v)) & _
-                ", Description, True FROM tblTemplates WHERE TemplateID=" & m_id
-            id = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q(Trim$(v)))
-            KitExecute "INSERT INTO tblTemplateTopics (TemplateID, TopicID, QuestionCount, SortOrder) SELECT " & id & _
-                ", TopicID, QuestionCount, SortOrder FROM tblTemplateTopics WHERE TemplateID=" & m_id
+            id = CopyTemplate(m_id, Trim$(v))
             If Len(m_search) > 0 Then m_search = "": SetSearch Me, "txtSearch", ""
             RefreshList id
             KitToast "Copied with its topics.", "success"
