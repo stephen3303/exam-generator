@@ -48,7 +48,7 @@ The front end is built in the ten phases of the front-end plan. Pages a later ph
 | 3 | Help topics edited in the app (Admin: Help topics); the help is kept in the data file's `help_topic` table and read at start-up |
 | 4 | Admin: topics with their SMEs, templates with their topics (`dlgTemplateTopic`), people and routing (roles and the DH, XO and SM steps), rules and lists (the overlap rule and the difficulty and classification lists). Built by `modBuildAdmin`; shared lookups in `modAdmin` |
 | 5 | Question bank (search, status chips, column filters, references and the questions citing each) and the question editor (parts with points and portion markings, answer options, references, reference answer, history; versions and audit rows), with `dlgPart`, `dlgReference` and `dlgHistory`. Built by `modBuildQuestions`; the save and submit rules and the editor's working copy in `modQuestions` |
-| 6 | Question approvals |
+| 6 | Question approvals: the Approvals page's Questions tab (each approver's queue at the DH, XO and SM steps, a preview of the whole question, Approve and Reject) and `dlgReject` (the reason is required and goes in the audit trail). The SM's approval of a new version retires the version it replaces in the same transaction. Built by `modBuildQuestions`; the chain, the approver check and approve and reject in `modApprovals` |
 | 7 | Exam topic reviews |
 | 8 | Exams and exam approvals |
 | 9 | Dashboard, statistics, notifications |

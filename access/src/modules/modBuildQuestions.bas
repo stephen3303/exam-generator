@@ -3,14 +3,16 @@ Option Explicit
 
 ' Exam Generator (Access edition) - the question bank of build phase 5: the
 ' Question bank page (pgQuestions), the Question editor (pgQuestionEdit) and
-' its dialogs dlgPart, dlgReference and dlgHistory. modBuild.BuildPages
-' calls BuildQuestionGrids first, then the two pages; BuildUserInterface
-' builds the dialogs.
+' its dialogs dlgPart, dlgReference and dlgHistory; and the question
+' approvals of build phase 6: the Approvals page (pgApprovals) and dlgReject.
+' modBuild.BuildPages calls BuildQuestionGrids first, then the pages;
+' BuildUserInterface builds the dialogs.
 
 Private Const DETAIL_W As Long = 5400            ' the bank's detail card, 360 px
 Private Const BANK_Y As Long = 2400              ' the bank's cards' top, 160 px
 Private Const FIELD_Y As Long = 1320             ' the editor's field captions, 88 px
 Private Const TAB_Y As Long = 2280               ' the editor's tabs, 152 px
+Private Const APPR_W As Long = 6300              ' the approvals' detail card, 420 px
 
 Private Function ListW() As Long
     ListW = ContentW() - DETAIL_W - px(12)
@@ -47,6 +49,7 @@ Public Sub BuildQuestionGrids()
     BuildGrid "subGridQRefs", QRefCols(), TabInW()
     BuildGrid "subGridHistory", HistoryCols(), TabInW()
     BuildGrid "subGridHistoryDlg", HistoryCols(), px(720)
+    BuildGrid "subGridApprovals", ApprovalCols(), ApprListW() - px(32), 2
 End Sub
 
 ' "field|caption|width px|options[|sort field]"
@@ -74,6 +77,11 @@ End Function
 
 Private Function QRefCols() As Variant
     QRefCols = Array("RefTitle|Reference|420|b", "RefNumber|Number|200|m", "Revision|Rev.|80|m", "Paragraph|Paragraph|260|")
+End Function
+
+Private Function ApprovalCols() As Variant
+    ApprovalCols = Array("ref|#|60|m|QuestionKey", "QuestionText|Question|180|ws|qsort", "TopicName|Topic|88|s", _
+        "author|Author|100|", "kind|Kind|100|p")
 End Function
 
 Private Function HistoryCols() As Variant
@@ -433,4 +441,88 @@ Public Sub Build_dlgHistory()
     Set c = Btn("btnClose", "Close", w - px(20) - px(88), px(452), px(88), px(30))
     c.Default = True: c.Cancel = True
     SaveForm "dlgHistory"
+End Sub
+
+' ---------------------------------------------------------------------------
+' Approvals (page 3)
+' ---------------------------------------------------------------------------
+
+Private Function ApprListW() As Long
+    ApprListW = ContentW() - APPR_W - px(12)
+End Function
+
+' Two tabs. Questions: the questions waiting for the signed-in approver (the
+' search box over the list, funnels and sorting on each column), and the
+' picked one on the right: where it is in the chain (SME, DH, XO, SM), its
+' author, a read-only preview of the whole question, and Approve, Reject and
+' History. Exams: a placeholder until build phase 8. The Questions tab's
+' controls are listed in the hidden label grpQ (GroupSince); the stepper and
+' the avatar, which paint their own parts, are shown and hidden by the page.
+Public Sub Build_pgApprovals()
+    Dim c As Control, x As Long, y As Long, h As Long, fx As Long, fw As Long, btnY As Long, before As Object
+    NewForm "", 0, PAGE_W, PAGE_H
+    Ev F, "OnLoad"
+    PageHeader "Approvals", "Questions waiting for your approval at your step of the chain. Approve sends one on; " & _
+        "Reject sends it back to its author with your reason.", PAGE_PAD
+    TabStrip PAGE_PAD, px(76), ContentW(), "TabPick", "q|Questions|0", "x|Exams|0"
+    y = BANK_Y: h = PAGE_H - y - px(16)
+    x = PAGE_PAD + ApprListW() + px(12): fx = x + px(16): fw = APPR_W - px(32): btnY = y + h - px(16) - px(30)
+
+    ' The Questions tab.
+    Set before = NamesNow()
+    SearchBox "txtSearch", PAGE_PAD, px(120), px(260), "SearchFor", "Search...", px(28)
+    Card "List", "Waiting for you", PAGE_PAD, y, ApprListW(), h, , 2, 2
+    GridHeaders "hdrList", ApprovalCols(), PAGE_PAD + px(16), y + px(40), w:=ApprListW() - px(32), sortSf:="sfList", _
+        filterSf:="sfList", onFilter:="ListFiltered"
+    Set c = SubF("sfList", "subGridApprovals", PAGE_PAD + px(16), y + px(62), ApprListW() - px(32), h - px(78)): Anchor c, 2, 2
+    EmptyState "emptyList", PAGE_PAD + px(16), y + px(90), ApprListW() - px(32), "E8FB", "Nothing waiting for you", _
+        "Questions sent to your step of the chain show here.", "Clear search"
+    Card "Detail", "Question", x, y, APPR_W, h, , 1, 2
+    Lbl "lblQRef", "", fx + px(44), y + px(112), fw - px(44), px(22), 11, True
+    Lbl "lblQBy", "", fx + px(44), y + px(134), fw - px(44), px(20), 9, False, CLR_MUTED_FG
+    Lbl "lblQState", "", fx, y + px(162), fw, px(36), 9, False, CLR_FG
+    FieldLbl "capPreview", "THE QUESTION, AS SUBMITTED", fx, y + px(204), fw
+    Set c = RO("txtPreview", "", fx, y + px(222), fw, btnY - px(12) - (y + px(222)), 10)
+    c.ScrollBars = 2
+    Set c = Btn("btnApprove", "Approve", fx, btnY, px(96), px(30))
+    c.ControlTipText = "Approve it at your step and send it on"
+    Set c = Btn("btnReject", "Reject", fx + px(104), btnY, px(88), px(30), "destructive")
+    c.ControlTipText = "Send it back to its author with your reason"
+    Set c = Btn("btnHistory", "History", fx + fw - px(88), btnY, px(88), px(30), "outline")
+    c.ControlTipText = "Who wrote, changed, submitted and approved each version"
+    Set c = Lbl("lblDetailEmpty", "Pick a question in the list to see it here.", fx, y + px(120), fw, px(20), 9, False, CLR_MUTED_FG)
+    c.TextAlign = 2
+    GroupSince before, "grpQ"
+    ' Shown and hidden by the page (ShowQuestion), not with the group.
+    Stepper "stpQ", fx, y + px(44), fw, 2, "", "SME", "DH", "XO", "SM"
+    Set c = Txt("txtAuthor", "", fx, y + px(114), px(36), px(36))
+    c.Visible = False: c.TabStop = False
+    Avatar "avAuthor", "txtAuthor", fx, y + px(114), px(36)
+
+    ' The Exams tab: a placeholder.
+    EmptyState "emptyExams", PAGE_PAD, y + px(40), ContentW(), "E8A5", "Exam approvals come in build phase 8", _
+        "Exams waiting for your approval will show here, like questions do on the Questions tab."
+    SaveForm "pgApprovals"
+End Sub
+
+' Reject a question: who it goes back to, and the reason (required), which
+' goes in the audit trail for its author to read.
+Public Sub Build_dlgReject()
+    Dim c As Control, w As Long, iw As Long
+    w = px(500): iw = w - px(40)
+    NewDialog "Reject", w, px(400)
+    Ev F, "OnLoad"
+    Lbl "lblHead", "", px(20), px(20), iw, px(24), 11, True
+    Lbl "lblSub", "", px(20), px(46), iw, px(20), 9, False, CLR_MUTED_FG
+    FieldLbl "capTo", "GOES BACK TO", px(20), px(80), iw
+    RO "txtTo", "", px(20), px(98), iw, px(48), 10
+    FieldLbl "capReason", "REASON (REQUIRED)", px(20), px(156), iw
+    Set c = Txt("txtReason", "", px(20), px(174), iw, px(128))
+    c.EnterKeyBehavior = True: c.ScrollBars = 2
+    Lbl "lblHint", "Say what to change. Its author reads this in the question's history and in the editor.", px(20), px(306), _
+        iw, px(20), 9, False, CLR_MUTED_FG
+    Set c = Btn("btnReject", "Reject", w - px(20) - 2 * px(88) - px(8), px(346), px(88), px(30), "destructive")
+    Set c = Btn("btnCancel", "Cancel", w - px(20) - px(88), px(346), px(88), px(30), "outline")
+    c.Cancel = True
+    SaveForm "dlgReject"
 End Sub
