@@ -59,6 +59,7 @@ Public Const TS_CLOSED As String = "Closed"
 Public Const AU_GENERATED As String = "Generated"
 Public Const AU_SWAPPED As String = "Swapped"
 Public Const AU_SIGNED_OFF As String = "Signed off"
+Public Const AU_REOPENED As String = "Reopened"     ' a signed-off topic sent back to its SMEs (a question was replaced)
 
 Public Const MAX_RECIPIENT As Long = 150        ' tblExams.RecipientName is TEXT(150)
 
@@ -782,7 +783,8 @@ End Function
 ' task is Done and the other SMEs' tasks on it are Closed. When it was the
 ' exam's last topic, the exam goes to the DH for approval. Returns "" with
 ' doneText for the toast, or why it wasn't signed off (another SME swapped
-' a question or signed it off since). Writes: the topic's sign-off and
+' a question or signed it off since, or a question was replaced since the
+' draw: the SME swaps it first, ReplacedCount). Writes: the topic's sign-off and
 ' ChangeNo, the topic's open tasks (Done or Closed), an audit row on the
 ' exam (Signed off, at the SME step, the topic's name) and, for the last
 ' topic, the exam's status and step with its own audit row (Submitted).
@@ -790,9 +792,10 @@ End Function
 '   (RequireReviewer); a data error rolls back and passes up.
 Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef doneText As String) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, pid As Long, examId As Long, n As Long, nLeft As Long, ver As Variant
-    Dim topic As String, sent As Boolean, num As Long, desc As String, src As String
+    Dim topic As String, sent As Boolean, reopened As Boolean, num As Long, desc As String, src As String
     RequireReviewer etId
     doneText = ""
+    DBEngine.Idle dbRefreshCache            ' so a question replaced a moment ago in another copy counts
     pid = SignedInPersonID()
     examId = Nz(DLookup("ExamID", "tblExamTopics", "ExamTopicID=" & etId), 0)
     ver = DLookup("VersionNo", "tblExams", "ExamID=" & examId)
@@ -809,6 +812,16 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
         SignOffTopic = "The exam is past SME review, so this topic can't be signed off now."
         Exit Function
     End If
+    ' Every question must still be the approved version in use: one replaced
+    ' or retired since the draw is swapped first.
+    n = ReplacedCount(etId)
+    If n > 0 Then
+        ws.Rollback: inTrans = False
+        SignOffTopic = n & IIf(n = 1, " question on this topic was", " questions on this topic were") & " replaced by a newer " & _
+            "version or retired since the exam was drawn. Swap " & IIf(n = 1, "it", "them") & " first (Swap lists the newer " & _
+            "version), then sign off."
+        Exit Function
+    End If
     ' One sign-off wins, and only on the questions shown: only while no one
     ' has signed it off or swapped a question since the page loaded it.
     n = KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=" & pid & ", SignedOffOn=Now(), ChangeNo=Nz(ChangeNo,0)+1 " & _
@@ -822,11 +835,15 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
     KitExecute "UPDATE tblTasks SET TaskStatus=IIf(AssignedPersonID=" & pid & "," & Q(TS_DONE) & "," & Q(TS_CLOSED) & "), " & _
         "CompletedOn=Now(), CompletedByPersonID=" & pid & " WHERE ExamTopicID=" & etId & " AND TaskStatus=" & Q(TS_OPEN)
     AddAudit ITEM_EXAM, examId, ver, AU_SIGNED_OFF, RoleID("SME"), topic
-    sent = SendWhenSignedOff(examId)
+    sent = SendWhenSignedOff(examId, reopened)
     ws.CommitTrans: inTrans = False
     If sent Then NoticeExamAtStep examId    ' queues the DHs' emails; never raises
+    If reopened Then NoticeReviews examId   ' queues the SMEs' emails; never raises
     nLeft = SendAfterSignOff(examId)        ' and a last topic signed off at the same moment as this one; never raises
-    If nLeft < 0 Then
+    If reopened Then
+        doneText = "Signed off. A question on another topic was replaced since the draw, so that topic went back to its " & _
+            "SMEs to swap it before the exam goes to the DH."
+    ElseIf nLeft < 0 Then
         doneText = "Signed off."
     ElseIf nLeft = 0 Then
         doneText = "Signed off. That was the exam's last topic, so it goes to the DH for approval."
@@ -844,21 +861,27 @@ End Function
 
 ' Send exam examId to the DH for approval (In Review, at the DH's step) when
 ' every topic is signed off and it is still in SME review or sent back
-' (SmeReviewStatusIDs). Safe to call twice: only the call that moves it
-' writes the audit row (Submitted), in the name of whoever signed off the
-' last topic, at that time, whoever's copy made the move. Call it inside a
-' transaction, so the move and its audit row are written together. Returns
-' True when this call moved it (the caller sends the DHs' emails once it
-' has committed).
+' (SmeReviewStatusIDs). A signed-off topic that now holds a question
+' replaced or retired since the draw goes back to its SMEs instead
+' (ReopenReplacedTopics), so the exam never reaches the DH with one; then
+' reopened returns True (the caller sends those SMEs' emails once it has
+' committed). Safe to call twice: only the call that moves it writes the
+' audit row (Submitted), in the name of whoever signed off the last topic,
+' at that time, whoever's copy made the move. Call it inside a transaction,
+' so the move and its audit rows are written together. Returns True when
+' this call moved it (the caller sends the DHs' emails once it has
+' committed).
 ' Errors: a data error passes up (the caller rolls back).
-Private Function SendWhenSignedOff(ByVal examId As Long) As Boolean
+Private Function SendWhenSignedOff(ByVal examId As Long, Optional ByRef reopened As Boolean) As Boolean
     Dim n As Long, sme As String, rs As DAO.Recordset, who As Long, whenOn As Variant
     sme = SmeReviewStatusIDs()
     ' Take the exam's row first. A send-back writes the same row first, so it
     ' runs wholly before this (the count then sees its reopened topics) or
     ' wholly after. In SignOffTopic the row is held already.
+    reopened = False
     If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ")") = 0 Then Exit Function
     If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Function
+    If ReopenReplacedTopics(examId) > 0 Then reopened = True: Exit Function
     ' The condition again in the move itself, so the count and the move can't disagree.
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REVIEW) & ", CurrentStepRoleID=" & RoleID("DH") & _
         " WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS et " & _
@@ -873,6 +896,39 @@ Private Function SendWhenSignedOff(ByVal examId As Long) As Boolean
     SendWhenSignedOff = True
 End Function
 
+' Exam examId's signed-off topics that hold a question replaced or retired
+' since the draw, sent back to their SMEs while the exam is in SME review:
+' the sign-off is cleared, the change number moves on (a page showing the
+' old questions can't sign it off), its active SMEs get new open review
+' tasks, and the exam gets an audit row (Reopened, the topic's name).
+' Returns how many topics went back. Call it inside a transaction.
+' Errors: a data error passes up (the caller rolls back).
+Private Function ReopenReplacedTopics(ByVal examId As Long) As Long
+    Dim rs As DAO.Recordset, v As Variant, ver As Variant, n As Long
+    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
+            SmeReviewStatusIDs() & ")") = 0 Then Exit Function
+    Set rs = CurrentDb.OpenRecordset("SELECT et.ExamTopicID, et.TopicID, tp.TopicName FROM tblExamTopics AS et " & _
+        "INNER JOIN tblTopics AS tp ON et.TopicID=tp.TopicID WHERE et.ExamID=" & examId & _
+        " AND Not et.SignedOffByPersonID Is Null AND EXISTS (SELECT * FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
+        "ON eq.QuestionID=q.QuestionID WHERE eq.ExamTopicID=et.ExamTopicID AND NOT (q.IsCurrent AND q.StatusID=" & _
+        ApprovedStatusID() & "))", dbOpenSnapshot)
+    ver = DLookup("VersionNo", "tblExams", "ExamID=" & examId)
+    Do While Not rs.EOF
+        KitExecute "UPDATE tblExamTopics SET SignedOffByPersonID=Null, SignedOffOn=Null, ChangeNo=Nz(ChangeNo,0)+1 " & _
+            "WHERE ExamTopicID=" & rs!ExamTopicID
+        For Each v In Split(TopicReviewers(rs!TopicID), ",")
+            KitExecute "INSERT INTO tblTasks (TaskType, ItemType, ItemID, ExamTopicID, AssignedPersonID, TaskStatus, CreatedOn) " & _
+                "VALUES (" & Q(TASK_SME_REVIEW) & ", " & Q(ITEM_EXAM) & ", " & examId & ", " & rs!ExamTopicID & ", " & CLng(v) & _
+                ", " & Q(TS_OPEN) & ", Now())"
+        Next
+        AddAudit ITEM_EXAM, examId, ver, AU_REOPENED, RoleID("SME"), rs!TopicName & ": a question was replaced since the draw"
+        n = n + 1
+        rs.MoveNext
+    Loop
+    rs.Close
+    ReopenReplacedTopics = n
+End Function
+
 ' After a sign-off of exam examId has committed: read past Jet's cache, so
 ' another copy's sign-off of a moment ago counts, and send the exam to the DH
 ' when every topic is signed off now (SendWhenSignedOff, in its own
@@ -880,14 +936,15 @@ End Function
 ' Never raises: the sign-off is saved whatever happens here, so a failure is
 ' logged and the sweep (SendSignedOffExams) moves the exam later.
 Private Function SendAfterSignOff(ByVal examId As Long) As Long
-    Dim ws As DAO.Workspace, inTrans As Boolean, sent As Boolean
+    Dim ws As DAO.Workspace, inTrans As Boolean, sent As Boolean, reopened As Boolean
     On Error GoTo Fail
     DBEngine.Idle dbRefreshCache
     Set ws = DBEngine.Workspaces(0)
     ws.BeginTrans: inTrans = True
-    sent = SendWhenSignedOff(examId)
+    sent = SendWhenSignedOff(examId, reopened)
     ws.CommitTrans: inTrans = False
     If sent Then NoticeExamAtStep examId    ' queues the DHs' emails; never raises
+    If reopened Then NoticeReviews examId   ' queues the SMEs' emails; never raises
     SendAfterSignOff = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
     Exit Function
 Fail:
