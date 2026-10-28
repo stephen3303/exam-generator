@@ -318,7 +318,11 @@ Private Sub BackUpDataFile(ByVal v As Long)
     bak = src & ".v" & v & ".bak"
     If Len(Dir$(bak)) > 0 Then Exit Sub
     SplashStatus "Backing up the data file" & ChrW(8230)
-    CreateObject("Scripting.FileSystemObject").CopyFile src, bak, False
+    ' Copied under a temporary name and renamed only once complete, so a copy
+    ' cut short (a full disk) never passes for the backup at the next start.
+    If Len(Dir$(bak & ".tmp")) > 0 Then Kill bak & ".tmp"
+    CreateObject("Scripting.FileSystemObject").CopyFile src, bak & ".tmp", False
+    Name bak & ".tmp" As bak
 End Sub
 
 ' True for an error that means another copy has the data file or one of its
