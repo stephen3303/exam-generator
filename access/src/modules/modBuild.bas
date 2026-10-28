@@ -172,7 +172,7 @@ Private Sub Build_pgAdmHelp()
     Set c = Txt("txtKey", "", fx, y + px(62), px(220), px(30))
     c.ControlTipText = "A page's key (exams), or a parent's key, a dot and a word (exams.new) for a topic under it"
     Ev c, "OnChange"
-    FieldLbl "lblTitle", "TITLE", fx + px(236), y + px(44), fw - px(236)
+    FieldLbl "lblTopicTitle", "TITLE", fx + px(236), y + px(44), fw - px(236)
     Set c = Txt("txtTitle", "", fx + px(236), y + px(62), fw - px(236), px(30)): Anchor c, 2, 0
     Ev c, "OnChange"
     FieldLbl "lblBody", "TEXT", fx, y + px(102), fw

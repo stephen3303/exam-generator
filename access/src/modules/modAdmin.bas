@@ -35,7 +35,7 @@ Public Const DEFAULT_QUESTION_COUNT As Long = 4
 ' Questions per topic on one exam: a topic's DefaultCount, a template topic's
 ' QuestionCount and the DefaultQuestionCount setting all keep to this range.
 Public Const MIN_QUESTIONS_PER_TOPIC As Long = 1
-Public Const MAX_QUESTIONS_PER_TOPIC As Long = 50
+Public Const MAX_QUESTIONS_PER_TOPIC As Long = 40   ' the kit's Slider takes at most 41 stops
 
 ' The longest names the admin pages accept. Each mirrors its column's size in
 ' the back end (backend\modBuildBackEnd.bas, CreateTables).

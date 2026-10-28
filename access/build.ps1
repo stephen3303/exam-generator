@@ -105,7 +105,9 @@ try {
         Remove-Item $accde -ErrorAction SilentlyContinue
         if (Test-Path $accde) { throw "Can't replace $accde; close it and build again." }
         $acc.CloseCurrentDatabase()
-        [void]$acc.SysCmd(603, [string]$fe, [string]$accde)
+        # 603 (make ACCDE) is not in the AcSysCmdAction enum, so PowerShell can't pass it
+        # through the typed SysCmd method; call it late-bound, as the kit demo's release.ps1 does.
+        [void][System.__ComObject].InvokeMember('SysCmd', 'InvokeMethod', $null, $acc, @(603, [string]$fe, [string]$accde))
         if (-not (Test-Path $accde)) { throw "Access didn't make $accde. Open the .accdb and use File > Save As > Make ACCDE to see why." }
         Lock-ReleaseFrontEnd -Access $acc -Path $accde
         Write-Host "Locked release copy: $accde"
