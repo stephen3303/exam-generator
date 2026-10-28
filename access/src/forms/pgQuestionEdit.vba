@@ -127,7 +127,7 @@ Private Sub btnSubmit_Click()
         KitMsgBox "Submitted. Nobody holds the department head role yet, so it waits until the admin gives someone " & _
             "that role on the People and routing page.", vbInformation, MSG_TITLE
     Else
-        KitToast "Submitted to " & who & ".", "success"
+        KitToast WithNoticeNote("Submitted to " & who & "."), "success"
     End If
     Exit Sub
 Err_Handler:

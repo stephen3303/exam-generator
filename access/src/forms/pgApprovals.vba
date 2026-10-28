@@ -18,15 +18,16 @@ Option Explicit
 ' exam, answers included, on the right. Approve sends it on; the SM's final
 ' approval makes its Word document (modExamDoc). Reject opens
 ' dlgRejectExam, which sends one topic or all of them back to their SMEs.
-' The Exams page can ask for an exam to open on this tab through
-' TempVars("ApprovalsExamID").
+' The Exams page and the Dashboard can ask for an exam to open on this tab
+' through TempVars("ApprovalsExamID"), and the Dashboard for a question on
+' the Questions tab through TempVars("ApprovalsQuestionID").
 '
 ' Approve and reject act only at the step the person was shown (m_qstep,
 ' m_xstep): one moved on since counts as someone else having acted.
 '
 ' Owner: question approvals (build phase 6); exam approvals from build
 ' phase 8. Depends on: modApprovals, modErrors, modExamApprovals, modExamDoc,
-' modGlobals, modQuestions, modSignIn, modUI; the kit's modGridFilter,
+' modGlobals, modNotify, modQuestions, modSignIn, modUI; the kit's modGridFilter,
 ' modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Approvals"
@@ -45,7 +46,7 @@ Public Property Get HelpTopic() As String
 End Property
 
 Private Sub Form_Load()
-    Dim openX As Long
+    Dim openQ As Long, openX As Long
     On Error GoTo Err_Handler
     m_tab = "q"
     SelectTab Me, "q"
@@ -59,11 +60,13 @@ Private Sub Form_Load()
         ShowQuestion 0
         Exit Sub
     End If
-    ' The Exams page may ask for an exam to be shown first.
+    ' The Exams page or the Dashboard may ask for an exam or a question to be shown first.
+    openQ = Nz(TempVars("ApprovalsQuestionID"), 0)
+    TempVars("ApprovalsQuestionID") = Null
     openX = Nz(TempVars("ApprovalsExamID"), 0)
     TempVars("ApprovalsExamID") = Null
     If openX <> 0 Then m_tab = "x": SelectTab Me, "x"
-    RefreshList 0
+    RefreshList openQ
     RefreshXList openX
     ShowGroup
     Exit Sub
@@ -266,7 +269,7 @@ Private Sub ApproveClicked()
     End If
     problem = ApproveQuestion(m_qid, done, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
-    KitToast done, "success"
+    KitToast WithNoticeNote(done), "success"
     RefreshList m_qid                       ' still listed when the next step is also theirs
 End Sub
 
@@ -277,7 +280,7 @@ Private Sub RejectClicked()
     problem = ApproveProblem(m_qid, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
     If RunDialog("dlgReject", "id=" & m_qid & ";step=" & m_qstep) Then
-        KitToast "Sent back to its author with your reason.", "info"
+        KitToast WithNoticeNote("Sent back to its author with your reason."), "info"
     End If
     RefreshList m_qid                       ' gone from the list, or as it stands now
 End Sub
@@ -310,7 +313,7 @@ Private Sub XApproveClicked()
             KitToast done & IIf(Len(note) > 0, " " & note, ""), "success"
         End If
     Else
-        KitToast done, "success"
+        KitToast WithNoticeNote(done), "success"
     End If
     RefreshXList m_xid                      ' still listed when the next step is also theirs
 End Sub
@@ -323,7 +326,7 @@ Private Sub XRejectClicked()
     problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     If RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep) Then
-        KitToast "Sent back to its SMEs with your reason. They find it under My reviews.", "info"
+        KitToast WithNoticeNote("Sent back to its SMEs with your reason. They find it under My reviews."), "info"
     End If
     RefreshXList m_xid
 End Sub

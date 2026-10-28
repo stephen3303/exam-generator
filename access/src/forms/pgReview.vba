@@ -10,7 +10,8 @@ Option Explicit
 ' before this one), and
 ' the picked question in full. Swap opens dlgSwap; Sign off completes the
 ' topic for every SME on it. Both are checked again in the data file when
-' clicked (RequireReviewer).
+' clicked (RequireReviewer). The Dashboard can ask for a task to be shown
+' first through TempVars("ReviewTaskID").
 
 Private Const MSG_TITLE As String = "My reviews"
 
@@ -26,6 +27,7 @@ Public Property Get HelpTopic() As String
 End Property
 
 Private Sub Form_Load()
+    Dim openId As Long
     On Error GoTo Err_Handler
     ChipOn Me, "chip", 0
     If Not DataLinked() Then
@@ -36,7 +38,9 @@ Private Sub Form_Load()
         Exit Sub
     End If
     SendSignedOffExams                      ' an exam whose topics are all signed off goes on to the DH
-    RefreshList 0
+    openId = Nz(TempVars("ReviewTaskID"), 0)
+    TempVars("ReviewTaskID") = Null
+    RefreshList openId
     Exit Sub
 Err_Handler:
     HandleError "pgReview.Form_Load"
@@ -168,7 +172,7 @@ Private Sub SignOffClicked()
             vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     problem = SignOffTopic(m_et, m_stamp, done)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_task: Exit Sub
-    KitToast done, "success"
+    KitToast WithNoticeNote(done), "success"
     RefreshList 0                           ' it moves to Done
 End Sub
 

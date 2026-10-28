@@ -352,6 +352,7 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
     AddAudit ITEM_EXAM, examId, 1, AU_GENERATED, RoleID("DH"), "For " & r & " from the template " & tplName & ": " & i & _
         IIf(i = 1, " question", " questions") & " in " & plan.Count & IIf(plan.Count = 1, " topic", " topics") & "."
     ws.CommitTrans: inTrans = False
+    NoticeReviews examId                    ' the SMEs' emails; never raises
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
@@ -789,7 +790,7 @@ End Function
 '   (RequireReviewer); a data error rolls back and passes up.
 Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef doneText As String) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, pid As Long, examId As Long, n As Long, nLeft As Long, ver As Variant
-    Dim topic As String, num As Long, desc As String, src As String
+    Dim topic As String, sent As Boolean, num As Long, desc As String, src As String
     RequireReviewer etId
     doneText = ""
     pid = SignedInPersonID()
@@ -821,8 +822,9 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
     KitExecute "UPDATE tblTasks SET TaskStatus=IIf(AssignedPersonID=" & pid & "," & Q(TS_DONE) & "," & Q(TS_CLOSED) & "), " & _
         "CompletedOn=Now(), CompletedByPersonID=" & pid & " WHERE ExamTopicID=" & etId & " AND TaskStatus=" & Q(TS_OPEN)
     AddAudit ITEM_EXAM, examId, ver, AU_SIGNED_OFF, RoleID("SME"), topic
-    SendWhenSignedOff examId
+    sent = SendWhenSignedOff(examId)
     ws.CommitTrans: inTrans = False
+    If sent Then NoticeExamAtStep examId    ' the DHs' emails; never raises
     nLeft = SendAfterSignOff(examId)        ' and a last topic signed off at the same moment as this one; never raises
     If nLeft < 0 Then
         doneText = "Signed off."
@@ -845,28 +847,31 @@ End Function
 ' (SmeReviewStatusIDs). Safe to call twice: only the call that moves it
 ' writes the audit row (Submitted), in the name of whoever signed off the
 ' last topic, at that time, whoever's copy made the move. Call it inside a
-' transaction, so the move and its audit row are written together.
+' transaction, so the move and its audit row are written together. Returns
+' True when this call moved it (the caller sends the DHs' emails once it
+' has committed).
 ' Errors: a data error passes up (the caller rolls back).
-Private Sub SendWhenSignedOff(ByVal examId As Long)
+Private Function SendWhenSignedOff(ByVal examId As Long) As Boolean
     Dim n As Long, sme As String, rs As DAO.Recordset, who As Long, whenOn As Variant
     sme = SmeReviewStatusIDs()
     ' Take the exam's row first. A send-back writes the same row first, so it
     ' runs wholly before this (the count then sees its reopened topics) or
     ' wholly after. In SignOffTopic the row is held already.
-    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ")") = 0 Then Exit Sub
-    If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Sub
+    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ")") = 0 Then Exit Function
+    If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Function
     ' The condition again in the move itself, so the count and the move can't disagree.
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REVIEW) & ", CurrentStepRoleID=" & RoleID("DH") & _
         " WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS et " & _
         "WHERE et.ExamID=" & examId & " AND et.SignedOffByPersonID Is Null)")
-    If n = 0 Then Exit Sub
+    If n = 0 Then Exit Function
     Set rs = CurrentDb.OpenRecordset("SELECT TOP 1 SignedOffByPersonID, SignedOffOn FROM tblExamTopics WHERE ExamID=" & examId & _
         " ORDER BY SignedOffOn DESC, ExamTopicID DESC", dbOpenSnapshot)
     If Not rs.EOF Then who = Nz(rs!SignedOffByPersonID, 0): whenOn = rs!SignedOffOn
     rs.Close
     AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_SUBMITTED, RoleID("DH"), _
         "Every topic signed off", who, whenOn
-End Sub
+    SendWhenSignedOff = True
+End Function
 
 ' After a sign-off of exam examId has committed: read past Jet's cache, so
 ' another copy's sign-off of a moment ago counts, and send the exam to the DH
@@ -875,13 +880,14 @@ End Sub
 ' Never raises: the sign-off is saved whatever happens here, so a failure is
 ' logged and the sweep (SendSignedOffExams) moves the exam later.
 Private Function SendAfterSignOff(ByVal examId As Long) As Long
-    Dim ws As DAO.Workspace, inTrans As Boolean
+    Dim ws As DAO.Workspace, inTrans As Boolean, sent As Boolean
     On Error GoTo Fail
     DBEngine.Idle dbRefreshCache
     Set ws = DBEngine.Workspaces(0)
     ws.BeginTrans: inTrans = True
-    SendWhenSignedOff examId
+    sent = SendWhenSignedOff(examId)
     ws.CommitTrans: inTrans = False
+    If sent Then NoticeExamAtStep examId    ' the DHs' emails; never raises
     SendAfterSignOff = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
     Exit Function
 Fail:

@@ -10,7 +10,8 @@ Option Explicit
 ' this front end to it when build.ps1 is given its path, so UI work never
 ' touches data.
 '
-' Steps, in order: link, local tables (the question editor's working copy),
+' Steps, in order: link, local tables (the question editor's working copy
+' and the Statistics page's figures),
 ' user interface (subforms, then pages, then dialogs, then the shell last),
 ' help, startup. A failed build returns
 ' "ERROR during <step>: <number> <description> [<last form traced>]".
@@ -20,8 +21,8 @@ Option Explicit
 ' through. Each phase replaces its pages' placeholders with Build_<page>.
 '
 ' Owner: the shell and the build (build phase 1). Depends on: modBuildAdmin,
-' modBuildAppearance, modBuildQuestions, modErrors, modGlobals,
-' modQuestions; the kit's modDarkMode, modGridCols, modGridFilter,
+' modBuildAppearance, modBuildDash, modBuildExams, modBuildQuestions, modErrors, modGlobals,
+' modQuestions, modStats; the kit's modDarkMode, modGridCols, modGridFilter,
 ' modKitBackend, modKitHelp, modKitKeys, modKitPalette, modKitShell,
 ' modMenu, modPersonnelUI, modTrust, modUIKit.
 
@@ -52,6 +53,7 @@ Public Function BuildAll(ByVal srcRoot As String, ByVal outDir As String, ByVal 
         m_step = "link": LinkBackEnd bePath
     End If
     m_step = "local tables": EnsureWorkTables      ' the question editor's working copy (modQuestions)
+    EnsureStatTables                                ' the Statistics page's figures (modStats)
     m_step = "user interface": BuildUserInterface
     m_step = "help": LoadHelpTopics srcRoot & "\help\help.txt"
     m_step = "startup": SetStartupOptions uiOnly, bePath
@@ -125,34 +127,21 @@ Private Sub BuildPages()
     BuildAdminGrids                ' the admin pages' tables and detail forms (modBuildAdmin)
     BuildQuestionGrids             ' the question pages' and dialogs' tables (modBuildQuestions)
     BuildExamGrids                 ' the exam pages' and dialogs' tables (modBuildExams)
-    Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
+    BuildDashGrids                 ' the Dashboard's and Statistics' tables (modBuildDash)
+    Build_pgDash
     Build_pgReview                 ' an SME's exam topic reviews (modBuildExams)
     Build_pgApprovals              ' question approvals (modBuildQuestions)
     Build_pgExams                  ' the DH's New exam; the list comes in phase 8
     Build_pgQuestions
     Build_pgQuestionEdit
-    Build_Stub "pgStats", "Statistics", "Questions given per topic and per reference over a period or series.", 9
+    Build_pgStats
     Build_pgAdmTopics
     Build_pgAdmTemplates
     Build_pgAdmPeople
     Build_pgAdmRules
     Build_pgAdmHelp
     Build_Stub "pgAdmLogs", "Admin: Logs", "The audit trail and the error log.", 10
-    Build_pgMySettings
-End Sub
-
-' My settings: for now only the palette picker (Appearance); the
-' notification switches come in phase 9.
-Private Sub Build_pgMySettings()
-    Dim c As Control
-    NewForm "", 0, PAGE_W, PAGE_H
-    PageHeader "My settings", "Your colors now; your notification switches come in build phase 9.", PAGE_PAD
-    Card "Colors", "Colors", PAGE_PAD, px(84), px(480), px(120)
-    Lbl "lblColors", "Choose the palette the whole app uses on this computer: light, dark and six more.", _
-        PAGE_PAD + px(16), px(124), px(448), px(36), 9, False, CLR_MUTED_FG
-    Set c = Btn("btnAppearance", "Appearance", PAGE_PAD + px(16), px(164), px(120), px(28), "outline")
-    c.OnClick = "=AppAppearance()"
-    SaveForm "pgMySettings"
+    Build_pgMySettings             ' a sidebar link, not a page in the list (modBuildDash)
 End Sub
 
 ' Help topics (pgAdmHelp): the topics on the left, the open topic's key,

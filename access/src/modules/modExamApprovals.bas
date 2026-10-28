@@ -179,6 +179,7 @@ Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRe
     AddAudit ITEM_EXAM, examId, ver, AU_APPROVED, stepId
     ws.CommitTrans: inTrans = False
     If nextId <> 0 Then
+        NoticeExamAtStep examId             ' the next step's emails; never raises
         doneText = "Approved. " & ExamRef(examId, ver) & " goes to the " & RoleCodeOf(nextId) & " next."
     Else
         isFinal = True
@@ -260,6 +261,7 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
     ' The reason first, so the SMEs see it however many topics went back.
     AddAudit ITEM_EXAM, examId, ver, AU_REJECTED, stepId, r & IIf(Right$(r, 1) Like "[.!?]", "", ".") & " Sent back: " & topics & "."
     ws.CommitTrans: inTrans = False
+    NoticeReviews examId                    ' the SMEs' emails; never raises
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
@@ -394,13 +396,13 @@ Public Function ExamReplacedCount(ByVal examId As Long) As Long
         "WHERE eq.ExamID=" & examId & " AND NOT (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ")")
 End Function
 
-' The exams waiting for the signed-in person (QueueWhere), the longest
+' The exams waiting for the signed-in person (ExamQueueWhere), the longest
 ' waiting first. Columns: id, ref, exam (who
 ' it is for), TemplateName, step, since, since_txt. search keeps those whose
 ' recipient, template or number (E12) has it.
 Public Function ExamQueueSql(ByVal search As String) As String
     Dim where As String, t As String
-    where = QueueWhere()
+    where = ExamQueueWhere()
     If Len(search) > 0 Then
         t = Q("*" & LikeLiteral(search) & "*")
         where = where & " AND (e.RecipientName LIKE " & t & " OR tm.TemplateName LIKE " & t & " OR ('E' & e.ExamID) LIKE " & t & ")"
@@ -415,16 +417,18 @@ End Function
 ' How many exams wait for the signed-in person (the Exams tab's count).
 Public Function ExamApprovalCount() As Long
     If Not DataLinked() Then Exit Function
-    ExamApprovalCount = CountOf("SELECT Count(*) FROM tblExams AS e WHERE " & QueueWhere())
+    ExamApprovalCount = CountOf("SELECT Count(*) FROM tblExams AS e WHERE " & ExamQueueWhere())
 End Function
 
 ' The exams (as e) the signed-in person can act on: in review at a step
 ' whose role they hold, and none of whose topics they signed off (another
-' holder of the role approves those; ExamApproveProblem).
-Private Function QueueWhere() As String
+' holder of the role approves those; ExamApproveProblem). The Dashboard's
+' list uses it too (modNotify.WaitingSql).
+' Builds the SQL only (it reads the signed-in person's id and a status id).
+Public Function ExamQueueWhere() As String
     Dim pid As Long
     pid = SignedInPersonID()
-    QueueWhere = "e.StatusID=" & ExamStatusID(ES_REVIEW) & " AND e.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles " & _
+    ExamQueueWhere = "e.StatusID=" & ExamStatusID(ES_REVIEW) & " AND e.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles " & _
         "WHERE PersonID=" & pid & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS so WHERE so.ExamID=e.ExamID AND " & _
         "so.SignedOffByPersonID=" & pid & ")"
 End Function

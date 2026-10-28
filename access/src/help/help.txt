@@ -26,11 +26,26 @@ Click **Help** in the sidebar, or press **F1**, to open help for the page you ar
 Press **Ctrl+K** and start typing the name of a page. Press **Enter** to go to the first match, or use the **Up** and **Down** arrows to choose another. **Esc** closes it.
 
 # Other things in the sidebar
-- **My settings** holds your colors (**Appearance**) and, later, your notification switches.
+- **My settings** holds your notice switches and your colors (**Appearance**).
 - The **arrow** at the top folds the sidebar to icons, to give the page more room. Click it again to open it. Point at an icon to see its name.
 
 === dash | Dashboard
-Your open reviews, the approvals waiting for you, your returned questions and the topics short of questions. This page comes in build phase 9.
+What waits on you, and the topics short of approved questions, on one page.
+
+# The tiles
+- **Reviews open**: the exam topics you're an SME of that nobody has signed off yet.
+- **Approvals waiting**: the questions and exams at your step in the chain. Your own questions aren't counted, since you can't approve them.
+- **Sent back to you**: your questions an approver returned, to fix and resubmit.
+- **Topics short**: the active topics with fewer approved questions than their templates need under the overlap rule. The alert under the tiles names them.
+
+# Waiting on you
+Everything above in one list, the longest waiting first. Click a row and **Open**, or double-click it, to go there: a review opens on **My reviews**, a question or exam on **Approvals**, and a question sent back in the editor.
+
+# Recent activity
+The last 20 things done in the app: saves, submissions, approvals, exams generated, and who did them.
+
+# Turning the list off
+Turn off **Dashboard list** under **My settings** to hide the three queue tiles and the list. The short topics and the recent activity still show.
 
 === review | My reviews
 Each exam topic you review. When the department head generates an exam, every SME of each of its topics gets a review of that topic here. Any one of them checks the questions drawn for it, swaps any out and signs off. One sign-off completes the topic for all its SMEs.
@@ -220,7 +235,19 @@ Click **OK** to keep the part in the question. It is saved to the bank with the 
 To cite a different reference, remove the citation and cite the other one.
 
 === stats | Statistics
-Questions given per topic and per reference over a period or exam series. This page comes in build phase 9.
+How many questions each topic gave on approved exams over a period, and how much of each topic came from one reference.
+
+# What counts
+Only exams the Senior Member gave final approval to, by the day they did. A question given on three exams counts three times. Pick **6 months**, **12 months** or **Dates** for your own period, and a template to see one series of exams, or every template.
+
+# Weak reference coverage
+A topic where one reference gives 80% or more of the questions given (with 5 questions or more) has weak coverage: the exams test that one document again and again. The alert names these topics. Add questions from other references to them.
+
+# The tables
+- **Topics**: each topic's questions given, the exams it was on, how many references its questions cite, and the reference cited most with its share.
+- **References**: click a topic to see every reference its questions cite, the most cited first. A question citing two references counts for both, so the shares can add up to more than 100%.
+
+**Print** and **Export** take the topics table.
 
 === topics | Admin: Topics
 Topics are the subjects questions are written in. Each has a number of questions it starts with on a template, and the SMEs who review its questions and exams.
@@ -320,7 +347,16 @@ Each new copy of the app brings its own wording for the topics, but only for top
 The audit trail and the error log. This page comes in build phase 10.
 
 === settings | My settings
-Click **Appearance** to choose the colors the whole app uses on this computer. Your notification switches come in build phase 9.
+Your notices and your colors. Each switch saves as soon as you click it, and changes only your own settings.
+
+# Notices
+- **Dashboard list**: the reviews, approvals and questions sent back that wait on you, on the Dashboard. On for everyone to start.
+- **Emails**: an Outlook email when a review, an approval or a question sent back starts waiting on you. Off to start. The email names the item and the page to open, never a question's text.
+
+Emails go to the address in the Personnel file; the page shows it. Click **Send me a test email** to check that they reach you. Outlook must be set up on this computer, and it may ask you to allow the app to send.
+
+# Colors
+Click **Appearance** to choose the colors the whole app uses on this computer.
 
 === directory | Personnel
 One shared Personnel file holds everyone who can use the Navy apps built on

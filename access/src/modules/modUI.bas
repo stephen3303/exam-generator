@@ -12,7 +12,7 @@ Option Explicit
 ' In Review, Approved, Rejected); the plan's words (Returned, Invalid) are
 ' mapped too. Review tasks: Open, Done, Closed. Admin lists: Active, Off,
 ' Short (a topic short of approved questions). The approvals queue's kinds:
-' New, New version. A new exam's topics: Ready, Short, No SME, Repeats; and
+' New, New version. The Dashboard's kinds: Review, Approve, Sent back. A new exam's topics: Ready, Short, No SME, Repeats; and
 ' the questions drawn: Replaced, Swapped, Swapped, given lately, Given lately. Matching ignores case
 ' (Option Compare Database).
 '
@@ -51,8 +51,8 @@ Public Function StatusVariant(ByVal status As Variant) As String
     On Error GoTo Gone
     Select Case Nz(status, "")
         Case "Approved", "Done", "Active", "Correct", "Ready", "Signed off": StatusVariant = "success"
-        Case "In review", "SME review", "Open", "New", "Swapped": StatusVariant = "info"
-        Case "Returned", "Rejected", "Short", "Repeats", "Given lately", "Swapped, given lately", "Replaced": StatusVariant = "warning"
+        Case "In review", "SME review", "Open", "New", "Swapped", "Review", "Approve": StatusVariant = "info"
+        Case "Returned", "Rejected", "Sent back", "Short", "Repeats", "Given lately", "Swapped, given lately", "Replaced": StatusVariant = "warning"
         Case "Invalid", "No SME": StatusVariant = "destructive"
         Case "Draft", "Closed", "Retired", "Off", "New version", "Waiting": StatusVariant = "secondary"
     End Select

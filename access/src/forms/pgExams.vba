@@ -91,7 +91,7 @@ Private Sub btnNew_Click()
     problem = ExamMakerProblem()
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: Exit Sub
     If RunDialog("dlgNewExam") Then
-        KitToast Nz(TempVars("NewExamDone"), "Exam generated."), "success"
+        KitToast WithNoticeNote(Nz(TempVars("NewExamDone"), "Exam generated.")), "success"
         RefreshList Nz(DMax("ExamID", "tblExams", "CreatedByPersonID=" & SignedInPersonID()), 0)
     End If
     Exit Sub
