@@ -17,11 +17,15 @@ Option Explicit
 '
 ' Versions: a question is changed in place while it is a draft or rejected.
 ' An approved question is changed by saving a new version: VersionNo + 1,
-' the same QuestionKey, ReplacesQuestionID the approved one. That save
-' retires the approved version (IsCurrent off, status Retired, RetiredOn),
-' so it can't be drawn any more, and the new one goes through the whole
-' approval chain again. Every save, submission and retirement writes an
-' audit row; audit rows are never changed or deleted.
+' the same QuestionKey, ReplacesQuestionID the approved one, IsCurrent off.
+' The approved version stays current and can still be drawn while the new
+' one is a draft and goes through the whole approval chain again. Only the
+' new version's final approval retires it (IsCurrent off, status Retired,
+' RetiredOn) and makes the new one current, in one transaction (the
+' approvals' last step). A key has at most one open version (a version that is not
+' current and not retired: a draft, in review or rejected) at a time
+' (OpenVersionID). Every save, submission, approval, rejection and
+' retirement writes an audit row; audit rows are never changed or deleted.
 '
 ' The statuses are the data file's own names (tblStatuses): Draft,
 ' In Review, Approved, Rejected and Retired.
@@ -111,6 +115,33 @@ End Function
 Public Function ClassPortion(ByVal id As Variant) As String
     If IsNull(id) Then Exit Function
     ClassPortion = Nz(DLookup("PortionMark", "tblClassLevels", "ClassLevelID=" & CLng(id)), "")
+End Function
+
+' The open new version of question key: a version that is not current and
+' not retired (a draft, in review or rejected), or 0 when there is none. A
+' key has at most one, so a second "Edit as new version" is refused.
+Public Function OpenVersionID(ByVal key As Long) As Long
+    If key = 0 Then Exit Function
+    OpenVersionID = Nz(DMin("QuestionID", "tblQuestions", "QuestionKey=" & key & " AND Not IsCurrent AND StatusID<>" & _
+        QStatusID(QS_RETIRED)), 0)
+End Function
+
+' Why question qid can't be started again as a new version ("" when it
+' can): it must be the approved, current version, with no other new
+' version of it open.
+Public Function NewVersionProblem(ByVal qid As Long) As String
+    Dim st As String, other As Long
+    st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & qid), 0))
+    If st <> QS_APPROVED Or Not Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & qid), False) Then
+        NewVersionProblem = "Only the approved, current version of a question can be started again as a new version. This one is " & _
+            LCase$(st) & "."
+        Exit Function
+    End If
+    other = OpenVersionID(Nz(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), 0))
+    If other <> 0 Then
+        NewVersionProblem = "Version " & DLookup("VersionNo", "tblQuestions", "QuestionID=" & other) & " of this question is already " & _
+            "open (" & LCase$(QStatusName(DLookup("StatusID", "tblQuestions", "QuestionID=" & other))) & "). Change that one instead."
+    End If
 End Function
 
 ' True when a question in status nm may be changed in place.
@@ -615,15 +646,23 @@ Public Function SaveQuestion(ByVal qid As Long, ByVal baseId As Long, ByVal topi
         If Not StatusEditable(st) Then SaveQuestion = "This question is " & LCase$(st) & " now, so it can't be changed. " & _
             "Undo your changes to see it as it stands.": Exit Function
     ElseIf baseId <> 0 Then
-        st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & baseId), 0))
-        If st <> QS_APPROVED Or Not Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & baseId), False) Then
-            SaveQuestion = "The version you started from isn't the approved version any more (it is " & LCase$(st) & "), " & _
-                "so a new version of it can't be saved. Go back to the question bank and start again from the current version."
+        st = NewVersionProblem(baseId)
+        If Len(st) > 0 Then
+            SaveQuestion = st & " So this new version can't be saved. Go back to the question bank and start from the current version."
             Exit Function
         End If
     End If
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
+    ' Again inside the transaction: someone may have opened a version since.
+    If baseId <> 0 Then
+        If OpenVersionID(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & baseId)) <> 0 Then
+            ws.Rollback: inTrans = False
+            SaveQuestion = "Someone else started a new version of this question at the same moment. Go back to the question bank " & _
+                "and open theirs."
+            Exit Function
+        End If
+    End If
     Set rs = db.OpenRecordset("SELECT * FROM tblQuestions WHERE QuestionID=" & qid, dbOpenDynaset)
     If qid = 0 Then
         rs.AddNew
@@ -642,7 +681,7 @@ Public Function SaveQuestion(ByVal qid As Long, ByVal baseId As Long, ByVal topi
         rs!StatusID = QStatusID(QS_DRAFT)
         rs!AuthorPersonID = SignedInPersonID()
         rs!CreatedOn = Now()
-        rs!IsCurrent = True
+        rs!IsCurrent = (baseId = 0)             ' a new version waits for its final approval
     Else
         rs.Edit
         key = rs!QuestionKey
@@ -667,12 +706,9 @@ Public Function SaveQuestion(ByVal qid As Long, ByVal baseId As Long, ByVal topi
     db.Execute "DELETE FROM tblQuestionRefs WHERE QuestionID=" & savedId, dbFailOnError
     WriteParts db, savedId
     db.Execute "INSERT INTO tblQuestionRefs (QuestionID, RefID, Paragraph) SELECT " & savedId & ", RefID, Paragraph FROM wq_ref", dbFailOnError
-    ' A new version retires the approved one.
+    ' The approved version stays in use until this one is approved.
     If baseId <> 0 Then
-        db.Execute "UPDATE tblQuestions SET IsCurrent=False, StatusID=" & QStatusID(QS_RETIRED) & ", RetiredOn=Now() " & _
-            "WHERE QuestionID=" & baseId, dbFailOnError
-        AddAudit ITEM_QUESTION, baseId, oldVer, AU_RETIRED, , "Replaced by version " & ver
-        AddAudit ITEM_QUESTION, savedId, ver, action, , "Replaces version " & oldVer
+        AddAudit ITEM_QUESTION, savedId, ver, action, , "Replaces version " & oldVer & " once approved"
     Else
         AddAudit ITEM_QUESTION, savedId, ver, action
     End If
@@ -754,11 +790,11 @@ Public Function DeleteProblem(ByVal qid As Long) As String
     End If
 End Function
 
-' Delete draft qid (DeleteProblem must be ""). A new version's draft puts
-' the version it replaced back as the approved one. Returns the question
-' shown instead (that version), or 0.
+' Delete draft qid (DeleteProblem must be ""). Returns the question to show
+' instead: for a new version's draft, the approved version it would have
+' replaced, which stayed in use all along; else 0.
 Public Function DeleteDraft(ByVal qid As Long) As Long
-    Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long, baseVer As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long
     Dim num As Long, desc As String, src As String
     RequireQuestionWriter qid
     Set ws = DBEngine.Workspaces(0)
@@ -768,16 +804,10 @@ Public Function DeleteDraft(ByVal qid As Long) As Long
     ws.BeginTrans: inTrans = True
     AddAudit ITEM_QUESTION, qid, ver, AU_DELETED, , "Draft deleted"
     KitExecute "DELETE FROM tblQuestions WHERE QuestionID=" & qid
-    If baseId <> 0 Then
-        If QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & baseId), 0)) = QS_RETIRED Then
-            baseVer = DLookup("VersionNo", "tblQuestions", "QuestionID=" & baseId)
-            KitExecute "UPDATE tblQuestions SET IsCurrent=True, StatusID=" & QStatusID(QS_APPROVED) & ", RetiredOn=Null " & _
-                "WHERE QuestionID=" & baseId
-            AddAudit ITEM_QUESTION, baseId, baseVer, AU_RESTORED, , "Version " & ver & " was deleted before it was submitted"
-            DeleteDraft = baseId
-        End If
-    End If
     ws.CommitTrans: inTrans = False
+    If baseId <> 0 Then
+        If Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & baseId), False) Then DeleteDraft = baseId
+    End If
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source

@@ -5,7 +5,7 @@ Option Explicit
 ' labels grpQ and grpR list.
 '
 ' Questions: every question, newest first, filtered by the search box, the
-' status chips (All shows the current version of each question; Retired the
+' status chips (All shows every version that is not retired; Retired the
 ' versions an approved one replaced), the column funnels and, from the
 ' References tab, the questions citing one reference. The picked question
 ' shows on the right; SMEs open it in the editor (Edit, or a double-click),
@@ -299,7 +299,7 @@ Private Sub QuestionActions(ByVal atPointer As Boolean)
     sme = HasRole("SME")
     st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & m_qid), 0))
     If sme Then canEdit = CanWriteQuestion(m_qid)   ' its author or an SME on its topic
-    canNew = canEdit And st = QS_APPROVED And Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & m_qid), False)
+    canNew = canEdit And Len(NewVersionProblem(m_qid)) = 0
     canDel = canEdit And Len(DeleteProblem(m_qid)) = 0
     a(0) = IIf(sme, "", "~") & "open|" & IIf(StatusEditable(st) And canEdit, "Edit", "Open") & "|E70F"
     a(1) = IIf(canNew, "", "~") & "newver|Edit as new version|E8C8"
@@ -327,7 +327,7 @@ Private Sub QuestionActions(ByVal atPointer As Boolean)
             shown = DeleteDraft(m_qid)
             m_qid = 0
             RefreshList shown
-            KitToast IIf(shown <> 0, "Draft deleted. The approved version is back in use.", "Draft deleted."), "destructive"
+            KitToast IIf(shown <> 0, "Draft deleted. The approved version is still in use.", "Draft deleted."), "destructive"
     End Select
 End Sub
 
@@ -389,7 +389,7 @@ Private Sub ShowCounts()
     Set rs = CurrentDb.OpenRecordset("SELECT x.status, x.IsCurrent FROM (" & QuestionsSql(False) & ") AS x" & _
         IIf(Len(where) > 0, " WHERE " & where, ""), dbOpenSnapshot)
     Do While Not rs.EOF
-        If Nz(rs!IsCurrent, False) Then n(0) = n(0) + 1
+        If rs!status <> QS_RETIRED Then n(0) = n(0) + 1
         Select Case rs!status
             Case QS_DRAFT: n(1) = n(1) + 1
             Case QS_REVIEW: n(2) = n(2) + 1
@@ -406,10 +406,11 @@ Private Sub ShowCounts()
     SetCount Me.tab_q, n(0)
 End Sub
 
-' The list's filter for chip i: All shows each question's current version.
+' The list's filter for chip i: All shows every version that isn't retired
+' (the approved one, and a new version of it while that is open).
 Private Function ChipWhere(ByVal i As Long) As String
     Select Case i
-        Case 0: ChipWhere = "IsCurrent<>0"
+        Case 0: ChipWhere = "status<>" & Q(QS_RETIRED)
         Case 1: ChipWhere = "status=" & Q(QS_DRAFT)
         Case 2: ChipWhere = "status=" & Q(QS_REVIEW)
         Case 3: ChipWhere = "status=" & Q(QS_APPROVED)
@@ -545,7 +546,7 @@ Private Function RefsSql() As String
     End If
     RefsSql = "SELECT r.RefID AS id, r.RefTitle, r.RefNumber, r.Revision, " & _
         "(SELECT Count(*) FROM tblQuestionRefs AS x INNER JOIN tblQuestions AS q ON x.QuestionID=q.QuestionID " & _
-        "WHERE x.RefID=r.RefID AND q.IsCurrent) AS cited, IIf(Nz(r.IsActive,False),'Active','Off') AS state " & _
+        "WHERE x.RefID=r.RefID AND q.StatusID<>" & QStatusID(QS_RETIRED) & ") AS cited, IIf(Nz(r.IsActive,False),'Active','Off') AS state " & _
         "FROM tblSourceRefs AS r" & where & " ORDER BY r.RefTitle, r.RefNumber"
 End Function
 
@@ -570,7 +571,7 @@ Private Sub ShowRef(ByVal rid As Long)
         Me.sfRefQs.Form.RecordSource = "SELECT q.QuestionID AS id, 'Q' & q.QuestionKey & ' v' & q.VersionNo AS ref, " & _
             "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, s.StatusName AS status " & _
             "FROM (tblQuestionRefs AS x INNER JOIN tblQuestions AS q ON x.QuestionID=q.QuestionID) " & _
-            "LEFT JOIN tblStatuses AS s ON q.StatusID=s.StatusID WHERE x.RefID=" & rid & " AND q.IsCurrent ORDER BY q.QuestionKey DESC"
+            "LEFT JOIN tblStatuses AS s ON q.StatusID=s.StatusID WHERE x.RefID=" & rid & " AND q.StatusID<>" & QStatusID(QS_RETIRED) & " ORDER BY q.QuestionKey DESC"
         Me.sfRefQs.Form.txtSel = Null
         n = Me.sfRefQs.Form.RecordsetClone.RecordCount
         Me.capRefQs.Caption = "QUESTIONS CITING IT (" & n & ")"

@@ -142,8 +142,7 @@ End Sub
 Private Sub btnMore_Click()
     Dim canNew As Boolean, canDel As Boolean
     On Error GoTo Err_Handler
-    canNew = (m_id <> 0 And m_status = QS_APPROVED)
-    If canNew Then canNew = Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & m_id), False)
+    If m_id <> 0 Then canNew = (Len(NewVersionProblem(m_id)) = 0)
     If m_id <> 0 Then canDel = (Len(DeleteProblem(m_id)) = 0)
     If canNew Or canDel Then
         If Not CanWriteQuestion(m_id) Then canNew = False: canDel = False
@@ -645,10 +644,11 @@ Private Sub LoadQuestion(ByVal qid As Long, ByVal asNewVersion As Boolean)
             Exit Sub
         End If
         st = QStatusName(Nz(rs!StatusID, 0))
-        If asNewVersion And (st <> QS_APPROVED Or Not Nz(rs!IsCurrent, False)) Then
-            KitMsgBox "Only the approved, current version of a question can be started again as a new version. This one is " & _
-                LCase$(st) & ", so it opens as it is.", vbInformation, MSG_TITLE
-            asNewVersion = False
+        If asNewVersion Then
+            If Len(NewVersionProblem(qid)) > 0 Then
+                KitMsgBox NewVersionProblem(qid) & " So it opens as it is.", vbInformation, MSG_TITLE
+                asNewVersion = False
+            End If
         End If
         If asNewVersion And Not CanWriteQuestion(qid) Then
             KitMsgBox "Only the question's author or an SME on its topic can start a new version of it, so it opens as it is.", _
@@ -731,7 +731,7 @@ Private Sub SaveClicked()
     oldVer = m_ver - 1
     If Not SaveNow(False) Then Exit Sub
     If wasNew Then
-        KitToast "Saved as version " & m_ver & ". Version " & oldVer & " is retired.", "success"
+        KitToast "Saved as version " & m_ver & ". Version " & oldVer & " stays in use until this one is approved.", "success"
     Else
         KitToast "Saved as a draft.", "success"
     End If
@@ -759,10 +759,6 @@ Private Function SaveNow(ByVal forSubmit As Boolean) As Boolean
         If KitMsgBox("Someone else changed this question while you had it open (" & AuditWho(last) & ")." & vbCrLf & vbCrLf & _
                 "Save yours over theirs? No keeps theirs; Undo changes in More then shows it.", _
                 vbYesNo + vbExclamation + vbDefaultButton2, MSG_TITLE) <> vbYes Then Exit Function
-    End If
-    If m_baseId <> 0 Then
-        If KitMsgBox("Saving version " & m_ver & " retires version " & m_ver - 1 & ", so it can't be drawn for new exams " & _
-                "until version " & m_ver & " is approved. Save it?", vbYesNo + vbQuestion, MSG_TITLE) <> vbYes Then Exit Function
     End If
     problem = SaveQuestion(m_id, m_baseId, CLng(Me.txtTopicKey), typeName, CLng(Me.cboDiff), CDbl(Me.txtPoints), Me.cboMark, _
         Me.txtText, Me.txtRefAns, newId)
@@ -805,13 +801,13 @@ Private Sub DeleteThis()
     problem = DeleteProblem(m_id)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: Exit Sub
     If Not KitConfirmTyped("Delete " & Called() & "?", "It was never submitted and is on no exam. Its parts, options and " & _
-            "citations go with it" & IIf(m_ver > 1, ", and version " & m_ver - 1 & " becomes the approved version again", "") & _
+            "citations go with it" & IIf(m_ver > 1, "; the approved version stays in use", "") & _
             ". This can't be undone.", PURGE_WORD, "Delete", MSG_TITLE) Then Exit Sub
     id = m_id
     shown = DeleteDraft(id)
     ' Nothing left to save: the page can be left.
     m_id = 0: m_readOnly = True: m_workDirty = False: m_snap = Snapshot()
-    KitToast IIf(shown <> 0, "Draft deleted. The approved version is back in use.", "Draft deleted."), "destructive"
+    KitToast IIf(shown <> 0, "Draft deleted. The approved version is still in use.", "Draft deleted."), "destructive"
     TempVars("BankQuestionID") = shown
     NavTo "questions"
 End Sub
@@ -842,7 +838,8 @@ Private Sub ShowState()
     If m_key = 0 Then
         s = "New question, not saved yet."
     ElseIf m_baseId <> 0 Then
-        s = QuestionRef(m_key, m_ver) & ", a new version of v" & m_ver - 1 & ", not saved yet. Saving it retires v" & m_ver - 1 & "."
+        s = QuestionRef(m_key, m_ver) & ", a new version of v" & m_ver - 1 & ", not saved yet. v" & m_ver - 1 & _
+            " stays in use until this one is approved."
     Else
         s = QuestionRef(m_key, m_ver) & ", " & m_status & "."
         Select Case m_status

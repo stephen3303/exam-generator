@@ -46,7 +46,7 @@ Every question in the bank, and the references they cite. Everyone can look; SME
 
 # Finding a question
 - Type in the **search box** to find questions by their words, their topic or their number (Q12).
-- The **chips** show questions by status. **All** shows the current version of each question; **Retired** shows the versions a newer version replaced.
+- The **chips** show questions by status. **All** shows every version that isn't retired: each approved question, and a new version of it while that is being written or approved; **Retired** shows the versions a newer version replaced.
 - The **funnel** on a column header shows only the rows with the values you tick. The chips' counts follow the search and the funnels.
 - **Export** saves the rows shown as a CSV file or an Excel workbook.
 
@@ -65,7 +65,7 @@ Pick a row to see the question: its status and who last acted on it, its text, t
 - **In Review**: submitted, waiting on the DH, then the XO, then the senior member.
 - **Approved**: can be drawn for exams.
 - **Rejected**: sent back with the approver's comments (see History). Change it and submit it again.
-- **Retired**: replaced by a newer version. It is kept for the record and never drawn.
+- **Retired**: replaced by a newer version once that version was approved. It is kept for the record and never drawn.
 
 # References
 The **References** tab lists the documents questions cite, with how many current questions cite each. SMEs and the admin can:
@@ -103,7 +103,7 @@ Write a question with its parts, portion markings, answer options and references
 - Leaving with unsaved changes asks whether to save them.
 
 # Versions
-An approved question is changed by starting a new version (**More** > **Edit as new version**). Saving the new version retires the approved one, so it can't be drawn for new exams until the new version is approved. Deleting the new version's draft before it is submitted puts the approved version back.
+An approved question is changed by starting a new version (**More** > **Edit as new version**). The approved version stays in use, and can still be drawn for exams, while the new version is written and goes through approval. When the new version gets its final approval it takes over and the old one is retired. A question can have only one new version open at a time. Deleting the new version's draft before it is submitted leaves the approved version as it was.
 
 # More
 - **Undo changes** drops your changes since the last save.
