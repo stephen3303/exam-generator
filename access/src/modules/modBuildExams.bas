@@ -37,7 +37,7 @@ End Function
 
 Private Function ExamQCols() As Variant
     ' The note's pill can read "Swapped, given lately"; it is the last column, so it takes the rest of the width.
-    ExamQCols = Array("ref|#|60|m", "QuestionText|Question|204|", "LevelName|Difficulty|76|m", "pts|Points|52|r", "note|Note|116|p")
+    ExamQCols = Array("ref|#|60|m", "QuestionText|Question|204|", "LevelName|Difficulty|76|m", "pts|Points|52|r", "note_txt|Note|116|p")
 End Function
 
 Private Function PlanCols() As Variant
@@ -47,7 +47,7 @@ End Function
 
 Private Function SwapCols() As Variant
     SwapCols = Array("ref|#|60|m|QuestionKey", "QuestionText|Question|380|s|qsort", "LevelName|Difficulty|80|m", "pts|Points|60|r", _
-        "note|Note|100|p")
+        "note_txt|Note|100|p")
 End Function
 
 Private Function ExamCols() As Variant
