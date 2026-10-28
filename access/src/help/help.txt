@@ -43,7 +43,7 @@ Each exam topic you review. When the department head generates an exam, every SM
 Pick a review to see it on the right: the exam it is on, the questions drawn for the topic, and the picked question in full under them, with its parts, answer options and references. A question marked **Given lately** was on one of the exams generated before this one (as many as the admin set for the overlap rule); one marked **Swapped** was put in by an SME, and **Swapped, given lately** is both. One marked **Replaced** is no longer the approved version in use: a newer version was approved after the exam was drawn. **Swap** lists the newer version, so you can put it in its place.
 
 # Swapping and signing off
-- **Swap** puts another approved question of the topic in place of the picked one. Double-click a question, or right-click it, to do the same. See **Swapping a question**.
+- **Swap** puts another approved question of the topic in place of the picked one. Double-click a question, or right-click it and pick **Swap**, to do the same. See **Swapping a question**.
 - **Sign off** says the questions are right. The topic is then complete: its questions are settled for this exam, your review moves to **Done** and the other SMEs' reviews of it close. The app asks first, because it can't be undone.
 - When the exam's last topic is signed off, the exam goes to the **DH** for approval.
 
@@ -52,7 +52,7 @@ Who may swap and sign off is checked again when you click: you must still be an 
 === review.swap | Swapping a question
 **Swap** opens a window listing the approved questions of the topic that aren't on the exam, those given lately last, and the newer version of the question you are swapping out, when it has one. Type in the search box to find one by its words or its number (Q12). Pick one to read it in full.
 
-The note under it says whether the overlap rule allows it. At most the admin's share (30% unless changed) of a topic's questions may have been on the exams generated before this one; a swap that would take the topic over that is refused, so pick a question that wasn't given lately, or swap out one that was. The exams generated after this one count it in their own window, so a question one of them holds can't come in when that would take that exam's topic over the rule. **Swap** puts the picked question on the exam; the exam's history records who swapped which question for which.
+The note under it says whether the overlap rule allows it. At most the admin's share (30% unless changed) of a topic's questions may have been on the exams generated before this one; a swap that would take the topic over that is refused, so pick a question that wasn't given lately, or swap out one that was. A topic already over the limit (the DH agreed to repeats when the exam was generated) can swap one question given lately for another, but can't take in more. The exams generated after this one count it in their own window, so a question one of them holds can't come in when that would take that exam's topic over the rule. **Swap** puts the picked question on the exam. The exam's history records who swapped which question for which; the admin sees it on the Logs page (build phase 10).
 
 === approvals | Approvals
 The questions waiting for your approval. Each approver has their own queue: a submitted question goes to the **DH**, then the **XO**, then the **SM**, and shows here while it waits at a step whose role you hold. The longest waiting is at the top. The **Exams** tab comes in build phase 8.
