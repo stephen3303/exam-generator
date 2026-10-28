@@ -172,12 +172,14 @@ End Sub
 ' through one Outlook for the lot (OpenOutlook). Call it straight after the
 ' action that queued them, once its own busy pop-up has ended and its dialog
 ' has closed, before its toast; WithNoticeNote then says what wasn't sent.
-' Shows "Sending N email notices..." while it works. The batch stops at the
-' first email Outlook refuses, so a denied prompt isn't asked again for each
-' one: one log row (SendMail's), and one note saying how many weren't sent.
+' Shows "Sending N email notices..." while it works. The batch stops when
+' the first email fails or two fail in a row, so a denied prompt isn't asked
+' again for each one; a later lone failure (one person's address) is logged
+' and the rest still go. One note says how many weren't sent.
 ' Errors: none (a failure is logged and noted).
 Public Sub SendQueuedNotices()
-    Dim batch As Collection, ol As Object, started As Boolean, it As Variant, n As Long, nSent As Long, busy As Boolean
+    Dim batch As Collection, ol As Object, started As Boolean, isNew As Boolean, it As Variant, n As Long, nSent As Long
+    Dim k As Long, nFail As Long, busy As Boolean
     On Error GoTo Fail
     If m_queue Is Nothing Then Exit Sub
     Set batch = m_queue
@@ -186,15 +188,19 @@ Public Sub SendQueuedNotices()
     If n = 0 Then Exit Sub
     KitBusy "Sending " & n & IIf(n = 1, " email notice...", " email notices...") & _
         " Outlook may ask you to allow the send.": busy = True
-    Set ol = OpenOutlook(started)
+    Set ol = OpenOutlook(started, isNew)
     If ol Is Nothing Then
         ' One log row (OpenOutlook's) and one note for the whole batch.
         AddNote "Outlook couldn't be opened on this computer, so the email notices weren't sent; the error log has the details."
     Else
         For Each it In batch
-            If Not SendMail(ol, CLng(it(0)), CStr(it(1)), CStr(it(2)), CStr(it(3)), _
-                "; " & (n - nSent) & " of " & n & " not sent") Then Exit For    ' logged there; the rest aren't tried
-            nSent = nSent + 1
+            k = k + 1
+            If SendMail(ol, CLng(it(0)), CStr(it(1)), CStr(it(2)), CStr(it(3)), "; email " & k & " of " & n) Then
+                nSent = nSent + 1: nFail = 0
+            Else                                ' logged there
+                nFail = nFail + 1
+                If k = 1 Or nFail >= 2 Then Exit For    ' Outlook refuses them all: the rest aren't tried
+            End If
         Next
         If nSent < n And n = 1 Then
             AddNote NOTE_SEND
@@ -202,7 +208,7 @@ Public Sub SendQueuedNotices()
             AddNote CStr(n - nSent) & " of " & n & " email notices " & IIf(n - nSent = 1, "wasn't", "weren't") & _
                 " sent, so check Outlook on this computer; they still show in the app."
         End If
-        If started And nSent > 0 Then FlushOutbox ol, NOTE_OUTBOX
+        If started And nSent > 0 Then FlushOutbox ol, IIf(isNew, NOTE_OUTBOX, "")
     End If
     Set ol = Nothing
     KitBusyEnd
@@ -229,13 +235,14 @@ End Function
 
 ' Send the queue now and show its note, if there is one, in a toast of its
 ' own after lead: for a path with no toast to carry it (an action's error
-' handler, a page's opening sweep). Never raises.
+' handler, a page's opening sweep). The note says something went wrong or
+' may wait, so the toast is a warning and stays up longer. Never raises.
 Public Sub SendNoticesWithToast(Optional ByVal lead As String = "")
     Dim n As String
     On Error Resume Next
     SendQueuedNotices
     n = TakeNoticeNote()
-    If Len(n) > 0 Then KitToast IIf(Len(lead) > 0, lead & " ", "") & n, "info"
+    If Len(n) > 0 Then KitToast IIf(Len(lead) > 0, lead & " ", "") & n, "warning", 8000
 End Sub
 
 ' True while something is open over the app (a dialog, a menu, a busy
@@ -246,7 +253,7 @@ Public Function NoticesShouldWait() As Boolean
     If AppDimmed() Or KitBusyDepth() > 0 Then NoticesShouldWait = True: Exit Function
     On Error Resume Next                    ' no active form: nothing is open over the app
     nm = Screen.ActiveForm.Name
-    NoticesShouldWait = (Len(nm) > 0 And nm <> "frmMain")
+    NoticesShouldWait = (Len(nm) > 0 And nm <> SHELL_FORM)
 End Function
 
 ' Send the signed-in person a test email at the address the Personnel file
@@ -255,7 +262,7 @@ End Function
 ' TakeNoticeNote says the email may wait in the Outbox.
 ' Errors: none (a failure is logged and described).
 Public Function SendTestEmail() As String
-    Dim addr As String, pid As Long, ol As Object, started As Boolean
+    Dim addr As String, pid As Long, ol As Object, started As Boolean, isNew As Boolean
     On Error GoTo Fail
     pid = SignedInPersonID()
     addr = PersonEmail(pid)
@@ -263,14 +270,14 @@ Public Function SendTestEmail() As String
         SendTestEmail = PersonEmailProblem(pid)
         Exit Function
     End If
-    Set ol = OpenOutlook(started)
+    Set ol = OpenOutlook(started, isNew)
     If ol Is Nothing Then
         SendTestEmail = "Outlook couldn't be opened. Check that Outlook is set up on this computer; the error log has the details."
         Exit Function
     End If
     If SendMail(ol, pid, addr, "Test email", "This is a test email from the Exam Generator. If you can read it, its emails reach you." & _
             vbCrLf & vbCrLf & TEST_FOOTER) Then
-        If started Then FlushOutbox ol, NOTE_OUTBOX_ONE
+        If started Then FlushOutbox ol, IIf(isNew, NOTE_OUTBOX_ONE, "")
     Else
         SendTestEmail = "Outlook couldn't send it. Check that Outlook is set up and open on this computer; the error log has the details."
     End If
@@ -376,11 +383,12 @@ End Function
 ' new one. A new one is kept in m_ol for the session, so its sends can finish
 ' and later batches don't start Outlook again; it is never quit (the person
 ' may be about to use it). started returns True for an Outlook this app
-' started, whose emails may wait in the Outbox. Nothing when Outlook can't
-' be started; that is logged once, here.
-Private Function OpenOutlook(ByRef started As Boolean) As Object
+' started (now or earlier), which is asked to send its Outbox; isNew only
+' when it was started by this call, when the emails may wait there (the
+' note). Nothing when Outlook can't be started; that is logged once, here.
+Private Function OpenOutlook(ByRef started As Boolean, ByRef isNew As Boolean) As Object
     Dim ol As Object, nm As String
-    started = False
+    started = False: isNew = False
     On Error Resume Next
     If Not m_ol Is Nothing Then
         nm = m_ol.Name                      ' fails once that Outlook has closed
@@ -397,23 +405,23 @@ Private Function OpenOutlook(ByRef started As Boolean) As Object
     If ol Is Nothing Then
         Set ol = CreateObject("Outlook.Application")
         Set m_ol = ol                       ' kept for the session
-        started = True
+        started = True: isNew = True
     End If
     Set OpenOutlook = ol
     Exit Function
 Fail:
     LogError "modNotify.OpenOutlook"
-    started = False
+    started = False: isNew = False
 End Function
 
 ' After sending through an Outlook this code started: ask it to send the
 ' Outbox now, as a hidden Outlook may not do so by itself, and add note (the
-' email or emails may wait there). Never raises.
+' email or emails may wait there), unless it is "". Never raises.
 Private Sub FlushOutbox(ol As Object, ByVal note As String)
     On Error Resume Next
     ol.Session.SendAndReceive False
     On Error GoTo 0
-    AddNote note
+    If Len(note) > 0 Then AddNote note
 End Sub
 
 ' Send one plain-text email through Outlook ol to person pid at addr. True
