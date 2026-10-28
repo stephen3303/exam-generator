@@ -90,6 +90,7 @@ Private Sub BuildUserInterface()
     Build_dlgPart                  ' a question's part (modBuildQuestions)
     Build_dlgReference             ' cite or add a reference
     Build_dlgHistory               ' a question's history
+    Build_dlgReject                ' send a question back to its author
     BuildMessageDialog             ' the kit's dlgMessage, for KitMsgBox
     BuildInputDialog               ' dlgInput, for KitInputBox
     BuildConfirmDialog             ' dlgConfirm, for KitConfirmTyped
@@ -116,7 +117,7 @@ Private Sub BuildPages()
     BuildQuestionGrids             ' the question pages' and dialogs' tables (modBuildQuestions)
     Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
     Build_Stub "pgReview", "My reviews", "Each exam topic you review: check the drawn questions, swap any out and sign off.", 7
-    Build_Stub "pgApprovals", "Approvals", "Questions and exams waiting for your approval.", 6
+    Build_pgApprovals              ' question approvals (modBuildQuestions)
     Build_Stub "pgExams", "Exams", "Every exam and where it stands in review and approval.", 8
     Build_pgQuestions
     Build_pgQuestionEdit

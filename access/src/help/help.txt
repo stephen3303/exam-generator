@@ -36,7 +36,27 @@ Your open reviews, the approvals waiting for you, your returned questions and th
 Each exam topic you review: check the questions drawn for it, swap any out and sign off. This page comes in build phase 7.
 
 === approvals | Approvals
-Questions and exams waiting for your approval, one queue for each approver. This page comes in build phases 6 and 8.
+The questions waiting for your approval. Each approver has their own queue: a submitted question goes to the **DH**, then the **XO**, then the **SM**, and shows here while it waits at a step whose role you hold. The longest waiting is at the top. The **Exams** tab comes in build phase 8.
+
+# Checking a question
+Pick a row to see it on the right:
+- The steps across the top show where it is: **SME** (written and submitted), **DH**, **XO**, **SM**. The ticked steps have approved it.
+- Who wrote it, and who submitted it and when.
+- The whole question as submitted: its text, points and portion marking, each part, the answer options with the correct one marked, the reference answers and the references it cites.
+- **History** shows every version and who acted on it, with any reasons given.
+- Search by words in the question, its topic or its number (Q12), and use the funnels on the column captions to narrow the list. Click a caption to sort by it.
+
+# Approve or reject
+- **Approve** sends it to the next step. At the **SM**'s step it goes into the bank: it is approved and can be drawn for exams. A new version replaces the version in use at that moment, which is retired (the app asks first). Exams that already have the old version keep it.
+- **Reject** sends it back to its author with your reason, which is required. See **Rejecting a question**.
+- Right-click a row for the same actions, and to show it in the question bank.
+
+You can't approve or reject a question you wrote: another holder of the same role has to. Who may approve is checked again when you click, so a role taken away since you signed in counts at once. If someone else acted on the question first, the app says so and the list shows where it stands now.
+
+=== approvals.reject | Rejecting a question
+**Reject** opens a window that shows who the question goes back to and asks for the reason. The reason is required: say what to change.
+
+The question becomes **Rejected** and leaves every approver's queue. Its author sees the reason in the question editor and in the question's **History**. The author, or any SME on its topic, changes it and submits it again, and it starts again at the **DH**. A rejected new version can't be started again from the approved version; change the rejected one instead.
 
 === exams | Exams
 Every exam and where it stands. The department head starts a new exam here. This page comes in build phase 8.
@@ -64,7 +84,7 @@ Pick a row to see the question: its status and who last acted on it, its text, t
 - **Draft**: being written. Only drafts and rejected questions can be changed.
 - **In Review**: submitted, waiting on the DH, then the XO, then the senior member.
 - **Approved**: can be drawn for exams.
-- **Rejected**: sent back with the approver's comments (see History). Change it and submit it again.
+- **Rejected**: sent back with the approver's reason (shown in the editor and in History). Change it and submit it again.
 - **Retired**: replaced by a newer version once that version was approved. It is kept for the record and never drawn.
 
 # References

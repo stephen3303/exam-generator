@@ -834,7 +834,7 @@ End Function
 ' The subtitle: which question and version, where it stands, and whether
 ' there are unsaved changes.
 Private Sub ShowState()
-    Dim s As String, stepCode As String
+    Dim s As String, stepCode As String, why As String, tip As String
     If m_key = 0 Then
         s = "New question, not saved yet."
     ElseIf m_baseId <> 0 Then
@@ -852,12 +852,16 @@ Private Sub ShowState()
             Case QS_RETIRED
                 s = s & " A retired version is kept for the record and can't be changed."
             Case QS_REJECTED
-                s = s & " See History for why; change it and submit it again."
+                why = RejectionText(m_id)
+                tip = why
+                If Len(why) > 110 Then why = Left$(why, 107) & "..."    ' the whole reason is in the tip and in History
+                s = s & IIf(Len(why) > 0, " " & why, " See History for why.") & " Change it and submit it again."
         End Select
         If m_noRight Then s = s & " Only its author or an SME on its topic can change it."
     End If
     If Not m_readOnly And IsDirty() Then s = s & "  Unsaved changes."
     Me.lblSubtitle.Caption = s
+    Me.lblSubtitle.ControlTipText = tip
 End Sub
 
 ' Lock everything that changes the question while it can't be changed.
