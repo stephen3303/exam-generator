@@ -352,7 +352,7 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
     AddAudit ITEM_EXAM, examId, 1, AU_GENERATED, RoleID("DH"), "For " & r & " from the template " & tplName & ": " & i & _
         IIf(i = 1, " question", " questions") & " in " & plan.Count & IIf(plan.Count = 1, " topic", " topics") & "."
     ws.CommitTrans: inTrans = False
-    NoticeReviews examId                    ' the SMEs' emails; never raises
+    NoticeReviews examId                    ' queues the SMEs' emails; never raises
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
@@ -824,7 +824,7 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
     AddAudit ITEM_EXAM, examId, ver, AU_SIGNED_OFF, RoleID("SME"), topic
     sent = SendWhenSignedOff(examId)
     ws.CommitTrans: inTrans = False
-    If sent Then NoticeExamAtStep examId    ' the DHs' emails; never raises
+    If sent Then NoticeExamAtStep examId    ' queues the DHs' emails; never raises
     nLeft = SendAfterSignOff(examId)        ' and a last topic signed off at the same moment as this one; never raises
     If nLeft < 0 Then
         doneText = "Signed off."
@@ -887,7 +887,7 @@ Private Function SendAfterSignOff(ByVal examId As Long) As Long
     ws.BeginTrans: inTrans = True
     sent = SendWhenSignedOff(examId)
     ws.CommitTrans: inTrans = False
-    If sent Then NoticeExamAtStep examId    ' the DHs' emails; never raises
+    If sent Then NoticeExamAtStep examId    ' queues the DHs' emails; never raises
     SendAfterSignOff = CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null")
     Exit Function
 Fail:
@@ -901,7 +901,8 @@ End Function
 ' (My reviews does when it opens; the Exams list should too): it moves on an
 ' exam that two last sign-offs at the same moment, or a failed step after a
 ' sign-off, left behind. The audit row names whoever signed off the last
-' topic, at the time of that sign-off (SendWhenSignedOff).
+' topic, at the time of that sign-off (SendWhenSignedOff). It only queues the
+' DHs' emails: the page sends them once it has loaded (SendQueuedNotices).
 ' Never raises: a failure is logged.
 Public Sub SendSignedOffExams()
     Dim ids As String, v As Variant

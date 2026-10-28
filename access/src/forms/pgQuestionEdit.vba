@@ -18,7 +18,8 @@ Option Explicit
 ' than the one the editor loaded (m_stamp); Save asks before overwriting it.
 '
 ' Owner: the question bank (build phase 5). Depends on: modAdmin,
-' modApprovals, modErrors, modGlobals, modQuestions, modSignIn, modUI; the
+' modApprovals, modErrors, modGlobals, modNotify, modQuestions, modSignIn,
+' modUI; the
 ' kit's modKitKeys, modKitLocks, modKitPalette, modKitPurge, modKitUI,
 ' modKitUtil, modMenu, modUIKit.
 
@@ -119,13 +120,15 @@ Private Sub btnSubmit_Click()
             "and the senior member. You can't change it while it is in review; if it is rejected, it comes back to you.", _
             vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     If Not SaveNow(True) Then Exit Sub
+    StartNotices                            ' the toast reports this submit's emails only
     problem = SubmitQuestion(m_id)
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     who = RoleHolders("DH")
     LoadQuestion m_id, False
+    SendQueuedNotices                       ' the DHs' emails, now the question shows as submitted
     If Len(who) = 0 Then
-        KitMsgBox "Submitted. Nobody holds the department head role yet, so it waits until the admin gives someone " & _
-            "that role on the People and routing page.", vbInformation, MSG_TITLE
+        KitMsgBox WithNoticeNote("Submitted. Nobody holds the department head role yet, so it waits until the admin gives " & _
+            "someone that role on the People and routing page."), vbInformation, MSG_TITLE
     Else
         KitToast WithNoticeNote("Submitted to " & who & "."), "success"
     End If

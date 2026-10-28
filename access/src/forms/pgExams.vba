@@ -12,7 +12,9 @@ Option Explicit
 ' the page; only a DH sees New exam, which opens dlgNewExam, and the right
 ' is checked again in the data file when the exam is generated
 ' (modExams.RequireExamMaker). Another page can ask for an exam to be shown
-' first through TempVars("ExamsExamID").
+' first through TempVars("ExamsExamID"). The emails New exam or the
+' opening sweep queues are sent once the dialog has closed or the page has
+' loaded (modNotify.SendQueuedNotices).
 
 Private Const MSG_TITLE As String = "Exams"
 
@@ -38,12 +40,26 @@ Private Sub Form_Load()
         Exit Sub
     End If
     SendSignedOffExams                      ' an exam a failed step left signed off but not sent on
+    Me.TimerInterval = 1                    ' its emails go once the page has loaded (Form_Timer)
     openId = Nz(TempVars("ExamsExamID"), 0)
     TempVars("ExamsExamID") = Null
     RefreshList openId
     Exit Sub
 Err_Handler:
     HandleError "pgExams.Form_Load"
+End Sub
+
+' Once, after Form_Load: send the emails the opening sweep queued. Their
+' note is dropped (a failed email is logged): the person who opened the
+' page didn't take the step, and it mustn't land on their next toast.
+Private Sub Form_Timer()
+    On Error GoTo Err_Handler
+    Me.TimerInterval = 0
+    SendQueuedNotices
+    TakeNoticeNote
+    Exit Sub
+Err_Handler:
+    HandleError "pgExams.Form_Timer"
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -86,11 +102,14 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub btnNew_Click()
-    Dim problem As String
+    Dim problem As String, ok As Boolean
     On Error GoTo Err_Handler
     problem = ExamMakerProblem()
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: Exit Sub
-    If RunDialog("dlgNewExam") Then
+    StartNotices                            ' the toast reports this exam's emails only
+    ok = RunDialog("dlgNewExam")
+    SendQueuedNotices                       ' the SMEs' emails, now the dialog and its busy pop-up have closed
+    If ok Then
         KitToast WithNoticeNote(Nz(TempVars("NewExamDone"), "Exam generated.")), "success"
         RefreshList Nz(DMax("ExamID", "tblExams", "CreatedByPersonID=" & SignedInPersonID()), 0)
     End If

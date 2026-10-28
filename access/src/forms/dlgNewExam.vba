@@ -77,7 +77,7 @@ Private Sub btnGenerate_Click()
     End If
     KitBusy "Drawing the questions..."
     On Error GoTo Busy_Fail
-    problem = GenerateExam(m_tpl, r, allow, examId)
+    problem = GenerateExam(m_tpl, r, allow, examId)   ' queues the SMEs' emails: pgExams sends them once this closes
     KitBusyEnd
     On Error GoTo Err_Handler
     If Len(problem) > 0 Then

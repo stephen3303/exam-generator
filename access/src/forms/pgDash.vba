@@ -8,13 +8,16 @@ Option Explicit
 ' templates (modAdmin.TopicsShortText, the same rule as Admin: Topics), with
 ' those topics in the alert under the tiles. Then everything waiting on
 ' them, the longest waiting first (modNotify.WaitingSql), and the last 20
-' rows of the audit trail (RecentActivitySql).
+' audit rows the person may see (RecentActivitySql: an admin sees the whole
+' app's, anyone else what they had a hand in).
 '
 ' With the person's Dashboard switch off (My settings) the three queue tiles
 ' read "Off" and the list says so; the short topics and the recent activity
 ' still show. Open goes to the picked item: a review on My reviews, a
 ' question or exam on Approvals (TempVars ReviewTaskID, ApprovalsQuestionID,
 ' ApprovalsExamID tell the page which), a question sent back in the editor.
+' The list reads roles from the data file, but pages open by the roles read
+' at sign-in, so Open first checks the page is open to them (PageAllowed).
 '
 ' Depends on: modAdmin, modExams, modNotify, modQuestions, modSignIn, modUI;
 ' the kit's modKitUI.
@@ -75,25 +78,33 @@ Err_Handler:
     HandleError "pgDash.GridClick", grid
 End Sub
 
-' Go to the picked waiting item, by its id's letter (WaitingSql).
+' Go to the picked waiting item, by its id's letter (WaitingSql). A role
+' given or taken away since sign-in can list an item whose page isn't open
+' to the person yet: say so, rather than land back on the Dashboard with
+' the page's TempVar left set.
 Private Sub OpenPicked()
-    Dim id As String, n As Long
+    Dim id As String, n As Long, key As String, tv As String
     id = Nz(Me.sfWaiting.Form.txtSel, "") & ""
     If Len(id) < 2 Then Exit Sub
     n = CLng(Mid$(id, 2))
     Select Case Left$(id, 1)
-        Case "t"
-            TempVars("ReviewTaskID") = n
-            NavTo "review"
-        Case "q"
-            TempVars("ApprovalsQuestionID") = n
-            NavTo "approvals"
-        Case "x"
-            TempVars("ApprovalsExamID") = n
-            NavTo "approvals"
-        Case "r"
-            OpenQuestion n
+        Case "t": key = "review": tv = "ReviewTaskID"
+        Case "q": key = "approvals": tv = "ApprovalsQuestionID"
+        Case "x": key = "approvals": tv = "ApprovalsExamID"
+        Case "r": key = "qedit"
+        Case Else: Exit Sub
     End Select
+    If Not PageAllowed(key) Then
+        If Len(tv) > 0 Then TempVars(tv) = Null
+        KitMsgBox "Sign out and sign in again to see your new role.", vbInformation, "Dashboard"
+        Exit Sub
+    End If
+    If Len(tv) > 0 Then
+        TempVars(tv) = n
+        NavTo key
+    Else
+        OpenQuestion n
+    End If
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -126,7 +137,7 @@ End Sub
 ' lines in the alert, or that every topic has enough.
 Private Sub ShowShortTopics()
     Dim n As Long, s As String
-    s = TopicsShortText(OverlapPct(), OverlapWindow(), n, 3)
+    s = TopicsShortText(OverlapPct(), OverlapWindow(), n, 2)    ' two lines fit the titled alert's one line
     If n = 0 Then
         SetTile "tileShort", 0, "every active topic has enough"
         ShowAlert Me, "alShort", "Every active topic has enough approved questions for the templates that use it.", "success"

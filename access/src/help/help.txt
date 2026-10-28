@@ -34,7 +34,7 @@ What waits on you, and the topics short of approved questions, on one page.
 
 # The tiles
 - **Reviews open**: the exam topics you're an SME of that nobody has signed off yet.
-- **Approvals waiting**: the questions and exams at your step in the chain. Your own questions aren't counted, since you can't approve them.
+- **Approvals waiting**: the questions and exams at your step in the chain. Your own questions aren't counted, since you can't approve them, and neither are exams where you signed off a topic.
 - **Sent back to you**: your questions an approver returned, to fix and resubmit.
 - **Topics short**: the active topics with fewer approved questions than their templates need under the overlap rule. The alert under the tiles names them.
 
@@ -42,10 +42,10 @@ What waits on you, and the topics short of approved questions, on one page.
 Everything above in one list, the longest waiting first. Click a row and **Open**, or double-click it, to go there: a review opens on **My reviews**, a question or exam on **Approvals**, and a question sent back in the editor.
 
 # Recent activity
-The last 20 things done in the app: saves, submissions, approvals, exams generated, and who did them.
+The last 20 things done in the app, newest first: saves, submissions, approvals, exams generated, and who did them. An admin sees everything. Everyone else sees what was done to the questions, exams and references they worked on themselves, to the questions they wrote, and to the exams they review.
 
 # Turning the list off
-Turn off **Dashboard list** under **My settings** to hide the three queue tiles and the list. The short topics and the recent activity still show.
+Turn off **Dashboard list** under **My settings** to show the three queue tiles as **Off** and hide the list. The short topics and the recent activity still show.
 
 === review | My reviews
 Each exam topic you review. When the department head generates an exam, every SME of each of its topics gets a review of that topic here. Any one of them checks the questions drawn for it, swaps any out and signs off. One sign-off completes the topic for all its SMEs.
@@ -235,7 +235,7 @@ Click **OK** to keep the part in the question. It is saved to the bank with the 
 To cite a different reference, remove the citation and cite the other one.
 
 === stats | Statistics
-How many questions each topic gave on approved exams over a period, and how much of each topic came from one reference.
+How many questions each topic gave on approved exams over a period, and how much of each topic came from one reference. The figures are per topic, and per reference within a topic.
 
 # What counts
 Only exams the Senior Member gave final approval to, by the day they did. A question given on three exams counts three times. Pick **6 months**, **12 months** or **Dates** for your own period, and a template to see one series of exams, or every template.
@@ -245,7 +245,7 @@ A topic where one reference gives 80% or more of the questions given (with 5 que
 
 # The tables
 - **Topics**: each topic's questions given, the exams it was on, how many references its questions cite, and the reference cited most with its share.
-- **References**: click a topic to see every reference its questions cite, the most cited first. A question citing two references counts for both, so the shares can add up to more than 100%.
+- **References**: click a topic to see every reference its questions cite, the most cited first. A question citing two references counts for both, so the shares can add up to more than 100%. A topic whose questions cite no reference shows a dash under **Top share**.
 
 **Print** and **Export** take the topics table.
 
@@ -354,6 +354,8 @@ Your notices and your colors. Each switch saves as soon as you click it, and cha
 - **Emails**: an Outlook email when a review, an approval or a question sent back starts waiting on you. Off to start. The email names the item and the page to open, never a question's text.
 
 Emails go to the address in the Personnel file; the page shows it. Click **Send me a test email** to check that they reach you. Outlook must be set up on this computer, and it may ask you to allow the app to send.
+
+The app sends its emails once your step is saved, from your computer's Outlook. If Outlook was closed, they may wait in your Outbox until you open it.
 
 # Colors
 Click **Appearance** to choose the colors the whole app uses on this computer.

@@ -179,7 +179,7 @@ Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRe
     AddAudit ITEM_EXAM, examId, ver, AU_APPROVED, stepId
     ws.CommitTrans: inTrans = False
     If nextId <> 0 Then
-        NoticeExamAtStep examId             ' the next step's emails; never raises
+        NoticeExamAtStep examId             ' queues the next step's emails; never raises
         doneText = "Approved. " & ExamRef(examId, ver) & " goes to the " & RoleCodeOf(nextId) & " next."
     Else
         isFinal = True
@@ -261,7 +261,7 @@ Public Function RejectExam(ByVal examId As Long, ByVal reason As Variant, ByVal 
     ' The reason first, so the SMEs see it however many topics went back.
     AddAudit ITEM_EXAM, examId, ver, AU_REJECTED, stepId, r & IIf(Right$(r, 1) Like "[.!?]", "", ".") & " Sent back: " & topics & "."
     ws.CommitTrans: inTrans = False
-    NoticeReviews examId                    ' the SMEs' emails; never raises
+    NoticeReviews examId                    ' queues the SMEs' emails; never raises
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source

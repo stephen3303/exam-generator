@@ -17,7 +17,8 @@ Option Explicit
 ' (Option Compare Database).
 '
 ' At the end, the helpers every page shares: GridSelect (select a table's
-' row by id), OpenArgText and OpenArgLong (a dialog's OpenArgs).
+' row by id), OpenArgText and OpenArgLong (a dialog's OpenArgs), and
+' ClipText (a name cut short for a one-line alert).
 '
 ' Owner: the app core (build phase 1). Depends on: modErrors, modGlobals;
 ' the kit's modDarkMode.
@@ -130,4 +131,10 @@ Public Function OpenArgLong(frm As Form, ByVal name As String) As Long
     Dim v As String
     v = OpenArgText(frm, name)
     If Len(v) > 0 And Len(v) <= 9 And Not v Like "*[!0-9]*" Then OpenArgLong = CLng(v)
+End Function
+
+' Text s cut to at most n characters, ending in an ellipsis when cut, so a
+' long name can't push an alert's line past what it shows.
+Public Function ClipText(ByVal s As String, ByVal n As Long) As String
+    If Len(s) <= n Or n < 2 Then ClipText = s Else ClipText = RTrim$(Left$(s, n - 1)) & ChrW(8230)
 End Function

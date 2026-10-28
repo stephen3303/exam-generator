@@ -8,11 +8,12 @@ Option Explicit
 '   Dashboard list  the Dashboard's queue tiles and list (pgDash)
 '   Emails          an Outlook email when something waits on them (modNotify)
 ' Under them the address emails go to (the Personnel file's) and Send me a
-' test email. Then Colors, the palette picker. With no data file linked, or
-' nobody signed in, the switches are off and locked.
+' test email. Then Colors, the palette picker. With no data file linked,
+' nobody signed in, or no row for them in tblPeople, the switches are off
+' and locked, and the line under them says which.
 '
-' Depends on: modNotify, modSignIn; the kit's modKitUI, modKitUtil,
-' modPersonnel.
+' Depends on: modNotify, modSignIn; the kit's modKitLocks, modKitUI,
+' modKitUtil, modPersonnel.
 
 Private Const MSG_TITLE As String = "My settings"
 
@@ -23,21 +24,32 @@ Public Property Get HelpTopic() As String
 End Property
 
 Private Sub Form_Load()
-    Dim rs As DAO.Recordset
+    Dim rs As DAO.Recordset, why As String
     On Error GoTo Err_Handler
     m_pid = 0
-    If DataLinked() Then m_pid = SignedInPersonID()
-    If m_pid <> 0 Then
-        Set rs = CurrentDb.OpenRecordset("SELECT NotifyDashboard, NotifyEmail FROM tblPeople WHERE PersonID=" & m_pid, dbOpenSnapshot)
-        If rs.EOF Then m_pid = 0 Else SetSwitch "tgDash", Nz(rs!NotifyDashboard, False): SetSwitch "tgEmail", Nz(rs!NotifyEmail, False)
-        rs.Close
+    If Not DataLinked() Then
+        why = "This copy was built without the data file, so there are no notices to set."
+    Else
+        m_pid = SignedInPersonID()
+        If m_pid = 0 Then
+            why = "Nobody is signed in, so there are no notices to set."
+        Else
+            Set rs = CurrentDb.OpenRecordset("SELECT NotifyDashboard, NotifyEmail FROM tblPeople WHERE PersonID=" & m_pid, dbOpenSnapshot)
+            If rs.EOF Then
+                m_pid = 0
+                why = "You aren't on the app's list of people yet, so there are no notices to set. Ask the admin to add you."
+            Else
+                SetSwitch "tgDash", Nz(rs!NotifyDashboard, False): SetSwitch "tgEmail", Nz(rs!NotifyEmail, False)
+            End If
+            rs.Close
+        End If
     End If
     If m_pid = 0 Then
         SetSwitch "tgDash", False: SetSwitch "tgEmail", False
         SetEnabled Me.tgDash, False: SetEnabled Me.tgEmail, False
         Me.tgDash_val.Locked = True: Me.tgEmail_val.Locked = True    ' the links beside them toggle the value too
         SetEnabled Me.btnTestEmail, False
-        Me.lblEmail.Caption = "This copy was built without the data file, so there are no notices to set."
+        Me.lblEmail.Caption = why
         Exit Sub
     End If
     ShowAddress
@@ -77,7 +89,7 @@ Private Sub SaveSwitch(ByVal nm As String, ByVal col As String, ByVal tv As Stri
     Dim v As Boolean
     If m_pid = 0 Then Exit Sub
     v = IsSwitchOn(nm)
-    CurrentDb.Execute "UPDATE tblPeople SET " & col & "=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid, dbFailOnError
+    KitExecute "UPDATE tblPeople SET " & col & "=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
     TempVars(tv) = v
     KitToast IIf(nm = "tgDash", "Dashboard list ", "Emails ") & IIf(v, "on", "off"), "success"
 End Sub
@@ -117,11 +129,12 @@ End Sub
 Private Sub btnTestEmail_Click()
     Dim why As String
     On Error GoTo Err_Handler
+    StartNotices                            ' its note says only whether this test may wait in the Outbox
     DoCmd.Hourglass True
     why = SendTestEmail()
     DoCmd.Hourglass False
     If Len(why) = 0 Then
-        KitToast "Test email sent to " & PersonEmail(m_pid), "success"
+        KitToast WithNoticeNote("Test email sent to " & PersonEmail(m_pid) & "."), "success"
     Else
         KitMsgBox why, vbInformation, MSG_TITLE
     End If

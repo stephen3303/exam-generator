@@ -6,7 +6,7 @@ Option Explicit
 ' modBuild.BuildPages calls BuildDashGrids first, then the pages.
 '
 ' Owner: build phase 9. Depends on: modBuild (PAGE_W, PAGE_H, PAGE_PAD,
-' ContentW, FieldLbl); the kit's modUIKit.
+' ContentW); the kit's modUIKit.
 
 Private Const SIDE_W As Long = 5400             ' the right-hand cards (Recent activity, References), 360 px
 
@@ -162,7 +162,7 @@ Public Sub Build_pgMySettings()
     Dim c As Control, x As Long, y As Long, w As Long, fw As Long
     NewForm "", 0, PAGE_W, PAGE_H
     Ev F, "OnLoad"
-    PageHeader "My settings", "Your notices and your colors. They are yours alone: nobody else's change.", PAGE_PAD
+    PageHeader "My settings", "Your notices and your colors. They change only your own settings.", PAGE_PAD
     x = PAGE_PAD: y = px(84): w = px(480): fw = w - px(32)
     Card "Notices", "Notices", x, y, w, px(248)
     Toggle "tgDash", "", x + px(20), y + px(52), px(36), px(20), "DashChanged"
@@ -173,7 +173,7 @@ Public Sub Build_pgMySettings()
     Link "lbltgEmail", "Emails", x + px(68), y + px(104), fw - px(52), px(22), "=ToggleSwitch([Form],""tgEmail"")", 10, CLR_FG
     Lbl "lblEmailSub", "An Outlook email when a review, an approval or a question sent back waits on you.", _
         x + px(68), y + px(126), fw - px(52), px(32), 9, False, CLR_MUTED_FG
-    Lbl "lblEmail", "", x + px(16), y + px(168), fw, px(20), 9, False, CLR_MUTED_FG
+    Lbl "lblEmail", "", x + px(16), y + px(166), fw, px(32), 9, False, CLR_MUTED_FG   ' two lines: an address or why there is none
     Set c = Btn("btnTestEmail", "Send me a test email", x + px(16), y + px(200), px(168), px(30), "outline")
     c.ControlTipText = "Check that the app's emails reach you"
 

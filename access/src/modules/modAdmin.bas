@@ -17,7 +17,7 @@ Option Explicit
 ' gives it (QuestionsNeeded). A topic with fewer is short.
 '
 ' Owner: the admin pages (build phase 4). Depends on: modErrors, modGlobals,
-' modQuestions, modSignIn; the kit's modKitLocks, modPersonnel; and
+' modQuestions, modSignIn, modUI; the kit's modKitLocks, modPersonnel; and
 ' tblSettings keys (the SET_ constants).
 
 Public Const SET_OVERLAP_PCT As String = "OverlapMaxPct"
@@ -151,7 +151,8 @@ Public Function TopicSupplySql() As String
 End Function
 
 ' The active topics short of approved questions under the overlap rule, one
-' line each ("Damage Control: 12 approved, needs 28"), then "and 3 more".
+' line each ("Damage Control: 12 approved, needs 28", a long name cut short
+' at 32 characters so a one-line alert holds two lines), then "and 3 more".
 '   pct, window   OverlapPct and OverlapWindow (or values being tried)
 '   nShort        returns how many topics are short
 '   maxLines      the most topic lines before "and N more"
@@ -166,7 +167,7 @@ Public Function TopicsShortText(ByVal pct As Long, ByVal window As Long, Optiona
         If rs!on_hand < need Then
             nShort = nShort + 1
             If nShort <= maxLines Then
-                s = s & IIf(Len(s) > 0, vbCrLf, "") & rs!TopicName & ": " & rs!on_hand & " approved, needs " & need
+                s = s & IIf(Len(s) > 0, vbCrLf, "") & ClipText(Nz(rs!TopicName, ""), 32) & ": " & rs!on_hand & " approved, needs " & need
             End If
         End If
         rs.MoveNext
