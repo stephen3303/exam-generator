@@ -290,7 +290,6 @@ Err_Handler:
     HandleError "pgQuestions.GridRightClick", grid
 End Sub
 
-' New question (Questions tab) or New reference (References tab).
 ' Import questions from a workbook: pick it, check all of it (nothing is
 ' written while any row has a problem; the problems are listed, with the
 ' whole list to copy), say what will happen, and on OK write it all as
@@ -298,11 +297,11 @@ End Sub
 Private Sub ImportClicked()
     Dim path As String, problem As String, n As Long, skipped As Long, busy As Boolean
     Dim num As Long, desc As String, src As String
-    On Error GoTo Fail
+    On Error GoTo Err_Handler
     If Not RefLeaveOK() Then Exit Sub
     path = KitPickFile("Import questions", "Excel workbook|*.xlsx", "bankexport")
     If Len(path) = 0 Then Exit Sub
-    KitBusy "Checking " & Mid$(path, InStrRev(path, "") + 1) & "...": busy = True
+    KitBusy "Checking " & Mid$(path, InStrRev(path, "\") + 1) & "...": busy = True
     problem = CheckBankFile(path)
     KitBusyEnd: busy = False
     If Len(problem) > 0 Then
@@ -320,8 +319,9 @@ Private Sub ImportClicked()
     End If
     If KitMsgBox(BankImportSummary(), vbOKCancel + vbQuestion, "Import questions") <> vbOK Then ClearCheckedBank: Exit Sub
     KitBusy "Importing questions...": busy = True
-    n = ImportCheckedBank(skipped)
+    n = ImportCheckedBank(skipped, problem)
     KitBusyEnd: busy = False
+    If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, "Import questions": Exit Sub
     m_refFilter = 0
     m_chip = 1                                  ' Draft
     ChipOn Me, "chip", m_chip
@@ -334,7 +334,7 @@ Private Sub ImportClicked()
     KitToast "Imported " & n & " " & Plural(n, "question") & " as drafts." & _
         IIf(skipped > 0, " " & skipped & " saved meanwhile " & IIf(skipped = 1, "was", "were") & " skipped.", ""), "success"
     Exit Sub
-Fail:
+Err_Handler:
     ' KitBusyEnd resets Err, so keep the error to show it.
     num = Err.Number: desc = Err.Description: src = Err.Source
     If busy Then KitBusyEnd
@@ -343,6 +343,7 @@ Fail:
     HandleError "pgQuestions.ImportClicked", path
 End Sub
 
+' New question (Questions tab) or New reference (References tab).
 Private Sub NewClicked()
     If Not DataLinked() Then Exit Sub
     If m_tab = "r" Then

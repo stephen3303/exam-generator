@@ -196,17 +196,18 @@ The admin can save the whole question bank, or some topics of it, as one Excel w
 - **Options**: the answer options of a multiple choice question (or of each of its parts), lettered A, B, C in order, with **Yes** under **Correct** for the right one.
 - **References** and **Citations**: the documents the questions cite, and which question cites which, with the paragraph.
 - **Lists**: the bank's topics, types, difficulties and markings, for the dropdowns. Import doesn't read it.
-Every cell is text, so commas, quotes, line breaks, numbers like 0800 and text starting with = come back as typed.
+Commas, quotes, line breaks, numbers like 0800 and text starting with = come back as exported. Export reads every cell back and stops if Excel changed one. Points use a dot for a half point (1.5). When you type a text starting with = in Excel, put an apostrophe in front of it.
 
 # Exporting
-**Export** > **Export the question bank** lists every topic with how many questions it has. Untick the topics you don't want and click **Export**. Each question's version in use is written; a new version still being written or approved stays in the bank. The export is kept in the audit record.
+**Export** > **Export the question bank** lists every topic with how many questions it has, ticked except the topics turned off (import takes no new questions in those). Untick the topics you don't want and click **Export**. Each question's version in use is written; a new version still being written or approved stays in the bank. The export is kept in the audit record.
 
 # Importing
 **Export** > **Import questions** asks for the workbook, then checks every row before anything is saved.
 - If any row has a problem, nothing is imported. The message lists the problems with their sheet and row, and offers to copy the full list. Fix them in the file and import it again.
 - Otherwise it says how many questions it will import and into which topics, which references are already in the bank and which are new, and which questions it skips. Click **OK** to import them all, or **Cancel**.
 - Each question comes in as a new **Draft** in its topic, with you as its author, and goes through the SMEs and the approval chain like any other. It can't be drawn for an exam until it is approved.
-- A question whose text is already in its topic (ignoring spaces and capitals) is skipped, and so is a second copy in the same file.
+- A question already in its topic, with the same text, parts and options (ignoring spaces and capitals), is skipped, and so is a second copy in the same file.
+- A topic turned off, or a reference turned off in the bank, takes no new questions. A question in one is a problem unless it would be skipped anyway.
 - A reference with the same title and number as one in the bank is that one; any other is added to the shared list.
 - The **Question ID** numbers in the file only link its sheets; the bank gives each imported question its own number.
 - Each imported question, each new reference and the import itself are kept in the audit record.

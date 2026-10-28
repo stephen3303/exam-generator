@@ -88,12 +88,13 @@ Private m_plan As Object
 ' ---------------------------------------------------------------------------
 
 ' Every topic, for the export dialog's list: TopicID, the topic's name
-' ("(off)" after one turned off) and how many questions export would write
-' from it. Builds the SQL only. Errors: none.
+' ("(off)" after one turned off), how many questions export would write
+' from it, and is_on (True for a topic in use; import refuses new
+' questions in a topic turned off). Builds the SQL only. Errors: none.
 Public Function BankTopicsSql() As String
     BankTopicsSql = "SELECT t.TopicID, t.TopicName & IIf(t.IsActive, '', ' (off)') AS topic, " & _
-        "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND " & InUseSql("q") & ") AS questions " & _
-        "FROM tblTopics AS t ORDER BY t.TopicName"
+        "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND " & InUseSql("q") & ") AS questions, " & _
+        "IIf(t.IsActive, 1, 0) AS is_on FROM tblTopics AS t ORDER BY t.TopicName"
 End Function
 
 ' How many questions export would write from these topics.
@@ -110,15 +111,15 @@ End Function
 '   path       the .xlsx file (KitSaveAs has asked before replacing one)
 '   topicIds   TopicIDs separated by commas
 ' Returns "" when written, else why not, for the user (Excel missing, a
-' text too long for a cell, the file open elsewhere). n returns how many
-' questions were written.
+' text too long for a cell, a cell Excel didn't keep as written, the file
+' open elsewhere). n returns how many questions were written.
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an active admin
 '   now; others pass up through RaiseAgain, with Excel closed.
 Public Function ExportBank(ByVal path As String, ByVal topicIds As String, ByRef n As Long) As String
     Dim xl As Object, wb As Object, db As DAO.Database, rs As DAO.Recordset, keys As Object
     Dim where As String, qd As Variant, pd As Variant, od As Variant, rd As Variant, cd As Variant
     Dim nQ As Long, nP As Long, nO As Long, nR As Long, nC As Long, i As Long, top As Long, problem As String
-    Dim num As Long, desc As String, src As String, fileName As String
+    Dim num As Long, desc As String, src As String, fileName As String, marking As String, saved As Boolean
     n = 0
     RequireExamAdmin
     If Len(topicIds) = 0 Then ExportBank = "Pick at least one topic to export.": Exit Function
@@ -151,7 +152,7 @@ Public Function ExportBank(ByVal path As String, ByVal topicIds As String, ByRef
         qd(i, 2) = rs!TopicName
         qd(i, 3) = rs!TypeName
         qd(i, 4) = rs!LevelName
-        qd(i, 5) = PointsText(rs!TotalPoints)
+        qd(i, 5) = PointsCell(rs!TotalPoints)
         If rs!nParts = 0 Then qd(i, 6) = rs!Marking   ' with parts, the marking is theirs (Read me)
         qd(i, 7) = rs!QuestionText
         qd(i, 8) = rs!ReferenceAnswer
@@ -176,7 +177,7 @@ Public Function ExportBank(ByVal path As String, ByVal topicIds As String, ByRef
         i = i + 1
         pd(i, 1) = CStr(keys(CLng(rs!QuestionID)))
         pd(i, 2) = rs!PartLabel
-        pd(i, 3) = PointsText(rs!Points)
+        pd(i, 3) = PointsCell(rs!Points)
         pd(i, 4) = rs!Marking
         pd(i, 5) = rs!PartText
         pd(i, 6) = rs!ReferenceAnswer
@@ -252,14 +253,17 @@ Public Function ExportBank(ByVal path As String, ByVal topicIds As String, ByRef
     xl.DisplayAlerts = False
     xl.ScreenUpdating = False
     Set wb = xl.Workbooks.Add(xlWBATWorksheet)
-    WriteReadMe wb.Worksheets(1), nQ, topicIds, top
-    WriteSheet wb, SH_Q, QuestionCols(), qd, nQ, Array(12, 20, 17, 11, 8, 16, 60, 50, 11, 10), 9
-    WriteSheet wb, SH_P, PartCols(), pd, nP, Array(12, 6, 8, 16, 60, 50)
-    WriteSheet wb, SH_O, OptionCols(), od, nO, Array(12, 6, 8, 70, 9)
-    WriteSheet wb, SH_R, RefCols(), rd, nR, Array(13, 45, 18, 10)
-    WriteSheet wb, SH_C, CiteCols(), cd, nC, Array(12, 13, 24)
-    WriteLists wb
+    marking = Nz(DLookup("Marking", "tblClassLevels", "LevelRank=" & top), "")
+    WriteReadMe wb.Worksheets(1), nQ, topicIds, marking
+    problem = WriteSheet(wb, SH_Q, QuestionCols(), qd, nQ, Array(12, 20, 17, 11, 8, 16, 60, 50, 11, 10), Array(7, 8), 9)
+    If Len(problem) = 0 Then problem = WriteSheet(wb, SH_P, PartCols(), pd, nP, Array(12, 6, 8, 16, 60, 50), Array(5, 6))
+    If Len(problem) = 0 Then problem = WriteSheet(wb, SH_O, OptionCols(), od, nO, Array(12, 6, 8, 70, 9), Array(4))
+    If Len(problem) = 0 Then problem = WriteSheet(wb, SH_R, RefCols(), rd, nR, Array(13, 45, 18, 10), Array(2))
+    If Len(problem) = 0 Then problem = WriteSheet(wb, SH_C, CiteCols(), cd, nC, Array(12, 13, 24), Array())
+    If Len(problem) = 0 Then problem = WriteLists(wb)
+    If Len(problem) > 0 Then ExportBank = problem: GoTo CloseExcel
     AddDropdowns wb
+    MarkSheets xl, wb, marking
     wb.Worksheets(1).Activate
     On Error Resume Next
     If Len(Dir(path)) > 0 Then Kill path
@@ -270,14 +274,17 @@ Public Function ExportBank(ByVal path As String, ByVal topicIds As String, ByRef
     End If
     On Error GoTo Fail
     wb.SaveAs path, xlOpenXMLWorkbook
+    saved = True
     wb.Close False
     Set wb = Nothing
     xl.Quit
     Set xl = Nothing
-    n = nQ
+    ' The audit row last: a file whose export isn't recorded is deleted
+    ' again (Fail).
     fileName = Mid$(path, InStrRev(path, "\") + 1)
     AddAudit ITEM_BANK, 0, Null, AU_EXPORTED, , nQ & IIf(nQ = 1, " question", " questions") & " in " & TopicNames(topicIds) & _
-        " to " & fileName & IIf(top > 0, ", highest marking " & Nz(DLookup("Marking", "tblClassLevels", "LevelRank=" & top), ""), "")
+        " to " & fileName & IIf(Len(marking) > 0, ", highest marking " & marking, "")
+    n = nQ
     Exit Function
 CloseExcel:
     On Error Resume Next
@@ -292,6 +299,7 @@ Fail:
     Set wb = Nothing
     If Not xl Is Nothing Then xl.Quit
     Set xl = Nothing
+    If saved Then Kill path                 ' saved, but its audit row couldn't be written
     On Error GoTo 0
     n = 0
     Err.Number = num: Err.Description = desc: Err.Source = src
@@ -358,25 +366,43 @@ Private Function CiteCols() As Variant
     CiteCols = Array("Question ID", "Reference ID", "Paragraph")
 End Function
 
+' A value as the text it should read back as: "" for Null, line breaks as
+' Excel's line feed.
+Private Function CellExpected(ByVal v As Variant) As String
+    If IsNull(v) Or IsEmpty(v) Then Exit Function
+    CellExpected = Replace(Replace(CStr(v), vbCrLf, vbLf), vbCr, vbLf)
+End Function
+
 ' A value as a workbook cell: Empty for Null or "", line breaks as Excel's
 ' line feed, a leading apostrophe doubled (Excel takes one as "this is
 ' text" and drops it).
 Private Function CellText(ByVal v As Variant) As Variant
     Dim s As String
-    If IsNull(v) Or IsEmpty(v) Then CellText = Empty: Exit Function
-    s = Replace(Replace(CStr(v), vbCrLf, vbLf), vbCr, vbLf)
+    s = CellExpected(v)
     If Len(s) = 0 Then CellText = Empty: Exit Function
     If Left$(s, 1) = "'" Then s = "'" & s
     CellText = s
 End Function
 
+' Points as a cell: 4, 1.5, with a dot whatever this computer's decimal
+' separator (PointsText follows it), so the file reads the same anywhere.
+Private Function PointsCell(ByVal v As Variant) As String
+    If IsNull(v) Then Exit Function
+    PointsCell = Trim$(Str$(CDbl(v)))
+End Function
+
 ' Add a sheet after the others and fill it: the captions in row 1 (white on
 ' dark blue, grey for the columns from firstInfo on, which import ignores),
 ' then n rows of data, every column formatted as text first so Excel keeps
-' each value as typed. Frozen captions, a filter, wrapped text.
-Private Sub WriteSheet(wb As Object, ByVal nm As String, ByVal cols As Variant, data As Variant, ByVal n As Long, _
-        ByVal widths As Variant, Optional ByVal firstInfo As Long = 0)
-    Dim ws As Object, nc As Long, hdr() As Variant, i As Long, r As Long, out() As Variant
+' each value as typed. The long text columns (longCols) go back to General
+' once filled: Excel shows #### in a text cell over 255 characters, and the
+' values already in them stay text. Frozen captions, a filter, wrapped text.
+' Every cell is then read back and compared with what was meant; returns
+' "" when they all match, else which cell didn't, for the user.
+Private Function WriteSheet(wb As Object, ByVal nm As String, ByVal cols As Variant, data As Variant, ByVal n As Long, _
+        ByVal widths As Variant, ByVal longCols As Variant, Optional ByVal firstInfo As Long = 0) As String
+    Dim ws As Object, nc As Long, hdr() As Variant, i As Long, r As Long, out() As Variant, c As Variant, back As Variant
+    Dim want As String, got As String
     Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
     ws.Name = nm
     nc = UBound(cols) + 1
@@ -401,14 +427,45 @@ Private Sub WriteSheet(wb As Object, ByVal nm As String, ByVal cols As Variant, 
             Next
         Next
         ws.Range(ws.Cells(2, 1), ws.Cells(n + 1, nc)).Value = out
+        For Each c In longCols
+            ws.Range(ws.Cells(2, c), ws.Cells(n + 1, c)).NumberFormat = "General"
+        Next
+        ' Read it all back. A cell whose leading apostrophe Excel kept
+        ' (instead of taking it as "this is text") is written again without
+        ' the doubled one.
+        back = ws.Range(ws.Cells(2, 1), ws.Cells(n + 1, nc)).Value2
+        For r = 1 To n
+            For i = 1 To nc
+                want = CellExpected(data(r, i))
+                got = BackText(back(r, i))
+                If got <> want And Left$(want, 1) = "'" And got = "'" & want Then
+                    ws.Cells(r + 1, i).Value = want
+                    got = BackText(ws.Cells(r + 1, i).Value2)
+                End If
+                If got <> want Then
+                    WriteSheet = "Excel didn't keep the " & cols(i - 1) & " cell of " & nm & " row " & (r + 1) & " as written " & _
+                        "(it should start """ & ClipText(Replace(want, vbLf, " "), 40) & """), so the bank wasn't exported. " & _
+                        "The error log has no entry for this; tell whoever looks after the app."
+                    Exit Function
+                End If
+            Next
+        Next
     End If
+    On Error Resume Next                    ' cosmetic: a failure here doesn't stop the export
     With ws.Range(ws.Cells(1, 1), ws.Cells(n + 1, nc))
         .WrapText = True
         .VerticalAlignment = xlTop
         .AutoFilter
     End With
+    On Error GoTo 0
     FreezeTopRow ws
-End Sub
+End Function
+
+' A cell as read back (Value2) for WriteSheet's comparison.
+Private Function BackText(ByVal v As Variant) As String
+    If IsEmpty(v) Or IsNull(v) Or IsError(v) Then Exit Function
+    BackText = CStr(v)
+End Function
 
 ' Freeze row 1 of ws. Cosmetic: a failure is ignored.
 Private Sub FreezeTopRow(ws As Object)
@@ -422,10 +479,25 @@ Private Sub FreezeTopRow(ws As Object)
     End With
 End Sub
 
+' The highest marking in the file at the top and bottom of every sheet as
+' it prints, and on the Read me sheet already. Cosmetic: a failure is
+' ignored (the Read me still says it).
+Private Sub MarkSheets(xl As Object, wb As Object, ByVal marking As String)
+    Dim ws As Object
+    If Len(marking) = 0 Then Exit Sub
+    On Error Resume Next
+    xl.PrintCommunication = False           ' Excel 2010 on: page setup without asking the printer each time
+    For Each ws In wb.Worksheets
+        ws.PageSetup.CenterHeader = "&B" & Replace(marking, "&", "&&")
+        ws.PageSetup.CenterFooter = "&B" & Replace(marking, "&", "&&")
+    Next
+    xl.PrintCommunication = True
+End Sub
+
 ' The Read me sheet: the format line (import checks it), when, by whom,
 ' from which topics, how many questions, the highest marking in the file,
 ' and how the sheets fit together.
-Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String, ByVal topRank As Long)
+Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String, ByVal marking As String)
     Dim meta As Variant, notes As Variant, i As Long, r As Long
     ws.Name = SH_README
     ws.Columns(1).ColumnWidth = 16
@@ -435,9 +507,8 @@ Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String
     ws.Cells(1, 1).Font.Bold = True
     ws.Cells(1, 1).Font.Size = 14
     meta = Array("Format", BANK_FORMAT, "Exported", Format$(Now(), "yyyy-mm-dd hh:nn"), _
-        "Exported by", Nz(DLookup(PersonNameSql(), PERSON_TABLE & " AS p", "p.person_id=" & SignedInPersonID()), ""), _
-        "Topics", TopicNames(topicIds), "Questions", CStr(nQ), _
-        "Highest marking", Nz(DLookup("Marking", "tblClassLevels", "LevelRank=" & topRank), ""))
+        "Exported by", SignedInName(), "Topics", TopicNames(topicIds), "Questions", CStr(nQ), _
+        "Highest marking", marking)
     r = 3
     For i = 0 To UBound(meta) Step 2
         ws.Cells(r, 1).Value = meta(i)
@@ -461,13 +532,15 @@ Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String
             "Marking must use these names exactly.", _
         "", _
         "Text", _
-        "Every cell is text. Commas, quotes and line breaks (Alt+Enter in Excel) are kept as typed. A question, part or option " & _
-            "text can be at most " & MAX_TEXT & " characters.", _
+        "Commas, quotes and line breaks (Alt+Enter in Excel) are kept as typed. A question, part or option text can be at most " & _
+            MAX_TEXT & " characters. Points use a dot for a half point (1.5). In the long text columns, type an apostrophe " & _
+            "before a text that starts with = so Excel keeps it as text.", _
         "", _
         "Import", _
         "Import checks the whole file first and lists every problem with its sheet and row; nothing is added until the file has " & _
             "none. Each question comes in as a new draft, so it goes through the SMEs and the approval chain like any other. A " & _
-            "question whose text matches one already in the same topic is skipped and listed.", _
+            "question already in its topic (the same text, parts and options) is skipped and listed. Topics turned off take no " & _
+            "new questions.", _
         "Grey columns (Status, Bank ref) are filled by export to show where a question came from; import ignores them.")
     r = r + 1
     For i = 0 To UBound(notes)
@@ -481,27 +554,39 @@ Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String
         If Len(notes(i)) > 120 Then ws.Rows(r).RowHeight = 15 * (Len(notes(i)) \ 120 + 1)
         r = r + 1
     Next
+    ws.Columns(2).NumberFormat = "General"  ' a long topics line would show as #### in a text cell
 End Sub
 
-' The Lists sheet: every topic, the types, the active difficulties and the
-' markings, lowest first, with their portion marks.
-Private Sub WriteLists(wb As Object)
+' The signed-in person's name, for the Read me sheet ("" if not found).
+Private Function SignedInName() As String
+    Dim rs As DAO.Recordset
+    Set rs = CurrentDb.OpenRecordset("SELECT " & PersonNameSql() & " AS nm FROM " & PERSON_TABLE & " AS p WHERE p.person_id=" & _
+        SignedInPersonID(), dbOpenSnapshot)
+    If Not rs.EOF Then SignedInName = Nz(rs!nm, "")
+    rs.Close
+End Function
+
+' The Lists sheet: every topic, the types, the difficulties and the
+' markings, lowest first, with their portion marks. Returns as WriteSheet.
+Private Function WriteLists(wb As Object) As String
     Dim lists(1 To 4) As Collection, rs As DAO.Recordset, i As Long, n As Long, r As Long, data() As Variant
     Dim portions As New Collection
     For i = 1 To 4
         Set lists(i) = New Collection
     Next
+    ' Each value is added as text: rs!TopicName alone would add the Field
+    ' object, which is gone once the recordset closes.
     Set rs = CurrentDb.OpenRecordset("SELECT TopicName FROM tblTopics ORDER BY TopicName", dbOpenSnapshot)
-    Do While Not rs.EOF: lists(1).Add rs!TopicName: rs.MoveNext: Loop
+    Do While Not rs.EOF: lists(1).Add Nz(rs!TopicName.Value, ""): rs.MoveNext: Loop
     rs.Close
     Set rs = CurrentDb.OpenRecordset("SELECT TypeName FROM tblQuestionTypes ORDER BY QuestionTypeID", dbOpenSnapshot)
-    Do While Not rs.EOF: lists(2).Add rs!TypeName: rs.MoveNext: Loop
+    Do While Not rs.EOF: lists(2).Add Nz(rs!TypeName.Value, ""): rs.MoveNext: Loop
     rs.Close
-    Set rs = CurrentDb.OpenRecordset("SELECT LevelName FROM tblDifficultyLevels WHERE IsActive ORDER BY SortOrder", dbOpenSnapshot)
-    Do While Not rs.EOF: lists(3).Add rs!LevelName: rs.MoveNext: Loop
+    Set rs = CurrentDb.OpenRecordset("SELECT LevelName FROM tblDifficultyLevels ORDER BY SortOrder", dbOpenSnapshot)
+    Do While Not rs.EOF: lists(3).Add Nz(rs!LevelName.Value, ""): rs.MoveNext: Loop
     rs.Close
     Set rs = CurrentDb.OpenRecordset("SELECT Marking, PortionMark FROM tblClassLevels ORDER BY LevelRank", dbOpenSnapshot)
-    Do While Not rs.EOF: lists(4).Add rs!Marking: portions.Add rs!PortionMark: rs.MoveNext: Loop
+    Do While Not rs.EOF: lists(4).Add Nz(rs!Marking.Value, ""): portions.Add Nz(rs!PortionMark.Value, ""): rs.MoveNext: Loop
     rs.Close
     For i = 1 To 4
         If lists(i).Count > n Then n = lists(i).Count
@@ -515,8 +600,9 @@ Private Sub WriteLists(wb As Object)
             If r <= portions.Count Then data(r, 5) = portions(r)
         Next
     End If
-    WriteSheet wb, SH_L, Array("Topic", "Type", "Difficulty", "Marking", "Portion mark"), data, n, Array(22, 17, 11, 16, 13)
-End Sub
+    WriteLists = WriteSheet(wb, SH_L, Array("Topic", "Type", "Difficulty", "Marking", "Portion mark"), data, n, _
+        Array(22, 17, 11, 16, 13), Array())
+End Function
 
 ' Dropdowns from the Lists sheet on the Questions and Parts columns that
 ' name a topic, type, difficulty or marking, for rows typed in Excel.
@@ -553,7 +639,7 @@ End Sub
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an active admin
 '   now; others pass up through RaiseAgain, with Excel closed.
 Public Function CheckBankFile(ByVal path As String) As String
-    Dim xl As Object, wb As Object, sheets As Object, probs As Collection, warns As Collection, s As String
+    Dim xl As Object, wb As Object, sheets As Object, probs As Collection, warns As Collection
     Dim num As Long, desc As String, src As String
     Set m_plan = Nothing
     RequireExamAdmin
@@ -689,10 +775,12 @@ Private Function SheetRows(ws As Object, ByVal cols As Variant, probs As Collect
 End Function
 
 ' A cell's value as text: "" for an empty cell, "#ERROR" for an Excel
-' error, a number as the digits Excel holds (1, 1.5), line breaks as CR LF.
+' error, a number typed in Excel as its digits with a dot (1, 1.5) on any
+' computer, line breaks as CR LF.
 Private Function CellValue(ByVal v As Variant) As String
     If IsEmpty(v) Or IsNull(v) Then Exit Function
     If IsError(v) Then CellValue = "#ERROR": Exit Function
+    If VarType(v) = vbDouble Then CellValue = Trim$(Str$(v)): Exit Function
     CellValue = Replace(Replace(Replace(CStr(v), vbCrLf, vbLf), vbCr, vbLf), vbLf, vbCrLf)
 End Function
 
@@ -732,9 +820,10 @@ Private Sub CheckRows(sheets As Object, ByVal fileName As String, probs As Colle
         ElseIf qn("topicId") = 0 Then
             probs.Add s & "Topic """ & ClipText(Trim$(d("topic")), 60) & """ isn't in the bank. Use a topic name from the Lists " & _
                 "sheet, or ask the admin to add the topic first."
-        ElseIf Not Nz(DLookup("IsActive", "tblTopics", "TopicID=" & qn("topicId")), False) Then
-            probs.Add s & "Topic """ & Trim$(d("topic")) & """ is turned off. Turn it on (Topics page) or use another topic."
         End If
+        qn("topicOff") = False                  ' checked once the skips are known: a skipped question may be in one
+        If qn("topicId") <> 0 Then qn("topicOff") = Not Nz(DLookup("IsActive", "tblTopics", "TopicID=" & qn("topicId")), False)
+        qn("topicText") = Trim$(d("topic"))
         qn("type") = TypeFromText(d("type"))
         If Len(qn("type")) = 0 Then probs.Add s & "Type must be " & QT_MC & ", " & QT_TF & " or " & QT_SA & _
             IIf(Len(Trim$(d("type"))) > 0, " (it is """ & ClipText(Trim$(d("type")), 40) & """)", "") & "."
@@ -922,22 +1011,44 @@ Private Sub CheckRows(sheets As Object, ByVal fileName As String, probs As Colle
                 " options marked correct; mark only one."
         Next
     Next
-    If probs.Count > 0 Then Exit Sub
+    If probs.Count >= MAX_PROBLEMS Then Exit Sub
 
     ' What import will skip: a question already in the bank in its topic, or
-    ' a second copy in the file.
+    ' a second copy in the file (DupKey: the same text, parts and options).
     Set bank = BankTexts(qs)
     Set seen = CreateObject("Scripting.Dictionary")
     For Each qn In qs
-        key = qn("topicId") & "|" & TextKey(qn("text"))
-        If bank.Exists(key) Then
-            qn("skip") = "already in the bank as " & bank(key)
-        ElseIf seen.Exists(key) Then
-            qn("skip") = "the same as question " & seen(key) & " in this file"
-        Else
-            seen.Add key, qn("id")
+        If qn("topicId") <> 0 And Not IsNull(qn("text")) Then
+            key = FileDupKey(qn)
+            If bank.Exists(key) Then
+                qn("skip") = "already in the bank as " & bank(key)
+            ElseIf seen.Exists(key) Then
+                qn("skip") = "the same as question " & seen(key) & " in this file"
+            Else
+                seen.Add key, qn("id")
+            End If
         End If
     Next
+
+    ' A topic turned off, or a reference turned off in the bank, takes no
+    ' new question (the editor offers neither); a skipped one is no problem.
+    For Each qn In qs
+        If Len(qn("skip")) = 0 Then
+            s = SH_Q & " row " & qn("row") & " (question " & qn("id") & "): "
+            If qn("topicOff") Then probs.Add s & "Topic """ & ClipText(qn("topicText"), 60) & """ is turned off. Turn it on " & _
+                "(Topics page) or use another topic."
+            For Each o In qn("cites")
+                If refs(o("ref"))("bankId") <> 0 Then
+                    If Not Nz(DLookup("IsActive", "tblSourceRefs", "RefID=" & refs(o("ref"))("bankId")), True) Then
+                        probs.Add s & "it cites reference " & o("ref") & " (" & ClipText(refs(o("ref"))("title"), 60) & _
+                            "), which is turned off in the bank, so a new question can't cite it. Turn it on (References tab) " & _
+                            "or take the citation out."
+                    End If
+                End If
+            Next
+        End If
+    Next
+    If probs.Count > 0 Then Exit Sub
 
     ' What a draft will still need before it can be submitted.
     For Each qn In qs
@@ -960,9 +1071,7 @@ Private Sub CheckRows(sheets As Object, ByVal fileName As String, probs As Colle
     Next
     For Each k In refs.Keys
         If refs(k)("used") And refs(k)("bankId") <> 0 Then
-            If Not Nz(DLookup("IsActive", "tblSourceRefs", "RefID=" & refs(k)("bankId")), True) Then
-                warns.Add "Reference " & k & " (" & ClipText(refs(k)("title"), 60) & ") is turned off in the bank; the questions still cite it."
-            ElseIf LCase$(Nz(DLookup("Revision", "tblSourceRefs", "RefID=" & refs(k)("bankId")), "")) <> LCase$(refs(k)("rev")) Then
+            If LCase$(Nz(DLookup("Revision", "tblSourceRefs", "RefID=" & refs(k)("bankId")), "")) <> LCase$(refs(k)("rev")) Then
                 warns.Add "Reference " & k & " (" & ClipText(refs(k)("title"), 60) & ") is cited as the bank has it, revision " & _
                     Nz(DLookup("Revision", "tblSourceRefs", "RefID=" & refs(k)("bankId")), "(none)") & "; the file says " & _
                     IIf(Len(refs(k)("rev")) > 0, refs(k)("rev"), "(none)") & "."
@@ -1015,13 +1124,12 @@ Private Function QuestionOf(byId As Object, ByVal v As String, ByVal s As String
     End If
 End Function
 
-' A Question ID or Reference ID as compared: trimmed, and a whole number
-' Excel holds as 12.0 read as 12.
+' A Question ID or Reference ID as compared: trimmed, and digits without
+' their leading zeros (007 and 7 are the same ID). Any other text is
+' compared as it is.
 Private Function IdText(ByVal v As String) As String
     v = Trim$(v)
-    If IsNumeric(v) Then
-        If CDbl(v) = Int(CDbl(v)) And Abs(CDbl(v)) < 1000000000# Then v = CStr(CLng(v))
-    End If
+    If Len(v) > 0 And Len(v) <= 9 And Not v Like "*[!0-9]*" Then v = CStr(CLng(v))
     IdText = v
 End Function
 
@@ -1060,14 +1168,18 @@ Private Function YesText(ByVal v As String) As Variant
     End Select
 End Function
 
-' A points cell for PointsProblem: Null when empty, the number when it is
-' one, else the text (which PointsProblem names).
+' A points cell for PointsProblem: Null when empty; the number when it is
+' digits with at most one dot or comma for the decimals (4, 1.5, 1,5),
+' read the same on any computer; else the text, which PointsProblem names
+' as not a number ("1e400", "$5" and "&H10" are text here).
 Private Function NumberOrNull(ByVal v As String) As Variant
+    Dim t As String
     v = Trim$(v)
+    t = Replace(v, ",", ".")
     If Len(v) = 0 Then
         NumberOrNull = Null
-    ElseIf IsNumeric(v) Then
-        NumberOrNull = CDbl(v)
+    ElseIf Len(t) <= 12 And Not t Like "*[!0-9.]*" And Len(t) - Len(Replace(t, ".", "")) <= 1 And t Like "*[0-9]*" Then
+        NumberOrNull = Val(t)
     Else
         NumberOrNull = v
     End If
@@ -1098,24 +1210,93 @@ Private Function TextKey(ByVal v As Variant) As String
     TextKey = Trim$(s)
 End Function
 
-' The bank's question texts in the topics qs use, every version that isn't
-' retired: "<TopicID>|<TextKey>" -> "Q12 v2".
+' A question's duplicate key: its topic, its text, its parts' texts in
+' order and its options' texts (sorted, so their order doesn't matter),
+' each as TextKey. Two questions with the generic text "Answer each part."
+' but different parts are not the same question.
+Private Function DupKey(ByVal topicId As Long, ByVal text As Variant, parts As Collection, opts As Collection) As String
+    Dim s As String, v As Variant, a() As String, i As Long, j As Long, t As String
+    s = topicId & "|" & TextKey(text)
+    For Each v In parts
+        s = s & Chr$(1) & "P" & TextKey(v)
+    Next
+    If opts.Count > 0 Then
+        ReDim a(1 To opts.Count)
+        For i = 1 To opts.Count
+            a(i) = TextKey(opts(i))
+        Next
+        For i = 2 To opts.Count               ' a few options: insertion sort
+            t = a(i): j = i - 1
+            Do While j >= 1
+                If a(j) <= t Then Exit Do
+                a(j + 1) = a(j): j = j - 1
+            Loop
+            a(j + 1) = t
+        Next
+        For i = 1 To opts.Count
+            s = s & Chr$(1) & "O" & a(i)
+        Next
+    End If
+    DupKey = s
+End Function
+
+' DupKey of a question read from the file (CheckRows).
+Private Function FileDupKey(qn As Variant) As String
+    Dim parts As New Collection, opts As New Collection, p As Variant, g As Variant, o As Variant
+    For Each p In qn("parts")
+        parts.Add p("text")
+    Next
+    For Each g In qn("opts").Keys
+        For Each o In qn("opts")(g)
+            opts.Add o("text")
+        Next
+    Next
+    FileDupKey = DupKey(qn("topicId"), qn("text"), parts, opts)
+End Function
+
+' The bank's questions in the topics qs use, every version that isn't
+' retired: DupKey -> "Q12 v2".
 Private Function BankTexts(qs As Collection) As Object
-    Dim out As Object, ids As Object, qn As Variant, rs As DAO.Recordset, k As String
+    Dim out As Object, ids As Object, qn As Variant, rs As DAO.Recordset, where As String, id As Variant
+    Dim parts As Object, opts As Object, info As Object, v As Variant, k As String
     Set out = CreateObject("Scripting.Dictionary")
     Set ids = CreateObject("Scripting.Dictionary")
     For Each qn In qs
         If qn("topicId") <> 0 Then ids(CStr(qn("topicId"))) = True
     Next
     If ids.Count = 0 Then Set BankTexts = out: Exit Function
-    Set rs = CurrentDb.OpenRecordset("SELECT TopicID, QuestionKey, VersionNo, QuestionText FROM tblQuestions WHERE StatusID<>" & _
-        QStatusID(QS_RETIRED) & " AND TopicID IN (" & Join(ids.Keys, ",") & ")", dbOpenSnapshot)
+    where = "q.StatusID<>" & QStatusID(QS_RETIRED) & " AND q.TopicID IN (" & Join(ids.Keys, ",") & ")"
+    Set info = CreateObject("Scripting.Dictionary")     ' QuestionID -> Array(TopicID, text, "Q12 v2")
+    Set parts = CreateObject("Scripting.Dictionary")    ' QuestionID -> Collection of part texts
+    Set opts = CreateObject("Scripting.Dictionary")     ' QuestionID -> Collection of option texts
+    Set rs = CurrentDb.OpenRecordset("SELECT q.QuestionID, q.TopicID, q.QuestionKey, q.VersionNo, q.QuestionText " & _
+        "FROM tblQuestions AS q WHERE " & where, dbOpenSnapshot)
     Do While Not rs.EOF
-        k = rs!TopicID & "|" & TextKey(rs!QuestionText)
-        If Not out.Exists(k) Then out.Add k, QuestionRef(rs!QuestionKey, rs!VersionNo)
+        info(CLng(rs!QuestionID)) = Array(CLng(rs!TopicID), rs!QuestionText.Value, QuestionRef(rs!QuestionKey, rs!VersionNo))
+        parts.Add CLng(rs!QuestionID), New Collection
+        opts.Add CLng(rs!QuestionID), New Collection
         rs.MoveNext
     Loop
     rs.Close
+    Set rs = CurrentDb.OpenRecordset("SELECT p.QuestionID, p.PartText FROM tblQuestionParts AS p INNER JOIN tblQuestions AS q " & _
+        "ON p.QuestionID=q.QuestionID WHERE " & where & " ORDER BY p.QuestionID, p.SortOrder, p.PartLabel", dbOpenSnapshot)
+    Do While Not rs.EOF
+        parts(CLng(rs!QuestionID)).Add rs!PartText.Value
+        rs.MoveNext
+    Loop
+    rs.Close
+    Set rs = CurrentDb.OpenRecordset("SELECT o.QuestionID, o.OptionText FROM tblMCOptions AS o INNER JOIN tblQuestions AS q " & _
+        "ON o.QuestionID=q.QuestionID WHERE " & where, dbOpenSnapshot)
+    Do While Not rs.EOF
+        opts(CLng(rs!QuestionID)).Add rs!OptionText.Value
+        rs.MoveNext
+    Loop
+    rs.Close
+    For Each id In info.Keys
+        v = info(id)
+        k = DupKey(v(0), v(1), parts(id), opts(id))
+        If Not out.Exists(k) Then out.Add k, v(2)
+    Next
     Set BankTexts = out
 End Function
 
@@ -1127,7 +1308,7 @@ Private Function JoinLines(lines As Collection, ByVal maxLines As Long) As Strin
             s = s & vbCrLf & "and " & (lines.Count - maxLines) & " more"
             Exit For
         End If
-        s = s & IIf(i > 1, vbCrLf, "") & lines(i)
+        s = s & IIf(i > 1, vbCrLf, "") & Replace(Replace(Replace(lines(i), vbCrLf, " "), vbCr, " "), vbLf, " ")
     Next
     JoinLines = s
 End Function
@@ -1166,7 +1347,7 @@ End Function
 ' Errors: the engine's.
 Public Function BankImportSummary() As String
     Dim qn As Variant, k As Variant, nNew As Long, nSkip As Long, topics As Object, s As String, skipped As String
-    Dim matched As Long, added As Long, refs As Object, warns As Collection, t As Variant
+    Dim matched As Long, added As Long, refs As Object, warns As Collection, t As Variant, i As Long
     If m_plan Is Nothing Then Exit Function
     Set topics = CreateObject("Scripting.Dictionary")
     For Each qn In m_plan("Qs")
@@ -1193,6 +1374,8 @@ Public Function BankImportSummary() As String
     End If
     s = "Import " & nNew & IIf(nNew = 1, " question", " questions") & " from " & m_plan("File") & " as drafts?" & vbCrLf
     For Each t In topics.Keys
+        i = i + 1
+        If i > SHOWN_LINES Then s = s & vbCrLf & "and " & (topics.Count - SHOWN_LINES) & " more topics": Exit For
         s = s & vbCrLf & "- " & t & ": " & topics(t)
     Next
     If matched + added > 0 Then
@@ -1230,18 +1413,22 @@ End Sub
 ' the references it cites that the bank doesn't have added to the shared
 ' list, an Imported audit row per question, an Added row per reference and
 ' one Imported row for the file. Duplicates are looked for again inside the
-' transaction, so a question saved meanwhile is skipped too.
+' transaction, so a question saved meanwhile is skipped too; a topic or a
+' reference turned off meanwhile stops the whole import.
 '   skippedNow   returns how many were skipped only now (saved meanwhile)
+'   problem      returns "" or, when nothing was imported because something
+'                changed since the check, why, for the user
 ' Returns how many questions were imported (0 when nothing was checked).
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an active admin
 '   now; others pass up through RaiseAgain after the rollback. The checked
 '   file is forgotten either way.
-Public Function ImportCheckedBank(ByRef skippedNow As Long) As Long
+Public Function ImportCheckedBank(ByRef skippedNow As Long, ByRef problem As String) As Long
     Dim ws As DAO.Workspace, db As DAO.Database, rs As DAO.Recordset, inTrans As Boolean, plan As Object
     Dim qn As Variant, p As Variant, o As Variant, g As Variant, refs As Object, k As Variant, bank As Object
-    Dim qid As Long, partIds As Object, n As Long, pos As Long, pid As Long, refId As Long, fileName As String
+    Dim qid As Long, partIds As Object, n As Long, pos As Long, pid As Long, fileName As String, key As String
     Dim num As Long, desc As String, src As String
     skippedNow = 0
+    problem = ""
     Set plan = m_plan
     Set m_plan = Nothing
     If plan Is Nothing Then Exit Function
@@ -1252,6 +1439,9 @@ Public Function ImportCheckedBank(ByRef skippedNow As Long) As Long
     Set db = CurrentDb
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
+    ' A whole bank is thousands of rows in one transaction, more than the
+    ' engine's usual 9,500 locks; this lasts until Access closes.
+    DBEngine.SetOption dbMaxLocksPerFile, 500000
     ws.BeginTrans: inTrans = True
     Set bank = BankTexts(plan("Qs"))
     ' The references cited: the bank's own when it has them (looked up again),
@@ -1264,10 +1454,28 @@ Public Function ImportCheckedBank(ByRef skippedNow As Long) As Long
     Next
     For Each qn In plan("Qs")
         If Len(qn("skip")) = 0 Then
-            If bank.Exists(qn("topicId") & "|" & TextKey(qn("text"))) Then
+            key = FileDupKey(qn)
+            If bank.Exists(key) Then
                 skippedNow = skippedNow + 1
+            ElseIf Not Nz(DLookup("IsActive", "tblTopics", "TopicID=" & qn("topicId")), False) Then
+                problem = "Topic """ & qn("topicText") & """ was turned off after the file was checked, so nothing was imported. " & _
+                    "Turn it on (Topics page) and import the file again."
+                ws.Rollback: inTrans = False
+                ImportCheckedBank = 0: skippedNow = 0
+                Exit Function
             Else
-                bank(qn("topicId") & "|" & TextKey(qn("text"))) = "imported"
+                bank(key) = "imported"
+                For Each o In qn("cites")
+                    If refs(o("ref"))("bankId") <> 0 Then
+                        If Not Nz(DLookup("IsActive", "tblSourceRefs", "RefID=" & refs(o("ref"))("bankId")), True) Then
+                            problem = "Reference """ & refs(o("ref"))("title") & """ was turned off after the file was checked, so " & _
+                                "nothing was imported. Turn it on (References tab) and import the file again."
+                            ws.Rollback: inTrans = False
+                            ImportCheckedBank = 0: skippedNow = 0
+                            Exit Function
+                        End If
+                    End If
+                Next
                 For Each o In qn("cites")
                     If refs(o("ref"))("bankId") = 0 Then refs(o("ref"))("bankId") = AddImportedRef(db, refs(o("ref")), fileName)
                 Next

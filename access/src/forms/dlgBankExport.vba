@@ -3,7 +3,9 @@ Option Explicit
 
 ' Export the question bank (Build_dlgBankExport), from the Question bank
 ' page's Export menu, for the admin. Every topic is listed with how many
-' questions export would write from it, all ticked at first. Export asks
+' questions export would write from it, all ticked at first except the
+' topics turned off (marked "(off)"; import takes no new questions in
+' them, so their rows only come back into a bank that has them). Export asks
 ' where to save the workbook (KitSaveAs) and writes it (modBank.ExportBank)
 ' under the busy veil; RunDialog sees DialogResult "ok" and the page shows
 ' TempVars("BankExportNote") as a toast. Cancel, or Esc, writes nothing.
@@ -21,19 +23,20 @@ Private Sub Form_Load()
     On Error GoTo Err_Handler
     TempVars("BankExportNote") = Null
     Me.lstTopics.RowSource = BankTopicsSql()
-    SelectAll True
+    SelectAll True, True
     CenterOnApp Me
     Exit Sub
 Err_Handler:
     HandleError "dlgBankExport.Form_Load"
 End Sub
 
-' Select all / Select none.
-Public Function SelectAll(ByVal onOff As Boolean)
+' Select all / Select none. onlyOn leaves the topics turned off unticked
+' (at first): import takes no new questions in them.
+Public Function SelectAll(ByVal onOff As Boolean, Optional ByVal onlyOn As Boolean = False)
     Dim i As Long
     On Error GoTo Err_Handler
     For i = 0 To Me.lstTopics.ListCount - 1
-        Me.lstTopics.Selected(i) = onOff
+        Me.lstTopics.Selected(i) = onOff And (Not onlyOn Or Val(Nz(Me.lstTopics.Column(3, i), 0)) = 1)
     Next
     ShowCount
     Exit Function

@@ -536,8 +536,9 @@ Public Sub Build_dlgReject()
     SaveForm "dlgReject"
 End Sub
 
-' Export the question bank: the topics to export (a list to tick, all
-' ticked at first, with Select all and Select none), how many questions
+' Export the question bank: the topics to export (a list to tick, all but
+' those turned off ticked at first, with Select all and Select none; its
+' hidden fourth column is is_on), how many questions
 ' that is, and Export, which asks where to save the workbook (modBank).
 Public Sub Build_dlgBankExport()
     Dim c As Control, w As Long, iw As Long
@@ -550,7 +551,7 @@ Public Sub Build_dlgBankExport()
     FieldLbl "capTopics", "TOPICS", px(20), px(92), px(200)
     Link "lnkAll", "Select all", iw - px(170), px(90), px(80), px(18), "=SelectAll(True)", 9
     Link "lnkNone", "Select none", iw - px(84), px(90), px(104), px(18), "=SelectAll(False)", 9
-    Set c = Lst("lstTopics", "", px(20), px(112), iw, px(232), 3, "0;" & (iw - px(110)) & ";" & px(90))
+    Set c = Lst("lstTopics", "", px(20), px(112), iw, px(232), 4, "0;" & (iw - px(110)) & ";" & px(90) & ";0")
     c.ColumnHeads = False
     c.MultiSelect = 1                           ' simple: a click ticks or unticks a row
     c.FontSize = 10
