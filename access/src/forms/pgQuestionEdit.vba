@@ -768,9 +768,19 @@ Private Function SaveNow(ByVal forSubmit As Boolean) As Boolean
         GoToProblem Split(problems, vbCrLf)(0)
         Exit Function
     End If
-    If forSubmit And m_id <> 0 And Not IsDirty() Then SaveNow = True: Exit Function
     ' Someone else saved since this was loaded.
     last = LastQuestionAudit(m_key)
+    If forSubmit And m_id <> 0 And Not IsDirty() Then
+        ' Nothing of yours to save: submit only what you have seen.
+        If last <> m_stamp Then
+            KitMsgBox "Someone else changed this question while you had it open (" & AuditWho(last) & "). " & _
+                "It is shown as it stands now: check it, then submit again.", vbInformation, MSG_TITLE
+            LoadQuestion m_id, False
+            Exit Function
+        End If
+        SaveNow = True
+        Exit Function
+    End If
     If last <> m_stamp Then
         If KitMsgBox("Someone else changed this question while you had it open (" & AuditWho(last) & ")." & vbCrLf & vbCrLf & _
                 "Save yours over theirs? No keeps theirs; Undo changes in More then shows it.", _

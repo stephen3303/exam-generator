@@ -64,6 +64,8 @@ Public Const ITEM_QUESTION As String = "Question"
 Public Const MAX_POINTS As Long = 100           ' most points one question (or part) may carry
 Public Const MAX_TEXT As Long = 4000            ' longest question, part or option text
 Private Const POINT_EPS As Double = 0.001       ' points compared to a thousandth
+Private Const NEW_VERSION_RACE As String = "Someone else started a new version of this question at the same moment. " & _
+    "Go back to the question bank and open theirs."
 
 ' ---------------------------------------------------------------------------
 ' Lookups
@@ -649,12 +651,30 @@ Public Function SaveQuestion(ByVal qid As Long, ByVal baseId As Long, ByVal topi
     End If
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
-    ' Again inside the transaction: someone may have opened a version since.
-    If baseId <> 0 Then
+    ' Again inside the transaction, as part of a write: the checks above may
+    ' be out of date by now. The UPDATE that only matches a row still in the
+    ' state the save needs holds that row until the commit, so an approver's
+    ' action or a second new version waits for this save instead of slipping
+    ' in between the check and the write.
+    If qid <> 0 Then
+        If KitExecute("UPDATE tblQuestions SET StatusID=StatusID WHERE QuestionID=" & qid & " AND StatusID IN (" & _
+                QStatusID(QS_DRAFT) & "," & QStatusID(QS_REJECTED) & ")") = 0 Then
+            ws.Rollback: inTrans = False
+            SaveQuestion = "Someone else moved this question on while you had it open, so your changes can't be saved over it. " & _
+                "Undo your changes to see it as it stands."
+            Exit Function
+        End If
+    ElseIf baseId <> 0 Then
+        If KitExecute("UPDATE tblQuestions SET IsCurrent=IsCurrent WHERE QuestionID=" & baseId & " AND IsCurrent AND StatusID=" & _
+                QStatusID(QS_APPROVED)) = 0 Then
+            ws.Rollback: inTrans = False
+            SaveQuestion = "The version this one starts from is no longer the approved, current version, so this new version " & _
+                "can't be saved. Go back to the question bank and start from the current version."
+            Exit Function
+        End If
         If OpenVersionID(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & baseId)) <> 0 Then
             ws.Rollback: inTrans = False
-            SaveQuestion = "Someone else started a new version of this question at the same moment. Go back to the question bank " & _
-                "and open theirs."
+            SaveQuestion = NEW_VERSION_RACE
             Exit Function
         End If
     End If
@@ -713,6 +733,9 @@ Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
     If inTrans Then ws.Rollback
     savedId = 0
+    ' Two new versions of one question saved at the same moment: the
+    ' version number is DMax + 1, and uxQKeyVer refuses the second.
+    If num = 3022 And baseId <> 0 Then SaveQuestion = NEW_VERSION_RACE: Exit Function
     Err.Number = num: Err.Description = desc: Err.Source = src
     RaiseAgain "modQuestions.SaveQuestion", IIf(qid <> 0, "question " & qid, IIf(baseId <> 0, "new version of " & baseId, "new question"))
 End Function
@@ -759,16 +782,33 @@ End Sub
 
 ' Send question qid to the approval chain: In Review, at the DH's step.
 ' Its rules must already pass for submission. Returns "" or why not.
+' The status change and its Submitted audit row are one transaction, and
+' the change only matches a question still in draft or rejected: when
+' someone moved it on meanwhile nothing is written and the reason is
+' returned.
 Public Function SubmitQuestion(ByVal qid As Long) As String
-    Dim st As String, dh As Long, ver As Long
+    Dim st As String, dh As Long, ver As Long, ws As DAO.Workspace, inTrans As Boolean
     RequireQuestionWriter qid
     st = QStatusName(Nz(DLookup("StatusID", "tblQuestions", "QuestionID=" & qid), 0))
     If Not StatusEditable(st) Then SubmitQuestion = "It is " & LCase$(st) & ", so it can't be submitted.": Exit Function
     dh = RoleID("DH")
-    ver = DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid)
-    KitExecute "UPDATE tblQuestions SET StatusID=" & QStatusID(QS_REVIEW) & ", CurrentStepRoleID=" & dh & _
-        " WHERE QuestionID=" & qid & " AND StatusID IN (" & QStatusID(QS_DRAFT) & "," & QStatusID(QS_REJECTED) & ")"
+    ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid), 0)
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    If KitExecute("UPDATE tblQuestions SET StatusID=" & QStatusID(QS_REVIEW) & ", CurrentStepRoleID=" & dh & _
+            " WHERE QuestionID=" & qid & " AND StatusID IN (" & QStatusID(QS_DRAFT) & "," & QStatusID(QS_REJECTED) & ")") = 0 Then
+        ws.Rollback: inTrans = False
+        SubmitQuestion = "Someone else moved this question on while you had it open, so it wasn't submitted. " & _
+            "Undo your changes to see it as it stands."
+        Exit Function
+    End If
     AddAudit ITEM_QUESTION, qid, ver, AU_SUBMITTED, dh
+    ws.CommitTrans: inTrans = False
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "modQuestions.SubmitQuestion", qid
 End Function
 
 ' Why question qid can't be deleted ("" when it can): only a draft that was
@@ -789,7 +829,7 @@ End Function
 ' instead: for a new version's draft, the approved version it would have
 ' replaced, which stayed in use all along; else 0.
 Public Function DeleteDraft(ByVal qid As Long) As Long
-    Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean, baseId As Long, ver As Long, problem As String
     Dim num As Long, desc As String, src As String
     RequireQuestionWriter qid
     Set ws = DBEngine.Workspaces(0)
@@ -797,8 +837,19 @@ Public Function DeleteDraft(ByVal qid As Long) As Long
     ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid), 0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
+    ' The delete rules again inside the transaction, and a delete that only
+    ' matches a draft: it may have been submitted since the caller checked.
+    problem = DeleteProblem(qid)
+    If Len(problem) = 0 Then
+        If KitExecute("DELETE FROM tblQuestions WHERE QuestionID=" & qid & " AND StatusID=" & QStatusID(QS_DRAFT)) = 0 Then
+            problem = "It was moved on or deleted while you had it open."
+        End If
+    End If
+    If Len(problem) > 0 Then
+        ws.Rollback: inTrans = False
+        Err.Raise ERR_NOT_ALLOWED, "modQuestions.DeleteDraft", "It can't be deleted now. " & problem
+    End If
     AddAudit ITEM_QUESTION, qid, ver, AU_DELETED, , "Draft deleted"
-    KitExecute "DELETE FROM tblQuestions WHERE QuestionID=" & qid
     ws.CommitTrans: inTrans = False
     If baseId <> 0 Then
         If Nz(DLookup("IsCurrent", "tblQuestions", "QuestionID=" & baseId), False) Then DeleteDraft = baseId
