@@ -24,6 +24,7 @@ Public Const SET_OVERLAP_PCT As String = "OverlapMaxPct"
 Public Const SET_OVERLAP_WINDOW As String = "OverlapWindowExams"
 Public Const SET_DEFAULT_COUNT As String = "DefaultQuestionCount"
 Public Const SET_ADMIN_BOOTSTRAPPED As String = "AdminBootstrapped"   ' "1" once the first admin was made (modSignIn)
+Public Const SET_CLASS_ORDER_AT As String = "ClassOrderChangedAt"    ' when the admin last reordered the classification levels (modExamDoc)
 
 ' The settings' values when tblSettings has no row for them. The back end's
 ' seed rows (backend\modBuildBackEnd.bas, SeedData) start with the same values.

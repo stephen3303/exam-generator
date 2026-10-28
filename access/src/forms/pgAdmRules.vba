@@ -353,6 +353,8 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             KitExecute "UPDATE tblClassLevels SET PortionMark=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "up", "down"
             If Not MoveRow("tblClassLevels", "ClassLevelID", "LevelRank", id, IIf(k = "up", -1, 1)) Then Exit Sub
+            ' Exam documents made before now are made again at their next download.
+            SetSetting SET_CLASS_ORDER_AT, Format$(Now(), "yyyy\-mm\-dd hh\:nn\:ss")
         Case "del"
             used = DCount("*", "tblQuestions", "ClassLevelID=" & id) + DCount("*", "tblQuestionParts", "ClassLevelID=" & id) + _
                 DCount("*", "tblExams", "OverallClassLevelID=" & id)
