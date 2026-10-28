@@ -13,12 +13,16 @@ Option Explicit
 ' person the SME role (and Exam Generator access) if they lack it; removing
 ' one leaves their role alone. More, or a right-click on a row, turns the
 ' topic off or on, or deletes it while nothing uses it.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitKeys, modKitLocks,
+' modKitPurge, modKitUI, modKitUtil, modMenu, modPersonnel.
 
 Private Const MSG_TITLE As String = "Topics"
 
 Private m_id As Long            ' the open topic (0 when none)
 Private m_search As String
-Private m_stale As Boolean      ' subTopic saved a change the list doesn't show yet
+Private m_isStale As Boolean    ' subTopic saved a change the list doesn't show yet
 
 Private Sub Form_Load()
     On Error GoTo Err_Handler
@@ -72,10 +76,10 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
     id = Nz(Me.sfList.Form.txtSel, 0)
     If id = 0 Then Exit Sub
     If Not ShowTopic(id) Then
-        MarkRow m_id
+        GridSelect Me.sfList, m_id
         Exit Sub
     End If
-    If m_stale Then RefreshList id          ' the topic left behind was saved with a change
+    If m_isStale Then RefreshList id          ' the topic left behind was saved with a change
     Exit Sub
 Err_Handler:
     HandleError "pgAdmTopics.GridClick", id
@@ -155,15 +159,14 @@ End Sub
 ' subTopic saved a change (its AfterUpdate). The list catches up once the
 ' save that caused it is over (GridClick, TopicSaved).
 Public Sub TopicChanged()
-    m_stale = True
+    m_isStale = True
 End Sub
 
 ' subTopic's Save or Active switch saved topic id: show it in the list.
 Public Sub TopicSaved(ByVal id As Long)
     On Error GoTo Err_Handler
-    m_stale = False
-    Me.sfList.Form.Requery
-    MarkRow id
+    m_isStale = False
+    GridSelect Me.sfList, id, True
     ShowSupply
     Exit Sub
 Err_Handler:
@@ -180,11 +183,10 @@ Private Sub NewTopic()
     If Not SaveDetail(Me, "sfDetail") Then Exit Sub
     v = KitInputBox("Name of the new topic:", "New topic")
     If IsNull(v) Then Exit Sub
-    problem = NameProblem(v, 100, "tblTopics", "TopicName", "topic")
+    problem = NameProblem(v, MAX_TOPIC_NAME, "tblTopics", "TopicName", "topic")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblTopics (TopicName, DefaultCount, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
-        DefaultQuestionCount() & ", True)"
-    id = DLookup("TopicID", "tblTopics", "TopicName=" & Q(Trim$(v)))
+    id = InsertRow("INSERT INTO tblTopics (TopicName, DefaultCount, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
+        DefaultQuestionCount() & ", True)")
     If Len(m_search) > 0 Then m_search = "": SetSearch Me, "txtSearch", ""
     RefreshList id
     KitToast "Topic added. Add its SMEs on the right.", "success"
@@ -232,7 +234,7 @@ Private Function TopicUse(ByVal id As Long) As String
     n(2) = DCount("*", "tblExamTopics", "TopicID=" & id)
     words = Array("question", "template", "exam")
     For i = 0 To 2
-        If n(i) > 0 Then s = s & IIf(Len(s) > 0, " and ", "") & n(i) & " " & words(i) & IIf(n(i) = 1, "", "s")
+        If n(i) > 0 Then s = s & IIf(Len(s) > 0, " and ", "") & n(i) & " " & Plural(n(i), CStr(words(i)))
     Next
     If Len(s) > 0 Then s = "it is on " & s
     TopicUse = s
@@ -274,20 +276,9 @@ End Sub
 
 ' The SMEs changed: their table (pid selected, 0 for none) and the list's row.
 Private Sub SMEsChanged(ByVal pid As Long)
-    Dim g As Form
-    Set g = Me.sfSMEs.Form
-    g.Requery
-    g.txtSel = Null
-    If pid <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & pid
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = pid
-        End With
-    End If
-    g.Recalc
+    GridSelect Me.sfSMEs, pid, True
     ShowSMEState
-    Me.sfList.Form.Requery
-    MarkRow m_id
+    GridSelect Me.sfList, m_id, True
 End Sub
 
 Private Sub ShowSMEState()
@@ -298,7 +289,7 @@ End Sub
 ' topic; none listed: nothing).
 Private Sub RefreshList(ByVal openId As Long)
     Dim g As Form, n As Long
-    m_stale = False
+    m_isStale = False
     Set g = Me.sfList.Form
     g.RecordSource = ListSql()
     GridHighlight Me.sfList, m_search
@@ -310,30 +301,12 @@ Private Sub RefreshList(ByVal openId As Long)
         SetVisible Me.emptyList_b, False
     End If
     SetVisible Me.sfList, n > 0
-    If MarkRow(openId) Then
+    If GridSelect(Me.sfList, openId) Then
         ShowTopic openId
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ClearTopic
     End If
 End Sub
-
-' Select id's row in the list. False when it isn't listed.
-Private Function MarkRow(ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = Me.sfList.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function
 
 ' Open topic id on the right with its SMEs and supply. False when the open
 ' topic can't be saved first (it stays).
@@ -373,7 +346,7 @@ Private Sub ShowSupply()
     If rs.EOF Then rs.Close: HideAlert Me, "alSupply": Exit Sub
     have = rs!on_hand: per = rs!per_exam
     rs.Close
-    need = QuestionsNeeded(per, SettingLong(SET_OVERLAP_PCT, 30), SettingLong(SET_OVERLAP_WINDOW, 10))
+    need = QuestionsNeeded(per, OverlapPct(), OverlapWindow())
     If per = 0 Then
         ShowAlert Me, "alSupply", have & " approved " & Plural(have, "question") & ". No active template gives this topic " & _
             "questions yet.", "info"
@@ -386,10 +359,6 @@ Private Sub ShowSupply()
     End If
 End Sub
 
-Private Function Plural(ByVal n As Long, ByVal word As String) As String
-    Plural = word & IIf(n = 1, "", "s")
-End Function
-
 ' The topics for the search, by name, with their status under the rule.
 Private Function ListSql() As String
     Dim where As String, t As String
@@ -398,8 +367,8 @@ Private Function ListSql() As String
         where = " WHERE s.TopicID IN (SELECT TopicID FROM tblTopics WHERE TopicName LIKE " & t & " OR Description LIKE " & t & ")"
     End If
     ListSql = "SELECT s.TopicID AS id, s.TopicName, TopicSMEsText(s.TopicID) AS smes, s.on_hand, " & _
-        "IIf(Not Nz(s.IsActive,False),'Off',IIf(s.on_hand<QuestionsNeeded(s.per_exam," & SettingLong(SET_OVERLAP_PCT, 30) & "," & _
-        SettingLong(SET_OVERLAP_WINDOW, 10) & "),'Short','Active')) AS state FROM (" & TopicSupplySql() & ") AS s" & where & _
+        "IIf(Not Nz(s.IsActive,False),'Off',IIf(s.on_hand<QuestionsNeeded(s.per_exam," & OverlapPct() & "," & _
+        OverlapWindow() & "),'Short','Active')) AS state FROM (" & TopicSupplySql() & ") AS s" & where & _
         " ORDER BY s.TopicName"
 End Function
 

@@ -86,7 +86,7 @@ End Function
 ' Errors: none of its own; a data error passes up.
 Public Function RepeatsAllowed(ByVal n As Long) As Long
     If n <= 0 Then Exit Function
-    RepeatsAllowed = Int(n * SettingLong(SET_OVERLAP_PCT, 30) / 100)
+    RepeatsAllowed = Int(n * OverlapPct() / 100)
 End Function
 
 ' The QuestionKeys of the questions given lately for exam forExamId: those on
@@ -97,7 +97,7 @@ End Function
 ' Errors: none of its own; a data error passes up.
 Public Function RecentKeysList(Optional ByVal forExamId As Long = 0) As String
     Dim w As Long, ids As String, keys As String
-    w = SettingLong(SET_OVERLAP_WINDOW, 10)
+    w = OverlapWindow()
     If w > 0 Then
         ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams" & IIf(forExamId <> 0, " WHERE ExamID<" & forExamId, "") & _
             " ORDER BY ExamID DESC")
@@ -241,7 +241,7 @@ Public Function DrawPlanSql(ByVal tplId As Long, ByVal keys As String) As String
     rs.Close
     If Len(withSME) = 0 Then withSME = "0"
     DrawPlanSql = "SELECT x.*, IIf(x.smes=0,'No SME',IIf(x.on_hand<x.per_exam,'Short'," & _
-        "IIf(x.fresh+Int(x.per_exam*" & SettingLong(SET_OVERLAP_PCT, 30) & "/100)<x.per_exam,'Repeats','Ready'))) AS state FROM (" & _
+        "IIf(x.fresh+Int(x.per_exam*" & OverlapPct() & "/100)<x.per_exam,'Repeats','Ready'))) AS state FROM (" & _
         "SELECT t.TopicID AS id, t.TopicName, tt.QuestionCount AS per_exam, tt.SortOrder, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ap & ") AS on_hand, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ap & _
@@ -658,7 +658,7 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
     after = have - IIf(InKeyList(keys, oldKey), 1, 0) + IIf(InKeyList(keys, newKey), 1, 0)
     allowed = RepeatsAllowed(n)
     If after > allowed And after > have Then
-        SwapProblem = "That question was on one of the " & SettingLong(SET_OVERLAP_WINDOW, 10) & " exams generated before this " & _
+        SwapProblem = "That question was on one of the " & OverlapWindow() & " exams generated before this " & _
             "one. With it, " & after & " of this topic's " & n & " questions would have been given lately; the overlap rule " & _
             "allows " & allowed & ". Pick one that wasn't given lately, or swap out one that was."
         Exit Function
@@ -675,7 +675,7 @@ End Function
 ' Errors: none of its own; a data error passes up.
 Private Function LaterExamProblem(ByVal examId As Long, ByVal newKey As Variant) As String
     Dim rs As DAO.Recordset, w As Long, ids As String, keys As String, have As Long, n As Long, allowed As Long
-    w = SettingLong(SET_OVERLAP_WINDOW, 10)
+    w = OverlapWindow()
     If w <= 0 Or IsNull(newKey) Then Exit Function
     ids = ColumnList("SELECT TOP " & w & " ExamID FROM tblExams WHERE ExamID>" & examId & " ORDER BY ExamID")
     If Len(ids) = 0 Then Exit Function

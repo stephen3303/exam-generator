@@ -11,11 +11,15 @@ Option Explicit
 ' app always keeps one active admin. Taking SME away from someone who is
 ' an SME of topics takes them off those topics too, once the admin agrees.
 ' A change to the signed-in person's own roles shows in the sidebar at once.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitLocks, modKitUI, modKitUtil,
+' modMenu, modPersonnel, modPersonnelUI.
 
 Private Const MSG_TITLE As String = "People and routing"
 
 Private m_pid As Long           ' the open person (0 when none)
-Private m_loading As Boolean    ' ShowPerson is setting the switches
+Private m_isLoading As Boolean  ' ShowPerson is setting the switches
 
 Private Sub Form_Load()
     On Error GoTo Err_Handler
@@ -93,23 +97,19 @@ End Sub
 Public Sub ActiveChanged()
     Dim v As Boolean
     On Error GoTo Err_Handler
-    If m_loading Or m_pid = 0 Then Exit Sub
+    If m_isLoading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    v = SwitchOn("tgActive")
+    v = IsSwitchOn("tgActive")
     If Not v Then
         If m_pid = SignedInPersonID() Then
             Refuse "tgActive", "You can't turn off your own access. Another admin can."
             Exit Sub
         End If
-        If IsAdminPerson(m_pid) And AdminCount() <= 1 Then
-            Refuse "tgActive", "They're the only admin, so their access stays on. Make someone else an admin first."
-            Exit Sub
-        End If
     End If
-    KitExecute "UPDATE tblPeople SET IsActive=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
-    ' Access to the Exam Generator in the Personnel file goes with it on, so
-    ' they can sign in; it is left as it is when turned off here.
-    If v Then EnsurePerson m_pid
+    If Not SavePersonFlag("IsActive", v) Then
+        Refuse "tgActive", "They're the only admin who can sign in, so their access stays on. Make someone else an admin first."
+        Exit Sub
+    End If
     Changed
     Exit Sub
 Err_Handler:
@@ -120,26 +120,58 @@ End Sub
 Public Sub AdminChanged()
     Dim v As Boolean
     On Error GoTo Err_Handler
-    If m_loading Or m_pid = 0 Then Exit Sub
+    If m_isLoading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    v = SwitchOn("tgAdmin")
+    v = IsSwitchOn("tgAdmin")
     If Not v Then
         If m_pid = SignedInPersonID() Then
             Refuse "tgAdmin", "You can't take away your own admin. Another admin can."
             Exit Sub
         End If
-        If AdminCount() <= 1 And IsActivePerson(m_pid) Then
-            Refuse "tgAdmin", "They're the only admin. Make someone else an admin first."
-            Exit Sub
-        End If
     End If
-    KitExecute "UPDATE tblPeople SET IsAdmin=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
+    If Not SavePersonFlag("IsAdmin", v) Then
+        Refuse "tgAdmin", "They're the only admin who can sign in. Make someone else an admin first."
+        Exit Sub
+    End If
     Changed
     Exit Sub
 Err_Handler:
     HandleError "pgAdmPeople.AdminChanged", m_pid
     ShowSaved
 End Sub
+
+' Save m_pid's tblPeople flag fld (IsActive or IsAdmin) as v. Turning one off
+' is checked inside the same transaction, after the write: when it leaves
+' the app with no admin who can sign in (AdminCount) it is rolled back and
+' False returned, so two admins turning each other off at once can't both
+' succeed. Turning access on also gives them access in the Personnel file
+' (EnsurePerson), in the same transaction; turning it off here leaves that
+' as it is.
+Private Function SavePersonFlag(ByVal fld As String, ByVal v As Boolean) As Boolean
+    Dim ws As DAO.Workspace, inTrans As Boolean, before As Long
+    On Error GoTo Fail
+    DBEngine.Idle dbRefreshCache            ' count other copies' latest commits
+    before = AdminCount()
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    ' Admin changes take turns: another admin's change waits here until this
+    ' one commits, so the count below sees it.
+    KitExecute "UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey='SchemaVersion'"
+    KitExecute "UPDATE tblPeople SET " & fld & "=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
+    If Not v And before > 0 Then
+        If AdminCount() = 0 Then
+            ws.Rollback: inTrans = False
+            Exit Function
+        End If
+    End If
+    If v And fld = "IsActive" Then EnsurePerson m_pid
+    ws.CommitTrans: inTrans = False
+    SavePersonFlag = True
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmPeople.SavePersonFlag", fld & " " & m_pid
+End Function
 
 Public Sub SMEChanged()
     RoleChanged "SME", "tgSME"
@@ -160,11 +192,11 @@ End Sub
 ' A role switch: give the role or take it away. Taking SME from someone who
 ' is an SME of topics takes them off those topics too, once the admin says so.
 Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
-    Dim v As Boolean, topics As String
+    Dim v As Boolean, topics As String, ws As DAO.Workspace, inTrans As Boolean
     On Error GoTo Err_Handler
-    If m_loading Or m_pid = 0 Then Exit Sub
+    If m_isLoading Or m_pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    v = SwitchOn(nm)
+    v = IsSwitchOn(nm)
     If code = "SME" And Not v Then
         topics = PersonTopicsText(m_pid)
         If Len(topics) > 0 Then
@@ -174,13 +206,18 @@ Private Sub RoleChanged(ByVal code As String, ByVal nm As String)
                 SetSwitch nm, True
                 Exit Sub
             End If
-            KitExecute "DELETE FROM tblTopicSMEs WHERE PersonID=" & m_pid
         End If
     End If
+    ' Off their topics and the role itself go together, or neither.
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    If Len(topics) > 0 Then KitExecute "DELETE FROM tblTopicSMEs WHERE PersonID=" & m_pid
     SetPersonRole m_pid, code, v
+    ws.CommitTrans: inTrans = False
     Changed
     Exit Sub
 Err_Handler:
+    If inTrans Then RollbackKeepingError ws
     HandleError "pgAdmPeople.RoleChanged", code & " " & m_pid
     ShowSaved
 End Sub
@@ -212,8 +249,8 @@ Private Sub Refuse(ByVal nm As String, ByVal why As String)
     KitMsgBox why, vbInformation, MSG_TITLE
 End Sub
 
-Private Function SwitchOn(ByVal nm As String) As Boolean
-    SwitchOn = CBool(Nz(Me.Controls(nm & "_val").Value, False))
+Private Function IsSwitchOn(ByVal nm As String) As Boolean
+    IsSwitchOn = CBool(Nz(Me.Controls(nm & "_val").Value, False))
 End Function
 
 ' Set a switch in code (no onChange).
@@ -221,14 +258,6 @@ Private Sub SetSwitch(ByVal nm As String, ByVal v As Boolean)
     Me.Controls(nm & "_val").Value = v
     Me.Controls(nm & "_bg").Requery
 End Sub
-
-Private Function IsAdminPerson(ByVal pid As Long) As Boolean
-    IsAdminPerson = DCount("*", "tblPeople", "PersonID=" & pid & " AND IsAdmin AND IsActive") > 0
-End Function
-
-Private Function IsActivePerson(ByVal pid As Long) As Boolean
-    IsActivePerson = DCount("*", "tblPeople", "PersonID=" & pid & " AND IsActive") > 0
-End Function
 
 ' The route cards: who holds DH, XO and SM.
 Private Sub ShowRoute()
@@ -248,32 +277,17 @@ Private Sub RefreshList(ByVal pid As Long)
     n = g.RecordsetClone.RecordCount
     ShowEmpty Me, "emptyList", n = 0
     SetVisible Me.sfList, n > 0
-    If MarkRow(pid) Then
+    If GridSelect(Me.sfList, pid) Then
         ShowPerson pid
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ShowPerson 0
     End If
 End Sub
 
-' Select pid's row in the list. False when it isn't listed.
-Private Function MarkRow(ByVal pid As Long) As Boolean
-    Dim g As Form
-    If pid = 0 Then Exit Function
-    Set g = Me.sfList.Form
-    With g.RecordsetClone
-        .FindFirst "id=" & pid
-        If Not .NoMatch Then
-            g.Bookmark = .Bookmark
-            g.txtSel = pid
-            g.Recalc
-            MarkRow = True
-        End If
-    End With
-End Function
-
 ' Show person pid on the right (0: nobody, and the hint instead).
 Private Sub ShowPerson(ByVal pid As Long)
     Dim rs As DAO.Recordset, nm As Variant, isOpen As Boolean, s As String
+    On Error GoTo Fail
     m_pid = pid
     isOpen = (pid <> 0)
     If isOpen Then
@@ -282,7 +296,7 @@ Private Sub ShowPerson(ByVal pid As Long)
         If rs.EOF Then
             isOpen = False: m_pid = 0
         Else
-            m_loading = True
+            m_isLoading = True
             Me.lblName.Caption = Trim$(Nz(rs!rank, "") & " " & Nz(rs!first_name, "") & " " & Nz(rs!last_name, ""))
             s = "Signs in as " & Nz(rs!username, "?")
             If pid = SignedInPersonID() Then s = s & " (you)"
@@ -295,15 +309,21 @@ Private Sub ShowPerson(ByVal pid As Long)
             SetSwitch "tgSM", PersonHasRole(pid, "SM")
             s = PersonTopicsText(pid)
             Me.lblTopics.Caption = IIf(Len(s) > 0, s, "No topics yet. Add SMEs to a topic on the Topics page.")
-            m_loading = False
+            m_isLoading = False
         End If
-        rs.Close
+        rs.Close: Set rs = Nothing
     End If
     For Each nm In Array("lblName", "lblWho", "tgActive", "tgAdmin", "tgSME", "tgDH", "tgXO", "tgSM", _
             "lbltgActive", "lbltgAdmin", "lbltgSME", "lbltgDH", "lbltgXO", "lbltgSM", "lblSMEFor", "lblTopics")
         SetVisible Me.Controls(nm), isOpen
     Next
     SetVisible Me.lblDetailEmpty, Not isOpen
+    Exit Sub
+Fail:
+    ' A failed look-up must not leave the switches ignoring every flip.
+    m_isLoading = False
+    If Not rs Is Nothing Then rs.Close
+    RaiseAgain "pgAdmPeople.ShowPerson", pid
 End Sub
 
 ' Everyone with a row in tblPeople, by name, with their roles.

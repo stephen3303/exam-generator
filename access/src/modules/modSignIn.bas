@@ -20,11 +20,17 @@ Option Explicit
 ' Then ShowPagesForRoles hides the sidebar pages they can't use, and
 ' frmMain.RoutePage sends any other way in (Ctrl+K) to the dashboard.
 '
-' The first Personnel admin to open the app while it has no Exam Generator
-' admin becomes its admin, so a new data file can be set up from the app.
+' The first Personnel admin to open a new data file (tblPeople still empty)
+' becomes its Exam Generator admin, so it can be set up from the app. That
+' happens once: tblSettings AdminBootstrapped records it, and a data file
+' that later has no admin is not handed to whichever Personnel admin opens
+' it next (an admin is then restored in the data file itself).
 '
 ' A front end built with no data file (build.ps1 with no -BackEnd, for UI work)
-' has no tblSettings: it skips all of this and shows every page.
+' has no tblSettings: it skips all of this and shows every page. The build
+' records which kind it is (the HasDataFile property), so a copy built with a
+' data file whose tblSettings link has gone stops at start-up instead of
+' opening every page unsigned.
 '
 ' The TempVars above only decide what the sidebar shows. Every write that
 ' needs a right checks it again in the data file at the moment of the write
@@ -32,8 +38,12 @@ Option Explicit
 ' taken away since sign-in counts at once, and a way in that skips the page
 ' is still checked. They raise ERR_NOT_ALLOWED, which HandleError shows as
 ' the plain reason, not as a fault.
+'
+' Owner: start-up and sign-in (build phase 2). Depends on: modAdmin,
+' modErrors, modGlobals; the kit's modKitBackend, modKitHelp, modKitLocks,
+' modKitShell, modKitUI, modPersonnel, modPersonnelUI.
 
-Public Const DATA_VERSION As Long = 2            ' the tblSettings SchemaVersion this copy reads
+Public Const DATA_VERSION As Long = 3            ' the tblSettings SchemaVersion this copy reads
 
 ' Raised by the checks made at the point of a write when the signed-in person
 ' may not make it. Err.Description is the reason, written for the user.
@@ -41,8 +51,13 @@ Public Const ERR_NOT_ALLOWED As Long = vbObjectError + 70
 
 Private Const PROBE_TABLE As String = "tblSettings"
 
-' Who may open which page: the sidebar keys and the two keys only PageForm
-' knows (settings, qedit). Admin pages for the admin; the rest by role.
+' Whether the signed-in person may open a page, from the roles read at
+' sign-in (TempVars): admin pages for the admin, the rest by role. It only
+' decides what the sidebar shows and where Ctrl+K may go; every write checks
+' the right again in the data file.
+'   key   a sidebar key, or settings or qedit (keys only PageForm knows)
+' Returns True for every page in a UI-only build (no data file).
+' Errors: none.
 Public Function PageAllowed(ByVal key As String) As Boolean
     If Not DataLinked() Then PageAllowed = True: Exit Function
     Select Case key
@@ -53,11 +68,23 @@ Public Function PageAllowed(ByVal key As String) As Boolean
     End Select
 End Function
 
-' Start-up (frmMain.Form_Load): True when the app may open, False when it
-' should close (the user cancelled, or can't use it and was told why).
+' Start-up, run by frmMain.Form_Load under the splash: the data file and its
+' version, sign-in, the person's roles and the help (see the top of the
+' module).
+' Returns True when the app may open, False when it should close (the user
+' cancelled, or can't use it and was told why).
+' Errors: the kit's and the engine's pass up to frmMain's handler.
+' Side effects: may relink the data file (KitEnsureBackend), sign the user in
+'   (TempVars), make the first admin of a new data file (LoadRoles) and
+'   update the help table (KitHelpSync).
 Public Function AppStartUp() As Boolean
     Dim problem As String
     If Not DataLinked() Then AppStartUp = True: Exit Function
+    If Not TableExists(PROBE_TABLE) Then
+        KitMsgBox "This copy of " & APP_NAME & " has lost its link to the data file, so it can't open. " & _
+            "Get a fresh copy from your administrator.", vbExclamation, APP_NAME
+        Exit Function
+    End If
     SplashStatus "Opening the data file" & ChrW(8230)
     If Not KitEnsureBackend(PROBE_TABLE, BE_FILE) Then Exit Function
     problem = DataVersionProblem()
@@ -89,7 +116,9 @@ Fail:
     LogError "modSignIn.SyncHelp"
 End Sub
 
-' Hide the sidebar pages the signed-in person can't use.
+' Hide the sidebar pages the signed-in person can't use (PageAllowed).
+'   frm   the shell, frmMain
+' Errors: the kit's (ShellShowItem).
 Public Sub ShowPagesForRoles(frm As Form)
     Dim k As Variant
     For Each k In Array("review", "approvals", "topics", "templates", "people", "rules", "helptopics", "logs")
@@ -97,12 +126,21 @@ Public Sub ShowPagesForRoles(frm As Form)
     Next
 End Sub
 
-' True when this front end is linked to (or holds) the data file's tables.
+' True when this front end belongs with a data file: it was built with one
+' (BuiltWithDataFile), or it is linked to (or holds) the data file's tables.
+' False only for a UI-only build. A copy built with a data file stays True
+' when its tblSettings link is removed, so AppStartUp refuses it rather than
+' skipping sign-in.
 Public Function DataLinked() As Boolean
-    Dim td As DAO.TableDef
-    For Each td In CurrentDb.TableDefs
-        If td.Name = PROBE_TABLE Then DataLinked = True: Exit Function
-    Next
+    DataLinked = BuiltWithDataFile() Or TableExists(PROBE_TABLE)
+End Function
+
+' The HasDataFile property BuildAll set: True when this front end was built
+' linked to a data file. False for a UI-only build and for a copy built
+' before the property existed (DataLinked then goes by the link alone).
+Private Function BuiltWithDataFile() As Boolean
+    On Error Resume Next                    ' error 3270: no such property
+    BuiltWithDataFile = CurrentDb.Properties("HasDataFile")
 End Function
 
 ' Why this copy can't use its data file (KitVersionProblem), or "". A data
@@ -110,6 +148,7 @@ End Function
 ' the links are checked on every copy: the build links to the data file as
 ' it was then, so a copy that didn't run the upgrade still has the old
 ' columns until its link is refreshed.
+' Errors: the engine's, when tblSettings can't be read.
 Public Function DataVersionProblem() As String
     Dim v As Long
     v = DataVersion()
@@ -169,6 +208,7 @@ End Function
 ' logged and the version stays, so DataVersionProblem says it couldn't be
 ' updated.
 '   2: tblExamTopics.ChangeNo (0 for the topics already there).
+'   3: the unique indexes and relationships new data files have (UpgradeTo3).
 Private Sub UpgradeData(ByVal v As Long)
     Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean, n As Long, d As String
     On Error GoTo Fail
@@ -189,6 +229,7 @@ Private Sub UpgradeData(ByVal v As Long)
         db.Execute "UPDATE tblExamTopics SET ChangeNo=0 WHERE ChangeNo Is Null", dbFailOnError
         CurrentDb.TableDefs("tblExamTopics").RefreshLink        ' the link shows the new column
     End If
+    If v < 3 Then UpgradeTo3 db
     db.Execute "UPDATE tblSettings SET SettingValue='" & DATA_VERSION & "' WHERE SettingKey='SchemaVersion'", dbFailOnError
     db.Close
     Exit Sub
@@ -197,15 +238,96 @@ Fail:
     If Not db Is Nothing Then db.Close
 End Sub
 
-' Read the signed-in person's Exam Generator roles into TempVars. Returns ""
-' when they may use the app, else what to tell them.
+' Step 3: the unique indexes and relationships a new data file is built
+' with (modBuildBackEnd, from uxLevelName and rQ_Step on). Columns that held
+' 0 for "none" become Null first, since a relationship can't point at row 0.
+' One the existing rows break (two levels with one name, a row pointing at
+' nothing) is left out and logged, so the app still opens and its own checks
+' still apply; the admin finds it in the error log.
+' Errors: a table another copy holds open passes up (UpgradeSkip).
+Private Sub UpgradeTo3(db As DAO.Database)
+    Dim v As Variant, p() As String
+    For Each v In Array("tblQuestions|CurrentStepRoleID", "tblQuestions|ReplacesQuestionID", "tblExams|CurrentStepRoleID", _
+            "tblExams|OverallClassLevelID", "tblExamTopics|SignedOffByPersonID", "tblTasks|CompletedByPersonID")
+        p = Split(v, "|")
+        db.Execute "UPDATE " & p(0) & " SET " & p(1) & "=Null WHERE " & p(1) & "=0", dbFailOnError
+    Next
+    AddIndexIfMissing db, "uxLevelName", "tblDifficultyLevels", "LevelName"
+    AddIndexIfMissing db, "uxMarking", "tblClassLevels", "Marking"
+    AddIndexIfMissing db, "uxPortionMark", "tblClassLevels", "PortionMark"
+    AddIndexIfMissing db, "uxRoleCode", "tblRoles", "RoleCode"
+    AddIndexIfMissing db, "uxRefTitleNumber", "tblSourceRefs", "RefTitle, RefNumber"
+    AddRelationIfMissing db, "rQ_Step", "tblRoles", "RoleID", "tblQuestions", "CurrentStepRoleID"
+    AddRelationIfMissing db, "rE_Step", "tblRoles", "RoleID", "tblExams", "CurrentStepRoleID"
+    AddRelationIfMissing db, "rE_C", "tblClassLevels", "ClassLevelID", "tblExams", "OverallClassLevelID"
+    AddRelationIfMissing db, "rET_P", "tblPeople", "PersonID", "tblExamTopics", "SignedOffByPersonID"
+    AddRelationIfMissing db, "rTk_CP", "tblPeople", "PersonID", "tblTasks", "CompletedByPersonID"
+    AddRelationIfMissing db, "rQ_Rep", "tblQuestions", "QuestionID", "tblQuestions", "ReplacesQuestionID"
+End Sub
+
+' Add unique index nm on tbl (cols) unless the table has it already.
+Private Sub AddIndexIfMissing(db As DAO.Database, ByVal nm As String, ByVal tbl As String, ByVal cols As String)
+    Dim ix As DAO.Index, n As Long, d As String
+    For Each ix In db.TableDefs(tbl).Indexes
+        If ix.Name = nm Then Exit Sub
+    Next
+    On Error Resume Next
+    db.Execute "CREATE UNIQUE INDEX " & nm & " ON " & tbl & " (" & cols & ")", dbFailOnError
+    n = Err.Number: d = Err.Description
+    On Error GoTo 0
+    UpgradeSkip n, d, nm
+End Sub
+
+' Add relationship nm (ct.fk refers to pt.pk, enforced) unless the data file
+' has it already.
+Private Sub AddRelationIfMissing(db As DAO.Database, ByVal nm As String, ByVal pt As String, ByVal pk As String, _
+        ByVal ct As String, ByVal fk As String)
+    Dim r As DAO.Relation, n As Long, d As String
+    For Each r In db.Relations
+        If r.Name = nm Then Exit Sub
+    Next
+    On Error Resume Next
+    Set r = db.CreateRelation(nm, pt, ct, 0)
+    r.Fields.Append r.CreateField(pk)
+    r.Fields(pk).ForeignName = fk
+    db.Relations.Append r
+    n = Err.Number: d = Err.Description
+    On Error GoTo 0
+    UpgradeSkip n, d, nm
+End Sub
+
+' After adding index or relationship nm ended in error n (0: it didn't). A
+' table another copy holds open raises n, so the step runs again at the next
+' start; any other error (the rows break it) is logged and nm left out.
+Private Sub UpgradeSkip(ByVal n As Long, ByVal d As String, ByVal nm As String)
+    Select Case n
+        Case 0
+        Case 3008, 3009, 3211, 3262, 3734
+            Err.Raise n, "modSignIn.UpgradeData", d
+        Case Else
+            On Error Resume Next
+            Err.Raise n, "modSignIn.UpgradeData", d
+            LogError "modSignIn.UpgradeData", nm & " left out: rows in the data file break it (a duplicate, or a row " & _
+                "pointing at nothing). The app's own checks still apply."
+            Err.Clear
+    End Select
+End Sub
+
+' Read the signed-in person's Exam Generator access into TempVars: EGRoles
+' (",SME,DH,"), EGIsAdmin, EGNotifyDash and EGNotifyEmail (all cleared
+' first).
+' Returns "" when they may use the app, else what to tell them (no role,
+' access turned off, nobody signed in).
+' Errors: the engine's, and MakeFirstAdmin's other than 3022.
+' Side effects: on a new data file (tblPeople empty, no AdminBootstrapped),
+'   a Personnel admin is made its first admin (MakeFirstAdmin), once.
 Public Function LoadRoles() As String
     Dim pid As Long, rs As DAO.Recordset, roles As String
     pid = SignedInPersonID()
     ClearRoles
     If pid = 0 Then LoadRoles = "Nobody is signed in.": Exit Function
-    ' A new data file has no admin yet: the first Personnel admin to open the app becomes it.
-    If DCount("*", "tblPeople", "IsAdmin AND IsActive") = 0 Then
+    ' A new data file has nobody yet: the first Personnel admin to open the app becomes its admin, once.
+    If DCount("*", "tblPeople") = 0 And SettingText(SET_ADMIN_BOOTSTRAPPED) <> "1" Then
         If PersonnelIsAdminNow() Then MakeFirstAdmin pid
     End If
     Set rs = CurrentDb.OpenRecordset("SELECT IsAdmin, IsActive, NotifyDashboard, NotifyEmail FROM tblPeople WHERE PersonID=" & pid, dbOpenSnapshot)
@@ -223,22 +345,19 @@ Public Function LoadRoles() As String
     TempVars("EGNotifyDash") = CBool(Nz(rs!NotifyDashboard, False))
     TempVars("EGNotifyEmail") = CBool(Nz(rs!NotifyEmail, False))
     rs.Close
-    Set rs = CurrentDb.OpenRecordset("SELECT r.RoleCode FROM tblPersonRoles AS pr INNER JOIN tblRoles AS r " & _
-        "ON pr.RoleID=r.RoleID WHERE pr.PersonID=" & pid & " ORDER BY r.ChainOrder", dbOpenSnapshot)
-    Do While Not rs.EOF
-        roles = roles & "," & rs!RoleCode
-        rs.MoveNext
-    Loop
-    rs.Close
+    roles = PersonRoleCodes(pid)
     If Len(roles) = 0 And Not TempVars("EGIsAdmin") Then
         ClearRoles
         LoadRoles = NoAccessText("you don't have an Exam Generator role yet")
         Exit Function
     End If
-    TempVars("EGRoles") = roles & ","
+    TempVars("EGRoles") = "," & roles & IIf(Len(roles) > 0, ",", "")
 End Function
 
-' True when the signed-in person holds role code (SME, DH, XO, SM).
+' True when the signed-in person held a role at sign-in (TempVars EGRoles).
+' For what the pages show; a write checks the role again in the data file.
+'   code   role code: SME, DH, XO or SM
+' Errors: none (False when the TempVars aren't set).
 Public Function HasRole(ByVal code As String) As Boolean
     On Error Resume Next                    ' TempVars may be unset
     HasRole = (InStr(Nz(TempVars("EGRoles"), ""), "," & code & ",") > 0)
@@ -250,11 +369,11 @@ End Function
 ' TempVars set at sign-in, so admin rights taken away since then count at
 ' once. Every admin write goes through this, as the kit's changes to people
 ' go through PersonnelRequireAdmin: the modAdmin writers call it, and so does
-' each admin page before its own writes.
+' each admin page before its own writes. A front end with no data file has
+' nothing to protect and passes.
 ' Errors: ERR_NOT_ALLOWED with the reason for the user.
 ' Side effects: sets TempVars EGIsAdmin to the answer, so the sidebar
 '   follows on the next page change.
-' A front end with no data file has nothing to protect and passes.
 Public Sub RequireExamAdmin()
     Dim pid As Long, ok As Boolean
     If Not DataLinked() Then Exit Sub
@@ -268,7 +387,10 @@ Public Sub RequireExamAdmin()
         "Only an active Exam Generator admin can make this change. Your admin rights may have been taken away since you signed in."
 End Sub
 
-' True when the signed-in person is the Exam Generator admin.
+' True when the signed-in person was an admin when last checked (TempVars
+' EGIsAdmin, set at sign-in and by RequireExamAdmin). For what the pages
+' show; a write calls RequireExamAdmin instead.
+' Errors: none (False when the TempVar isn't set).
 Public Function IsExamAdmin() As Boolean
     On Error Resume Next
     IsExamAdmin = Nz(TempVars("EGIsAdmin"), False)
@@ -282,14 +404,30 @@ Private Sub ClearRoles()
     Next
 End Sub
 
-' Add pid as the Exam Generator admin (a row for them, or their row made admin).
+' Add pid as the data file's first Exam Generator admin and record that the
+' first admin was made (tblSettings AdminBootstrapped = 1), in one
+' transaction. When another Personnel admin did it at the same moment (error
+' 3022 on either row) this one is left out and the app opens as for anyone
+' else.
 Private Sub MakeFirstAdmin(ByVal pid As Long)
-    If DCount("*", "tblPeople", "PersonID=" & pid) = 0 Then
-        CurrentDb.Execute "INSERT INTO tblPeople (PersonID, IsAdmin, IsActive, NotifyDashboard, NotifyEmail) " & _
-            "VALUES (" & pid & ", True, True, True, False)", dbFailOnError
+    Dim ws As DAO.Workspace, inTrans As Boolean
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    KitExecute "INSERT INTO tblPeople (PersonID, IsAdmin, IsActive, NotifyDashboard, NotifyEmail) " & _
+        "VALUES (" & pid & ", True, True, True, False)"
+    If DCount("*", "tblSettings", "SettingKey=" & Q(SET_ADMIN_BOOTSTRAPPED)) = 0 Then
+        KitExecute "INSERT INTO tblSettings (SettingKey, SettingValue, Description) VALUES (" & Q(SET_ADMIN_BOOTSTRAPPED) & _
+            ", '1', 'Set once the first admin was made from the Personnel admins')"
     Else
-        CurrentDb.Execute "UPDATE tblPeople SET IsAdmin=True, IsActive=True WHERE PersonID=" & pid, dbFailOnError
+        KitExecute "UPDATE tblSettings SET SettingValue='1' WHERE SettingKey=" & Q(SET_ADMIN_BOOTSTRAPPED)
     End If
+    ws.CommitTrans: inTrans = False
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    If Err.Number = 3022 Then Exit Sub
+    RaiseAgain "modSignIn.MakeFirstAdmin", pid
 End Sub
 
 ' "Signed in as <name>, but <why>, so ..." with who to ask.

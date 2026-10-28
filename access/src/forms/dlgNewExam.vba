@@ -71,7 +71,7 @@ Private Sub btnGenerate_Click()
         vbInformation, MSG_TITLE: Exit Sub
     If Len(m_repeats) > 0 Then
         If KitMsgBox("Generate anyway? " & m_repeats & " can only be filled with more questions from the last " & _
-                SettingLong(SET_OVERLAP_WINDOW, 10) & " exams than the overlap rule allows. Their SMEs can swap some out " & _
+                OverlapWindow() & " exams than the overlap rule allows. Their SMEs can swap some out " & _
                 "if other approved questions come in.", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
         allow = m_repeatIds                 ' only these topics: another that goes over since is refused
     End If
@@ -151,12 +151,12 @@ Private Sub ShowPlan()
         ShowAlert Me, "alPlan", s, "warning", "Can't generate yet"
     Else
         m_ready = True
-        w = SettingLong(SET_OVERLAP_WINDOW, 10)
+        w = OverlapWindow()
         If Len(m_repeats) > 0 Then
             ShowAlert Me, "alPlan", m_repeats & " can only be filled with more questions from the last " & w & " exams than the " & _
                 "overlap rule allows. Generate asks before it does that.", "warning", nQ & " questions from " & nTopics & " topics"
         Else
-            ShowAlert Me, "alPlan", "Every topic can be drawn within the overlap rule: at most " & SettingLong(SET_OVERLAP_PCT, 30) & _
+            ShowAlert Me, "alPlan", "Every topic can be drawn within the overlap rule: at most " & OverlapPct() & _
                 "% of a topic's questions from the last " & w & " exams.", "success", nQ & " questions from " & nTopics & " topics"
         End If
     End If

@@ -23,6 +23,11 @@ Option Explicit
 '
 ' Approve and reject act only at the step the person was shown (m_qstep,
 ' m_xstep): one moved on since counts as someone else having acted.
+'
+' Owner: question approvals (build phase 6); exam approvals from build
+' phase 8. Depends on: modApprovals, modErrors, modExamApprovals, modExamDoc,
+' modGlobals, modQuestions, modSignIn, modUI; the kit's modGridFilter,
+' modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Approvals"
 

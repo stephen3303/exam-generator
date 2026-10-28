@@ -1,11 +1,13 @@
 Option Compare Database
 Option Explicit
 
-' Error handling and the error log (example: copy it into your app's src\modules).
+' Exam Generator (Access edition) - error handling and the error log. It
+' began as the access-modern-ui example module and is now the app's own.
 '
-' Needs from the app: APP_NAME, g_Silent (True during the automated build), a
-' TempVars("Username") for the signed-in user (optional), frmMain.PageKey
-' (optional), and an error_log table, ideally in the back end:
+' Owner: the app (src\modules). Depends on: modGlobals (APP_NAME, g_Silent),
+' modSignIn (ERR_NOT_ALLOWED, IsExamAdmin, RequireExamAdmin), the kit's
+' modKitEventLog, modKitLocks (KitExecute) and modKitUI (KitMsgBox), and
+' TempVars("Username"), frmMain.PageKey and the data file's error_log table:
 '
 '     CREATE TABLE error_log (id COUNTER PRIMARY KEY, logged_at DATETIME,
 '         error_number LONG, description LONGTEXT, err_source TEXT(255),
@@ -14,8 +16,8 @@ Option Explicit
 '         windows_user TEXT(64), computer TEXT(64), fe_build TEXT(32),
 '         access_version TEXT(32))
 '
-' Add app-specific context columns (current user id, current record) to
-' WriteLogRow, WriteLogFile and ErrorLogDetail as needed.
+' Add context columns (current user id, current record) to WriteLogRow,
+' WriteLogFile and ErrorLogDetail when a page needs them.
 '
 ' Every entry point (an event procedure, or a function a control or Access
 ' calls directly) ends with the standard handler:
@@ -40,6 +42,24 @@ Option Explicit
 ' source APP_NAME, event 1001; modKitEventLog), so the site's IT can collect
 ' every app's errors on its log server. The event leaves out the context and
 ' call trail.
+'
+' Who can read the log, and for how long. Each entry holds the user's name,
+' Windows account and computer name, and the kit adds up to 200 characters of
+' the SQL to a lock error (modKitLocks), which can hold names. In the app only
+' an Exam Generator admin can see the log (the logs page, PageAllowed) or
+' export or clear it (ExportErrorLogCsv, ClearErrorLog check RequireExamAdmin).
+' Outside the app, anyone who can open the data file's folder can read
+' error_log, so the share's permissions are the real limit; the Windows Event
+' Log is read by the PC's administrators and the site's log server; the
+' fallback file is in the user's own profile. Entries stay until an admin
+' clears the log: no period is set yet (an open item for the owner).
+'
+' What the user is told. A database engine error's text (DAO, Jet) can name
+' the data file's path, tables and SQL, so a user who isn't an admin gets the
+' plain message, the error number and the log entry, and the text stays in
+' the log. An admin sees the text, and so does anyone when the entry couldn't
+' be logged (it went to their own log file). The app's own messages (rights
+' refused, locks, Err.Raise from app code) are shown as they are.
 '
 ' The build numbers the lines of its copy of every module (tools\VbaLineNumbers.ps1;
 ' the source in git stays un-numbered), so Erl says which line failed. LogError
@@ -92,7 +112,11 @@ Public Sub HandleError(ByVal source As String, Optional ByVal context As String 
         Exit Sub
     End If
     If Len(intro) = 0 Then intro = "Something went wrong, so that action didn't finish."
-    msg = intro & vbCrLf & vbCrLf & desc & " (error " & num & ")" & vbCrLf & vbCrLf
+    If id > 0 And IsEngineError(num, errSrc) And Not IsExamAdmin() Then
+        msg = intro & " (error " & num & ")" & vbCrLf & vbCrLf     ' the engine's text stays in the log
+    Else
+        msg = intro & vbCrLf & vbCrLf & desc & " (error " & num & ")" & vbCrLf & vbCrLf
+    End If
     If id > 0 Then
         msg = msg & "The details are saved in the error log as entry " & id & ". " & _
             "If this keeps happening, give that number to your administrator."
@@ -101,6 +125,20 @@ Public Sub HandleError(ByVal source As String, Optional ByVal context As String 
     End If
     KitMsgBox msg, vbExclamation, APP_NAME          ' centred over Access (modKitUI)
 End Sub
+
+' True for an error the database engine raised (DAO, Jet), whose text can
+' show the data file's path, tables or SQL. A 3000-range number passed on by
+' app or kit code with its own message (Source "modKitLocks.KitExecute" for a
+' lock that didn't clear) is not one: that message is meant for the user.
+Private Function IsEngineError(ByVal num As Long, ByVal errSrc As String) As Boolean
+    If errSrc Like "DAO.*" Then
+        IsEngineError = True
+    ElseIf num >= 3000 And num <= 3999 Then
+        IsEngineError = Not (errSrc Like "mod*.*")
+    ElseIf num = 2001 Or num = 2465 Or num = 2471 Then
+        IsEngineError = True                ' DLookup/DCount criteria errors quote fields and criteria
+    End If
+End Function
 
 ' Add context to the error being handled and pass it up to the caller. Use in
 ' a library procedure's handler:
@@ -154,6 +192,8 @@ Private Function WriteLogRow(ByVal num As Long, ByVal desc As String, ByVal errS
     Exit Function
 Fail:
     WriteLogRow = 0
+    On Error Resume Next                    ' the row may be half added, or the table not open
+    If Not rs Is Nothing Then rs.Close
 End Function
 
 Private Sub WriteLogFile(ByVal num As Long, ByVal desc As String, ByVal errSrc As String, ByVal source As String, _
@@ -224,10 +264,12 @@ Public Function ErrorLogSql() As String
 End Function
 
 ' Everything recorded for one entry, as text for the detail box.
+' "" when there is no such entry.
 Public Function ErrorLogDetail(ByVal id As Long) As String
     Dim rs As DAO.Recordset, s As String
+    On Error GoTo Fail
     Set rs = CurrentDb.OpenRecordset("SELECT * FROM error_log WHERE id=" & id, dbOpenSnapshot)
-    If rs.EOF Then Exit Function
+    If rs.EOF Then rs.Close: Exit Function
     s = "Entry " & rs!id & "  -  " & Format$(rs!logged_at, "dd mmm yyyy hh:nn:ss") & vbCrLf & _
         "Error " & rs!error_number & ": " & NzStr(rs!description) & vbCrLf & _
         "Procedure: " & NzStr(rs!source) & IIf(Len(NzStr(rs!context)) > 0, "  (" & NzStr(rs!context) & ")", "") & vbCrLf
@@ -236,12 +278,19 @@ Public Function ErrorLogDetail(ByVal id As Long) As String
         "User: " & NzStr(rs!username) & vbCrLf & _
         "Windows: " & NzStr(rs!windows_user) & " on " & NzStr(rs!computer) & vbCrLf & _
         "Front end built: " & NzStr(rs!fe_build) & "   Access: " & NzStr(rs!access_version) & "   Source: " & NzStr(rs!err_source)
-    rs.Close
+    rs.Close: Set rs = Nothing
     ErrorLogDetail = s
+    Exit Function
+Fail:
+    If Not rs Is Nothing Then rs.Close
+    RaiseAgain "modErrors.ErrorLogDetail", id
 End Function
 
 ' Write the whole log to CSV. Returns the number of entries.
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now (the
+'   log holds every user's names and computers).
 Public Function ExportErrorLogCsv(ByVal path As String) As Long
+    RequireExamAdmin
     ExportErrorLogCsv = ExportSqlToCsv("SELECT * FROM error_log ORDER BY id", path)
 End Function
 
@@ -250,7 +299,7 @@ End Function
 Public Function ClearErrorLog() As Long
     RequireExamAdmin
     ClearErrorLog = DCount("*", "error_log")
-    CurrentDb.Execute "DELETE FROM error_log", dbFailOnError
+    KitExecute "DELETE FROM error_log"
 End Function
 
 Private Function NzStr(ByVal v As Variant) As String

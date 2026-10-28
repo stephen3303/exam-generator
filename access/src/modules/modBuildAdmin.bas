@@ -9,6 +9,9 @@ Option Explicit
 '
 ' The list pages follow the plan's pattern: the list card on the left and a
 ' 360px detail card on the right, both from y 124px under the search box.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modBuild;
+' the kit's modMenu, modPersonnelUI, modUIKit.
 
 Private Const DETAIL_W As Long = 5400            ' the detail card, 360 px
 Private Const LIST_Y As Long = 1860              ' the list and detail cards' top, 124 px
@@ -145,7 +148,8 @@ Public Sub Build_pgAdmRules()
     Set c = Txt("txtDefault", "", fx, y + px(266), px(80), px(30))
     c.TextAlign = 3
     Ev c, "OnChange"
-    Lbl "lblDefaultHint", "What a new topic, and a topic added to a template, starts with (1 to 50).", _
+    Lbl "lblDefaultHint", "What a new topic, and a topic added to a template, starts with (" & _
+        MIN_QUESTIONS_PER_TOPIC & " to " & MAX_QUESTIONS_PER_TOPIC & ").", _
         fx + px(92), y + px(266), fw - px(92), px(30), 9, False, CLR_MUTED_FG
     Alert "alShort", fx, y + px(312), fw, px(160), "info", "Topics short of questions"
     Set c = Btn("btnSave", "Save", fx, y + h - px(48), px(88), px(32)): c.ControlTipText = "Save (Ctrl+S)": Anchor c, 0, 1
@@ -368,11 +372,11 @@ Public Sub Build_dlgTemplateTopic()
     F.KeyPreview = True                     ' the slider's arrow keys (SliderStep)
     Lbl "lblHead", "", px(20), px(20), w - px(40), px(24), 11, True
     FieldLbl "lblTopic", "TOPIC", px(20), px(60), w - px(40)
-    Set c = PickBox("txtTopic", "", "SELECT TopicID, TopicName, Nz(DefaultCount,4) & ' per exam' AS per_exam " & _
+    Set c = PickBox("txtTopic", "", "SELECT TopicID, TopicName, Nz(DefaultCount," & DEFAULT_QUESTION_COUNT & ") & ' per exam' AS per_exam " & _
         "FROM tblTopics WHERE IsActive", px(20), px(78), w - px(40), px(30), "Type part of a topic's name")
     Ev c, "OnKeyDown"
     FieldLbl "lblCount", "QUESTIONS ON EACH EXAM", px(20), px(124), w - px(40)
-    Slider "sldCount", "", px(20), px(144), w - px(40), 1, 20, 1, "CountChanged", True, "0"
+    Slider "sldCount", "", px(20), px(144), w - px(40), MIN_QUESTIONS_PER_TOPIC, MAX_QUESTIONS_PER_TOPIC, 1, "CountChanged", True, "0"
     Lbl "lblNeed", "", px(20), px(172), w - px(40), px(36), 9, False, CLR_MUTED_FG
     Set c = Btn("btnOK", "Add", w - px(20) - 2 * px(88) - px(8), px(228), px(88), px(30))
     c.Default = True

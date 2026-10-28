@@ -12,6 +12,10 @@ Option Explicit
 ' A new reference goes into the shared list (tblSourceRefs) at once, so the
 ' other SMEs can cite it too, even if the question isn't saved. RunDialog
 ' sees DialogResult "ok".
+'
+' Owner: the question bank (build phase 5). Depends on: modErrors,
+' modGlobals, modQuestions, modUI; the kit's modKitLocks, modKitUI,
+' modKitUtil, modMenu, modUIKit.
 
 Private Const MSG_TITLE As String = "Reference"
 
@@ -25,8 +29,8 @@ End Property
 Private Sub Form_Load()
     Dim rs As DAO.Recordset
     On Error GoTo Err_Handler
-    m_mode = LCase$(ArgText("mode"))
-    m_id = Val(ArgText("id"))
+    m_mode = LCase$(OpenArgText(Me, "mode"))
+    m_id = OpenArgLong(Me, "id")
     If m_mode = "new" Then
         Me.Caption = "Add a reference"
         Me.lblHead.Caption = "Add a reference to the list"
@@ -115,6 +119,11 @@ Private Sub btnOK_Click()
     Done
     Exit Sub
 Err_Handler:
+    If Err.Number = 3022 Then               ' the same title and number added at this moment (uxRefTitleNumber)
+        KitMsgBox "Someone else has just added that reference, so it is in the list now. Pick it from the list instead.", _
+            vbInformation, MSG_TITLE
+        Exit Sub
+    End If
     HandleError "dlgReference.btnOK_Click", rid
 End Sub
 
@@ -174,11 +183,3 @@ Private Sub HideSegment()
         If c.Name Like "segSource_*" Then c.Visible = False
     Next
 End Sub
-
-' The text after name= in OpenArgs, "" when it isn't there.
-Private Function ArgText(ByVal name As String) As String
-    Dim part As Variant
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then ArgText = Mid$(part, Len(name) + 2)
-    Next
-End Function

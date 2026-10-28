@@ -18,6 +18,12 @@ Option Explicit
 ' Phase 1 builds every page as a placeholder (its header and an empty state
 ' naming the build phase that fills it), so the shell can be clicked
 ' through. Each phase replaces its pages' placeholders with Build_<page>.
+'
+' Owner: the shell and the build (build phase 1). Depends on: modBuildAdmin,
+' modBuildAppearance, modBuildQuestions, modErrors, modGlobals,
+' modQuestions; the kit's modDarkMode, modGridCols, modGridFilter,
+' modKitBackend, modKitHelp, modKitKeys, modKitPalette, modKitShell,
+' modMenu, modPersonnelUI, modTrust, modUIKit.
 
 Public Const APP_VERSION As String = "0.1.0"
 
@@ -48,7 +54,7 @@ Public Function BuildAll(ByVal srcRoot As String, ByVal outDir As String, ByVal 
     m_step = "local tables": EnsureWorkTables      ' the question editor's working copy (modQuestions)
     m_step = "user interface": BuildUserInterface
     m_step = "help": LoadHelpTopics srcRoot & "\help\help.txt"
-    m_step = "startup": SetStartupOptions
+    m_step = "startup": SetStartupOptions uiOnly, bePath
     g_Silent = False
     BuildAll = "OK"
     Exit Function
@@ -240,15 +246,17 @@ End Sub
 ' Startup
 ' ---------------------------------------------------------------------------
 
+' Set database property name, adding it when the front end hasn't got it
+' yet (error 3270). Any other failure, and a failed add, stops the build.
 Private Sub SetProp(ByVal name As String, ByVal kind As Integer, ByVal value As Variant)
     Dim db As DAO.Database
     Set db = CurrentDb
-    On Error Resume Next
+    On Error GoTo Missing
     db.Properties(name) = value
-    If Err.Number = 3270 Then
-        Err.Clear
-        db.Properties.Append db.CreateProperty(name, kind, value)
-    End If
+    Exit Sub
+Missing:
+    If Err.Number <> 3270 Then RaiseAgain "modBuild.SetProp", name
+    db.Properties.Append db.CreateProperty(name, kind, value)   ' an error here goes up to BuildAll
 End Sub
 
 ' Open on the splash screen, which opens frmMain, without Access's own
@@ -256,7 +264,14 @@ End Sub
 ' end was built (error-log entries and the splash show it). BuildTrustCheck
 ' opens the splash at startup (in place of StartUpForm) and shows the kit's
 ' trust page when Access would ask to enable content.
-Private Sub SetStartupOptions()
+' Shift at opening (AllowBypassKey) and F11 (AllowSpecialKeys) stay on in
+' this .accdb, the developer's copy; build.ps1 -Release turns them off in
+' the locked .accde users get.
+' HasDataFile records whether this front end was built linked to a data file,
+' so a copy that loses its tblSettings link isn't taken for a UI-only build
+' (modSignIn.DataLinked). -UiOnly keeps the value the full build set.
+Private Sub SetStartupOptions(ByVal uiOnly As Boolean, ByVal bePath As String)
+    If Not uiOnly Then SetProp "HasDataFile", dbBoolean, (Len(bePath) > 0)
     SetProp "AppTitle", dbText, APP_NAME
     SetProp "StartUpShowDBWindow", dbBoolean, False
     SetProp "ShowDocumentTabs", dbBoolean, False

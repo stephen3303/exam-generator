@@ -7,6 +7,9 @@ Option Explicit
 ' approvals of build phase 6: the Approvals page (pgApprovals) and dlgReject.
 ' modBuild.BuildPages calls BuildQuestionGrids first, then the pages;
 ' BuildUserInterface builds the dialogs.
+'
+' Owner: the question bank and question approvals (build phases 5 and 6).
+' Depends on: modBuild; the kit's modMenu, modUIKit.
 
 Private Const DETAIL_W As Long = 5400            ' the bank's detail card, 360 px
 Private Const BANK_Y As Long = 2400              ' the bank's cards' top, 160 px

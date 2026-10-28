@@ -2,10 +2,15 @@ Option Compare Database
 Option Explicit
 
 ' Exam Generator (Access edition) - app constants, build-time silence and the
-' small helpers every module uses: Notify (messages), Q (SQL text), NavTo.
+' small helpers every module uses: Notify (messages), Q (SQL text), NavTo,
+' and at the end FieldText, Plural, TableExists, InsertRow and
+' RollbackKeepingError.
 ' The names the kit calls on the app (README, "What the app must provide")
 ' are here and in modUI; MeasureText comes from the kit's modTextMeasure
 ' adapter (kit\adapters), which build.ps1 loads with the kit.
+'
+' Owner: the app core (build phase 1). Depends on: modErrors; the kit's
+' modDarkMode, modKitShell, modKitUI, modKitUtil.
 
 Public Const APP_NAME As String = "Exam Generator"
 Public Const APP_CODE As String = "EXAMGEN"      ' this app's code in the shared Personnel file (kit_person_app)
@@ -26,7 +31,10 @@ Public Function Notify(ByVal msg As String, Optional ByVal style As VbMsgBoxStyl
     End If
 End Function
 
-' Text as a quoted SQL string literal.
+' Text as a quoted SQL string literal, its single quotes doubled: Q("O'Neil")
+' gives 'O''Neil'. Use it for every value put into SQL as text.
+'   s   any value; Null gives '' (an empty string, not the SQL Null)
+' Errors: none.
 Public Function Q(ByVal s As Variant) As String
     Q = "'" & Replace(Nz(s, ""), "'", "''") & "'"
 End Function
@@ -55,3 +63,76 @@ Public Function AppAppearance()
 Err_Handler:
     HandleError "modGlobals.AppAppearance"
 End Function
+
+' A text box's text: what is typed so far while it has the focus (Ctrl+S
+' saves without leaving it), else its value. frm is the form it is on.
+Public Function FieldText(frm As Form, c As Control) As String
+    Dim act As String
+    On Error Resume Next
+    act = frm.ActiveControl.Name            ' error 2474 when none has the focus
+    On Error GoTo 0
+    If act = c.Name Then FieldText = Nz(c.Text, "") Else FieldText = Nz(c.Value, "")
+End Function
+
+' word, with an s added unless n is 1: "1 question", "3 questions".
+Public Function Plural(ByVal n As Long, ByVal word As String) As String
+    Plural = word & IIf(n = 1, "", "s")
+End Function
+
+' True when this front end has a table, or a link to one, called nm (any
+' case). localOnly: only a table of its own, not a link.
+Public Function TableExists(ByVal nm As String, Optional ByVal localOnly As Boolean = False) As Boolean
+    Dim td As DAO.TableDef
+    For Each td In CurrentDb.TableDefs
+        If StrComp(td.Name, nm, vbTextCompare) = 0 Then
+            TableExists = (Not localOnly) Or Len(td.Connect) = 0
+            Exit Function
+        End If
+    Next
+End Function
+
+' Run one INSERT that adds one row and return the row's AutoNumber id. The
+' id is read with SELECT @@IDENTITY on the Database object that ran the
+' insert, which is the only object that sees it (each CurrentDb is a new
+' one), so a new row is found without a look-up by name. Inside a
+' DBEngine.Workspaces(0) transaction the insert is part of it.
+'   sql   the INSERT ... VALUES or INSERT ... SELECT statement
+' Returns the new id.
+' Errors: 5 when the statement added no row or more than one; the engine's
+'   error when the insert fails. A lock is retried as KitExecute retries it
+'   (the kit's LockWait), then raised.
+Public Function InsertRow(ByVal sql As String) As Long
+    Dim db As DAO.Database, rs As DAO.Recordset, attempt As Long, num As Long
+    Set db = CurrentDb
+TryAgain:
+    On Error Resume Next
+    db.Execute sql, dbFailOnError
+    num = Err.Number
+    If num <> 0 Then
+        If LockWait(num, attempt) Then GoTo TryAgain
+        On Error GoTo Fail
+        db.Execute sql, dbFailOnError       ' the last try: its error is the one passed on
+    End If
+    On Error GoTo Fail
+    If db.RecordsAffected <> 1 Then Err.Raise 5, "modGlobals.InsertRow", "Expected to add one row, added " & db.RecordsAffected & "."
+    Set rs = db.OpenRecordset("SELECT @@IDENTITY", dbOpenSnapshot)
+    InsertRow = Nz(rs.Fields(0).Value, 0)
+    rs.Close
+    Exit Function
+Fail:
+    RaiseAgain "modGlobals.InsertRow", Left$(sql, 200)
+End Function
+
+' Roll back ws's transaction from an error handler and leave the error being
+' handled as it was, so the handler can still pass it on (RaiseAgain) or show
+' it (HandleError). A failed rollback is ignored: the error that caused it is
+' the one to report.
+'   ws   the workspace whose BeginTrans is open, DBEngine.Workspaces(0)
+Public Sub RollbackKeepingError(ws As DAO.Workspace)
+    Dim num As Long, desc As String, src As String
+    num = Err.Number: desc = Err.Description: src = Err.Source
+    On Error Resume Next
+    ws.Rollback
+    On Error GoTo 0
+    Err.Number = num: Err.Description = desc: Err.Source = src
+End Sub

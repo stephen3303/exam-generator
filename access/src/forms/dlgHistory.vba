@@ -8,6 +8,10 @@ Option Explicit
 ' "exam=<ExamID>": the exam's rows (modExamApprovals.ExamHistorySql): who
 ' generated, signed off, approved, sent back and downloaded it; the circle
 ' is who generated it. Copy puts it on the clipboard as text.
+'
+' Owner: the question bank (build phase 5); exams' history from build phase
+' 8. Depends on: modAdmin, modErrors, modExamApprovals, modQuestions, modUI;
+' the kit's modKitUI, modKitUtil, modPersonnel.
 
 Private m_key As Long           ' the question's key (0 for an exam)
 Private m_exam As Long          ' the exam (0 for a question)
@@ -19,13 +23,13 @@ End Property
 Private Sub Form_Load()
     Dim rs As DAO.Recordset, n As Long, nVer As Long, st As String
     On Error GoTo Err_Handler
-    If Left$(Nz(Me.OpenArgs, ""), 5) = "exam=" Then
-        m_exam = Val(Mid$(Me.OpenArgs, 6))
+    m_exam = OpenArgLong(Me, "exam")
+    If m_exam <> 0 Then
         LoadExam
         CenterOnApp Me
         Exit Sub
     End If
-    m_key = Val(Mid$(Nz(Me.OpenArgs, ""), InStr(Nz(Me.OpenArgs, "") & "=", "=") + 1))
+    m_key = OpenArgLong(Me, "key")
     Me.Caption = "History of Q" & m_key
     Me.lblHead.Caption = "History of Q" & m_key
     Me.sfHist.Form.RecordSource = HistorySql(m_key)

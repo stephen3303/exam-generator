@@ -145,7 +145,7 @@ Private Sub ShowPick()
     If Len(problem) > 0 Then
         ShowAlert Me, "alSwap", problem, "warning"
     Else
-        w = SettingLong(SET_OVERLAP_WINDOW, 10)
+        w = OverlapWindow()
         key = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & m_pick)
         If InKeyList(m_keys, key) Then
             ShowAlert Me, "alSwap", "It was on one of the " & w & " exams generated before this one, but the topic stays within " & _
