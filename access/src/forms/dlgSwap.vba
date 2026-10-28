@@ -3,11 +3,11 @@ Option Explicit
 
 ' Swap a question on an exam topic (Build_dlgSwap), from My reviews.
 ' OpenArgs "eq=<ExamQuestionID>;stamp=<the topic's ChangeNo as My reviews
-' showed it>", the question to swap out. Lists the
-' approved questions of the topic in use with no version elsewhere on the
-' exam, and the newer version of the one in the slot (modExams.SwapCandidatesSql), those given lately last, filtered by the
-' search box. The picked one shows in full, and the alert says whether the
-' overlap rule allows it (SwapProblem). Swap puts it on the exam
+' showed it>", the question to swap out. Lists the approved questions of the
+' topic in use with no version elsewhere on the exam, and the newer version
+' of the one in the slot (modExams.SwapCandidatesSql), those given lately
+' last, filtered by the search box. The picked one shows in full, and the
+' alert says whether the overlap rule allows it (SwapProblem). Swap puts it on the exam
 ' (SwapQuestion), hands the toast's text back in TempVars("SwapDone"), and
 ' RunDialog sees DialogResult "ok". Cancel, or Esc, changes nothing. When
 ' another SME changed the topic since My reviews showed it, the swap is
