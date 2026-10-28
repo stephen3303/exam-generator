@@ -1,6 +1,6 @@
 # Prototype quickstart (PowerSpec)
 
-Build the prototype from `phase-10-logs-release` (all ten phases), open it, and walk one question and one exam from start to the Word document. Setup takes about 10 minutes and the smoke path about 10 more.
+Build the prototype from `main` (all ten phases and Sign out), open it, and walk one question and one exam from start to the Word document. Setup takes about 10 minutes and the smoke path about 10 more.
 
 Nothing has been run in Access, Word or Outlook yet: every check so far was a code review. If anything stops you, paste the PowerShell output or the message's exact text into the thread and it gets fixed on the branch.
 
@@ -16,7 +16,7 @@ In PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-git clone -b phase-10-logs-release https://github.com/stephen3303/exam-generator.git $HOME\eg-proto
+git clone -b main https://github.com/stephen3303/exam-generator.git $HOME\eg-proto
 cd $HOME\eg-proto\access
 ```
 
@@ -25,7 +25,7 @@ Already have a clone? From its folder instead:
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 git fetch origin
-git switch phase-10-logs-release
+git switch main
 git pull
 cd access
 ```
@@ -67,14 +67,12 @@ Start-Process .\build\ExamGenerator.accdb
    - Open yourself and turn on **DH**, **XO** and **SM**.
 4. **Topics.** **New topic** and name it `Smoke test`. Set questions per exam to **1** and **Save**. Under SMEs, pick Test SME and **Add**.
 5. **Templates.** **New template** and name it `Smoke`. **Add topic**, pick Smoke test, set the slider to **1**, and **Add**.
-6. **Let yourself pick who signs in.** People and routing, then **Personnel**. Open yourself, note your sign-in name, clear **Windows account**, and Save.
-   - Why: this branch has no Sign out and signs you in by Windows account. With the account cleared, each start shows the sign-in screen, so you can be you or Test SME.
-   - Put the Windows account back when you're done.
-   - Optional: the `feature-sign-out` branch, built on this one, adds **Sign out** under **My settings**, so you can switch people without closing Access and skip this step. Build it the same way after `git switch feature-sign-out`. It is reviewed but, like the rest, not yet run in Access.
+6. **Switching people.** **My settings**, then **Sign out**, brings up the sign-in screen, where you sign in as `testsme` or as yourself.
+   - The first time, Sign out asks you to set an app password for your Windows account, so the next person can't choose one for you.
 
 ## 5. Smoke path
 
-Switch people by closing Access and opening `ExamGenerator.accdb` again.
+Switch people with **My settings**, then **Sign out**.
 
 | As | Page | Do |
 |---|---|---|
