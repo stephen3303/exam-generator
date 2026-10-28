@@ -244,7 +244,8 @@ End Sub
 ' One the existing rows break (two levels with one name, a row pointing at
 ' nothing) is left out and logged, so the app still opens and its own checks
 ' still apply; the admin finds it in the error log.
-' Errors: a table another copy holds open passes up (UpgradeSkip).
+' Errors: all but those bad-row ones pass up (UpgradeSkip), a table another
+'   copy holds open among them.
 Private Sub UpgradeTo3(db As DAO.Database)
     Dim v As Variant, p() As String
     For Each v In Array("tblQuestions|CurrentStepRoleID", "tblQuestions|ReplacesQuestionID", "tblExams|CurrentStepRoleID", _
@@ -286,30 +287,37 @@ Private Sub AddRelationIfMissing(db As DAO.Database, ByVal nm As String, ByVal p
     For Each r In db.Relations
         If r.Name = nm Then Exit Sub
     Next
+    ' Stop at the first error, so the one passed on is the cause, not a later
+    ' error 91 from a relation that was never made.
     On Error Resume Next
     Set r = db.CreateRelation(nm, pt, ct, 0)
-    r.Fields.Append r.CreateField(pk)
-    r.Fields(pk).ForeignName = fk
-    db.Relations.Append r
+    If Err.Number = 0 Then r.Fields.Append r.CreateField(pk)
+    If Err.Number = 0 Then r.Fields(pk).ForeignName = fk
+    If Err.Number = 0 Then db.Relations.Append r
     n = Err.Number: d = Err.Description
     On Error GoTo 0
     UpgradeSkip n, d, nm
 End Sub
 
-' After adding index or relationship nm ended in error n (0: it didn't). A
-' table another copy holds open raises n, so the step runs again at the next
-' start; any other error (the rows break it) is logged and nm left out.
+' After adding index or relationship nm ended in error n (0: it didn't).
+' Only the errors known to mean the existing rows break it are logged and
+' nm left out: 3022 (a unique index over duplicate values) and 3379
+' ("Existing data in table ... violates referential integrity rules", as
+' Microsoft's DAO error reference lists it for a relationship the rows
+' break; check it once in Access). Any other error, a table another copy
+' holds open (IsLockError, 3045, 3050, 3051) or anything unexpected, is
+' raised, so the version stays and the step runs again at the next start.
 Private Sub UpgradeSkip(ByVal n As Long, ByVal d As String, ByVal nm As String)
     Select Case n
         Case 0
-        Case 3008, 3009, 3211, 3262, 3734
-            Err.Raise n, "modSignIn.UpgradeData", d
-        Case Else
+        Case 3022, 3379
             On Error Resume Next
             Err.Raise n, "modSignIn.UpgradeData", d
             LogError "modSignIn.UpgradeData", nm & " left out: rows in the data file break it (a duplicate, or a row " & _
                 "pointing at nothing). The app's own checks still apply."
             Err.Clear
+        Case Else
+            Err.Raise n, "modSignIn.UpgradeData", d
     End Select
 End Sub
 

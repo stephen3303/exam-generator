@@ -291,6 +291,8 @@ Private Sub XApproveClicked()
     problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     If NextStepRoleID(m_xstep) = 0 Then
+        problem = UnmarkedProblem(m_xid)        ' before asking, so the person isn't refused after saying yes
+        If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
         mk = LevelMarking(OverallLevelID(m_xid))
         nR = ExamReplacedCount(m_xid)
         If KitMsgBox("Give " & ExamRef(m_xid, DLookup("VersionNo", "tblExams", "ExamID=" & m_xid)) & " final approval? " & _
@@ -454,7 +456,7 @@ End Sub
 ' Show exam examId on the right (0: the hint instead).
 Private Sub ShowExam(ByVal examId As Long)
     Dim rs As DAO.Recordset, isOpen As Boolean, nm As Variant, c As Control, s As String, problem As String
-    Dim nQ As Long, nT As Long, mk As String, by As String, k As String, nR As Long
+    Dim nQ As Long, nT As Long, mk As String, by As String, k As String, nR As Long, unm As String
     m_xid = examId: m_xstep = 0
     isOpen = (examId <> 0)
     If isOpen Then
@@ -473,7 +475,10 @@ Private Sub ShowExam(ByVal examId As Long)
                 nQ & IIf(nQ = 1, " question", " questions") & " in " & nT & IIf(nT = 1, " topic", " topics") & "."
             m_xstep = Nz(rs!CurrentStepRoleID, 0)
             problem = ExamApproveProblem(examId, m_xstep)
+            ' The final approval refuses an exam it can't mark; it can still be sent back.
+            If Len(problem) = 0 And NextStepRoleID(m_xstep) = 0 Then unm = UnmarkedProblem(examId)
             If Len(problem) > 0 Then s = problem Else s = "Waiting on you as the " & RoleCodeOf(m_xstep) & "."
+            If Len(unm) > 0 Then s = s & " " & unm
             mk = LevelMarking(OverallLevelID(examId))
             If Len(mk) > 0 Then s = s & " Its highest portion marking is " & mk & "."
             nR = ExamReplacedCount(examId)
@@ -481,12 +486,12 @@ Private Sub ShowExam(ByVal examId As Long)
             Me.lblXState.Caption = s
             ' The preview reads every question: built on the Exams tab only,
             ' and again only when another exam or version is shown.
-            k = examId & "|" & rs!VersionNo
+            k = examId & "|" & rs!VersionNo & "|" & nR          ' the replaced flags can change without a new version
             If m_tab = "x" And k <> m_xprev Then
                 Me.txtXPreview = ExamPreview(examId)
                 m_xprev = k
             End If
-            SetEnabled Me.btnXApprove, Len(problem) = 0
+            SetEnabled Me.btnXApprove, Len(problem) = 0 And Len(unm) = 0
             SetEnabled Me.btnXReject, Len(problem) = 0
         End If
         rs.Close
