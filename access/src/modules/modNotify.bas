@@ -455,8 +455,8 @@ End Function
 ' reference) they did something to themselves, on a question they wrote,
 ' or on an exam with a review task for them. An approver's step they
 ' haven't acted on yet isn't counted; it shows under Waiting on you.
-' Newest first by AuditID (the key, which rises with time), not ActionOn,
-' which has no index.
+' Newest first by AuditID (the key, which rises with time), so the newest
+' rows are found without sorting by date.
 ' Builds the SQL only (it reads the signed-in person's id and IsExamAdmin).
 ' Errors: none.
 Public Function RecentActivitySql(Optional ByVal n As Long = 20) As String

@@ -315,9 +315,9 @@ Private Sub AfterFilter()
         ShowEmpty Me, emp, True, IIf(m_tab = "e", "The error log is empty", "The audit trail is empty"), "Nothing has been recorded yet."
         SetVisible Me.Controls(emp & "_b"), False
     ElseIf m_tab = "e" Then
-        ShowEmpty Me, emp, n = 0, "No errors logged", "No error fits the search, the dates and the column filters."
+        ShowEmpty Me, emp, n = 0, "No matching errors", "No error fits the search, the dates and the column filters."
     Else
-        ShowEmpty Me, emp, n = 0, "Nothing in the audit trail", "No entry fits the search, the dates and the column filters."
+        ShowEmpty Me, emp, n = 0, "No matching entries", "No entry fits the search, the dates and the column filters."
     End If
     SetVisible sf, n > 0
     SetEnabled Me.btnExport, n > 0

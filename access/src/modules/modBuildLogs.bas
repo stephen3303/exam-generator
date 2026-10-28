@@ -63,7 +63,7 @@ Public Sub Build_pgAdmLogs()
         filterSf:="sfList", onFilter:="ListFiltered"
     Set c = SubF("sfList", "subGridAudit", PAGE_PAD + px(16), y + px(62), lw - px(32), h - px(78)): Anchor c, 2, 2
     GroupSince before, "grpA"
-    EmptyState "emptyList", PAGE_PAD + px(16), y + px(90), lw - px(32), "E81C", "Nothing in the audit trail", _
+    EmptyState "emptyList", PAGE_PAD + px(16), y + px(90), lw - px(32), "E81C", "No matching entries", _
         "No entry fits the search, the dates and the column filters.", "Show all"
 
     ' The Errors tab.
@@ -76,7 +76,7 @@ Public Sub Build_pgAdmLogs()
     Anchor c, 1, 0
     c.ControlTipText = "Delete every entry in the error log"
     GroupSince before, "grpE"
-    EmptyState "emptyEList", PAGE_PAD + px(16), y + px(90), lw - px(32), "E783", "No errors logged", _
+    EmptyState "emptyEList", PAGE_PAD + px(16), y + px(90), lw - px(32), "E783", "No matching errors", _
         "No error fits the search, the dates and the column filters.", "Show all"
 
     ' The picked entry, either tab.
