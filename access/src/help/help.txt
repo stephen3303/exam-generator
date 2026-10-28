@@ -97,7 +97,7 @@ The **References** tab lists the documents questions cite, with how many current
 Each addition, correction, turn off or on and deletion is kept in the audit record with who made it and when; a correction keeps the old title, number and revision too.
 
 === questions.history | A question's history
-Every version of one question, newest first: who wrote, changed, submitted, approved, rejected and retired it, when, at which approval step, and any comments. The rows are never changed or deleted.
+Every version of one question, newest first: who wrote, changed, submitted, approved, rejected and retired it, when, at which approval step, and any comments. The rows are never changed or deleted. A draft that was deleted no longer shows here, but its rows stay in the audit record.
 
 Click **Copy** to put the history on the clipboard as text, to paste into an email or a report.
 
