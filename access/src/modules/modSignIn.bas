@@ -46,7 +46,7 @@ Option Explicit
 '
 ' Owner: start-up and sign-in (build phase 2). Depends on: modAdmin,
 ' modErrors, modGlobals; the kit's modKitBackend, modKitHelp, modKitLocks,
-' modKitShell, modKitUI, modPersonnel, modPersonnelUI.
+' modKitShell, modKitUI, modKitUtil, modPersonnel, modPersonnelUI.
 
 Public Const DATA_VERSION As Long = 4            ' the tblSettings SchemaVersion this copy reads
 
@@ -188,7 +188,7 @@ Private Function OwnerPasswordReady() As Boolean
     End If
     If owner <> SignedInPersonID() Then
         KitMsgBox "Sign out isn't available on this Windows account yet: its owner has no app password, so the next " & _
-            "person could choose one for them. Close " & APP_NAME & " instead.", vbExclamation, "Sign out"
+            "person could choose one for them. Ask the owner or a Personnel admin to set one.", vbExclamation, "Sign out"
         Exit Function
     End If
     p1 = KitInputBox("Choose an app password first (8 or more characters), so only you can sign in as you " & _
