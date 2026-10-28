@@ -111,7 +111,7 @@ Only an approved exam has a document. **Download a copy** asks where to save it 
 The document has a cover page (who it is for, the template, the exam's number and version, the date approved, and how many questions and points), then every question in order with its parts and options, but no answers. Each question and part starts with its portion marking, such as (C); its answer options count at the same marking. Each page is marked at the top and bottom with the highest marking on that page, the cover with the exam's overall marking, and the footer numbers the pages. If Word can't split the pages cleanly, every page carries the overall marking instead, and the app says so. If the order of the classification levels was changed after the exam was approved, every page carries the higher of the overall marking approved then and the exam's highest marking now, and the app says so.
 
 === exams.history | An exam's history
-Everything that happened to one exam, newest first: who generated it, swapped its questions, signed off its topics, approved it, sent it back with which reason and downloaded it, and each time its Word document was made: when, at which approval step, and its version then. The rows are never changed or deleted.
+Everything that happened to one exam, newest first: who generated it, swapped its questions, signed off its topics, approved it, sent it back (with the reason), downloaded it, and made its Word document (with the marking it carries), each with when, at which approval step, and its version then. The rows are never changed or deleted.
 
 Click **Copy** to put the history on the clipboard as text, to paste into an email or a report.
 

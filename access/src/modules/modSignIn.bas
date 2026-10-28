@@ -150,19 +150,26 @@ End Function
 ' columns until its link is refreshed.
 ' Errors: the engine's, when tblSettings can't be read.
 Public Function DataVersionProblem() As String
-    Dim v As Long
+    Dim v As Long, n As Long
     v = DataVersion()
     If v = 0 Then Exit Function             ' no version recorded: the per-feature checks say what is missing
     If v < DATA_VERSION Then
         SplashStatus "Updating the data file" & ChrW(8230)
-        UpgradeData v
+        n = UpgradeData(v)
         v = DataVersion()
     End If
     If v < DATA_VERSION Then
-        ' Most likely the app is open on another computer, holding a table.
-        DataVersionProblem = "The shared data file needs an update that this copy of " & APP_NAME & " couldn't make, most " & _
-            "likely because " & APP_NAME & " is open on another computer." & vbCrLf & vbCrLf & _
-            "Close " & APP_NAME & " on every other computer, then open it here again."
+        If n = 0 Or IsOpenElsewhere(n) Then
+            ' A table another copy holds open: closing the other copies clears it.
+            DataVersionProblem = "The shared data file needs an update that this copy of " & APP_NAME & " couldn't make, most " & _
+                "likely because " & APP_NAME & " is open on another computer." & vbCrLf & vbCrLf & _
+                "Close " & APP_NAME & " on every other computer, then open it here again."
+        Else
+            ' Anything else happens again at every start: only the admin can clear it.
+            DataVersionProblem = "The shared data file needs an update that this copy of " & APP_NAME & " couldn't make " & _
+                "(error " & n & ")." & vbCrLf & vbCrLf & "The details are in the error log inside the data file. Tell the " & _
+                APP_NAME & " admin, who can read it there without the app (see the README's Release section)."
+        End If
         Exit Function
     End If
     If v >= 2 Then EnsureLinkHas "tblExamTopics", "ChangeNo"
@@ -204,12 +211,13 @@ End Function
 ' Bring a data file of version v up to DATA_VERSION, one step per version, in
 ' the data file itself (modBuildBackEnd builds a new one at DATA_VERSION). The
 ' first copy of a newer build to open it does this. Each step only adds and
-' can run again. When it can't (a table is open in another copy), the error is
-' logged and the version stays, so DataVersionProblem says it couldn't be
-' updated.
+' can run again. When it can't (a table is open in another copy, or a data
+' file changed by hand), the error is logged and the version stays, so
+' DataVersionProblem says it couldn't be updated.
+' Returns 0 when it finished, else the number of the error that stopped it.
 '   2: tblExamTopics.ChangeNo (0 for the topics already there).
 '   3: the unique indexes and relationships new data files have (UpgradeTo3).
-Private Sub UpgradeData(ByVal v As Long)
+Private Function UpgradeData(ByVal v As Long) As Long
     Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean, n As Long, d As String
     On Error GoTo Fail
     Set db = DBEngine.OpenDatabase(KitBackendPath(PROBE_TABLE), False, False, LinkOptions(CurrentDb.TableDefs(PROBE_TABLE).Connect))
@@ -232,11 +240,24 @@ Private Sub UpgradeData(ByVal v As Long)
     If v < 3 Then UpgradeTo3 db
     db.Execute "UPDATE tblSettings SET SettingValue='" & DATA_VERSION & "' WHERE SettingKey='SchemaVersion'", dbFailOnError
     db.Close
-    Exit Sub
+    Exit Function
 Fail:
+    UpgradeData = Err.Number
+    If UpgradeData = 0 Then UpgradeData = -1
     LogError "modSignIn.UpgradeData", "from version " & v
+    On Error Resume Next                    ' the error is logged; a failed close changes nothing
     If Not db Is Nothing Then db.Close
-End Sub
+End Function
+
+' True for an error that means another copy has the data file or one of its
+' tables open (closing the other copies clears it): the kit's lock errors,
+' and 3045, 3050, 3051 and 3734 (file in use, locked, opened exclusively).
+Private Function IsOpenElsewhere(ByVal n As Long) As Boolean
+    Select Case n
+        Case 3045, 3050, 3051, 3734: IsOpenElsewhere = True
+        Case Else: IsOpenElsewhere = IsLockError(n)
+    End Select
+End Function
 
 ' Step 3: the unique indexes and relationships a new data file is built
 ' with (modBuildBackEnd, from uxLevelName and rQ_Step on). Columns that held
@@ -304,12 +325,14 @@ End Sub
 ' nm left out: 3022 (a unique index over duplicate values) and 3379
 ' ("Existing data in table ... violates referential integrity rules", as
 ' Microsoft's DAO error reference lists it for a relationship the rows
-' break; check it once in Access). Any other error, a table another copy
-' holds open (IsLockError, 3045, 3050, 3051) or anything unexpected, is
-' raised, so the version stays and the step runs again at the next start.
+' break; check it once in Access). 3375, 3012, 3367 and 3378 ("already
+' exists") mean another copy upgrading at the same moment made nm first, so
+' it counts as done. Any other error, a table another copy holds open
+' (IsOpenElsewhere) or anything unexpected, is raised, so the version stays
+' and the step runs again at the next start.
 Private Sub UpgradeSkip(ByVal n As Long, ByVal d As String, ByVal nm As String)
     Select Case n
-        Case 0
+        Case 0, 3375, 3012, 3367, 3378
         Case 3022, 3379
             On Error Resume Next
             Err.Raise n, "modSignIn.UpgradeData", d
