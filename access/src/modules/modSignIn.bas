@@ -130,6 +130,24 @@ Fail:
     LogError "modSignIn.TellAdminSkipped"
 End Sub
 
+' My settings' Sign out: the sign-in screen for the next person (a sign-in
+' name and app password), then the shell opens again for them, so their
+' roles, sidebar and dashboard replace the last person's (frmMain.Form_Load
+' runs AppStartUp again, signed in). Each approval step needs a different
+' person, so this is also how one computer walks a question or exam through
+' the chain. Closing the sign-in screen instead quits. Not while the page
+' shown has unsaved work it can't save (CanLeavePage).
+Public Function SignOutNow()
+    On Error GoTo Err_Handler
+    If Not DataLinked() Then Exit Function
+    If Not Forms("frmMain").CanLeavePage() Then Exit Function
+    If Not KitPersonnelSignOut(APP_CODE) Then DoCmd.Quit acQuitSaveNone: Exit Function
+    Forms("frmMain").Reopen "dash"
+    Exit Function
+Err_Handler:
+    HandleError "modSignIn.SignOutNow"
+End Function
+
 ' Start-up step 5. Help only helps: when it can't be read the error is logged
 ' and the app opens with the help the build put in it.
 Private Sub SyncHelp()

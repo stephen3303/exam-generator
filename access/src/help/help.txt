@@ -376,6 +376,9 @@ The app sends its emails once your step is saved, from your computer's Outlook. 
 # Colors
 Click **Appearance** to choose the colors the whole app uses on this computer.
 
+# Sign out
+Click **Sign out** to let someone else sign in on this computer with their sign-in name and app password. The app opens again on the Dashboard with their roles. Each approval step needs a different person, so this is how one computer can take a question or an exam through the DH, XO and SM. Closing the sign-in screen instead closes the app.
+
 === directory | Personnel
 One shared Personnel file holds everyone who can use the Navy apps built on
 this kit. Your Windows sign-in finds you in it, so most days you don't sign in

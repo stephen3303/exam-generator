@@ -183,5 +183,14 @@ Public Sub Build_pgMySettings()
         x + px(16), y + px(40), fw, px(36), 9, False, CLR_MUTED_FG
     Set c = Btn("btnAppearance", "Appearance", x + px(16), y + px(80), px(120), px(28), "outline")
     c.OnClick = "=AppAppearance()"
+
+    ' Sign out (modSignIn.SignOutNow): the next person signs in on this
+    ' computer, which is also how one computer walks the approval chain.
+    y = y + px(120) + px(12)
+    Card "Account", "Sign out", x, y, w, px(120)
+    Lbl "lblSignOut", "Let someone else sign in on this computer with their sign-in name and app password.", _
+        x + px(16), y + px(40), fw, px(36), 9, False, CLR_MUTED_FG
+    Set c = Btn("btnSignOut", "Sign out", x + px(16), y + px(80), px(120), px(28), "outline")
+    c.OnClick = "=SignOutNow()"
     SaveForm "pgMySettings"
 End Sub
