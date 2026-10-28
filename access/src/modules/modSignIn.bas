@@ -50,6 +50,10 @@ Public Const DATA_VERSION As Long = 4            ' the tblSettings SchemaVersion
 Public Const ERR_NOT_ALLOWED As Long = vbObjectError + 70
 
 Private Const PROBE_TABLE As String = "tblSettings"
+' The checks the last data update left out (UpgradeSkip), "uxMarking, rQ_Step",
+' kept in tblSettings so the admin is told at each start until fixed by hand.
+Private Const SET_UPGRADE_SKIPPED As String = "UpgradeSkipped"
+Private m_skipped As String                     ' the checks this run of UpgradeData left out
 
 ' Whether the signed-in person may open a page, from the roles read at
 ' sign-in (TempVars): admin pages for the admin, the rest by role. It only
@@ -103,8 +107,28 @@ Public Function AppStartUp() As Boolean
     End If
     SplashStatus "Loading help" & ChrW(8230)
     SyncHelp
+    TellAdminSkipped
     AppStartUp = True
 End Function
+
+' Tell an admin which checks the last data update had to leave out (rows in
+' the data file break them), so it isn't silently missing a constraint.
+' The admin removes the tblSettings UpgradeSkipped row once the rows are
+' fixed and the checks added by hand. Only a reminder: a failed read is logged.
+Private Sub TellAdminSkipped()
+    Dim s As String
+    On Error GoTo Fail
+    If Not IsExamAdmin() Then Exit Sub
+    s = SettingText(SET_UPGRADE_SKIPPED)
+    If Len(s) = 0 Then Exit Sub
+    CloseSplash
+    KitMsgBox "The last update of the shared data file had to leave out these checks, because rows already in it break " & _
+        "them: " & s & "." & vbCrLf & vbCrLf & "The app's own checks still apply. Admin: Logs has the details. Once the rows " & _
+        "are fixed, add the checks in the data file and delete its tblSettings row UpgradeSkipped.", vbInformation, APP_NAME
+    Exit Sub
+Fail:
+    LogError "modSignIn.TellAdminSkipped"
+End Sub
 
 ' Start-up step 5. Help only helps: when it can't be read the error is logged
 ' and the app opens with the help the build put in it.
@@ -222,6 +246,8 @@ End Function
 Private Function UpgradeData(ByVal v As Long) As Long
     Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean, n As Long, d As String
     On Error GoTo Fail
+    m_skipped = ""
+    BackUpDataFile v                        ' no backup, no update: the error stops it here
     Set db = DBEngine.OpenDatabase(KitBackendPath(PROBE_TABLE), False, False, LinkOptions(CurrentDb.TableDefs(PROBE_TABLE).Connect))
     If v < 2 Then
         Set td = db.TableDefs("tblExamTopics")
@@ -244,6 +270,12 @@ Private Function UpgradeData(ByVal v As Long) As Long
         AddIndexIfMissing db, "ixAuditOn", "tblAuditTrail", "ActionOn", False
         AddIndexIfMissing db, "ixAuditPerson", "tblAuditTrail", "PersonID, ItemType, ItemID", False
     End If
+    ' A check left out is recorded with the version, so the admin is told (TellAdminSkipped).
+    If Len(m_skipped) > 0 Then
+        db.Execute "DELETE FROM tblSettings WHERE SettingKey=" & Q(SET_UPGRADE_SKIPPED), dbFailOnError
+        db.Execute "INSERT INTO tblSettings (SettingKey, SettingValue, Description) VALUES (" & Q(SET_UPGRADE_SKIPPED) & ", " & _
+            Q(Left$(m_skipped, 255)) & ", 'Checks the data update to version " & DATA_VERSION & " left out (rows break them)')", dbFailOnError
+    End If
     db.Execute "UPDATE tblSettings SET SettingValue='" & DATA_VERSION & "' WHERE SettingKey='SchemaVersion'", dbFailOnError
     db.Close
     Exit Function
@@ -254,6 +286,22 @@ Fail:
     On Error Resume Next                    ' the error is logged; a failed close changes nothing
     If Not db Is Nothing Then db.Close
 End Function
+
+' Copy the data file to "<file>.v<v>.bak" next to it before the first change
+' of an update, so an update that goes wrong can be undone by hand. A backup
+' already there (an earlier try of the same update) is the file as it was,
+' so it is kept. Copying works with the file open in shared mode, as the
+' links have it.
+' Errors: the file system's (no right to write the folder, disk full), which
+'   stop the update.
+Private Sub BackUpDataFile(ByVal v As Long)
+    Dim src As String, bak As String
+    src = KitBackendPath(PROBE_TABLE)
+    bak = src & ".v" & v & ".bak"
+    If Len(Dir$(bak)) > 0 Then Exit Sub
+    SplashStatus "Backing up the data file" & ChrW(8230)
+    CreateObject("Scripting.FileSystemObject").CopyFile src, bak, False
+End Sub
 
 ' True for an error that means another copy has the data file or one of its
 ' tables open (closing the other copies clears it): the kit's lock errors,
@@ -343,6 +391,7 @@ Private Sub UpgradeSkip(ByVal n As Long, ByVal d As String, ByVal nm As String)
     Select Case n
         Case 0, 3375, 3012, 3367, 3378
         Case 3022, 3379
+            m_skipped = m_skipped & IIf(Len(m_skipped) > 0, ", ", "") & nm
             On Error Resume Next
             Err.Raise n, "modSignIn.UpgradeData", d
             LogError "modSignIn.UpgradeData", nm & " left out: rows in the data file break it (a duplicate, or a row " & _
