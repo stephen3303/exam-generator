@@ -37,14 +37,13 @@ Private Const DOC_FOLDER As String = "Exam documents"
 ' Word's constants (late binding).
 Private Const wdAlignParagraphLeft As Long = 0
 Private Const wdAlignParagraphCenter As Long = 1
-Private Const wdActiveEndAdjustedPageNumber As Long = 1
+Private Const wdActiveEndPageNumber As Long = 3
 Private Const wdStatisticPages As Long = 2
 Private Const wdPrintView As Long = 3
 Private Const wdCollapseStart As Long = 1
 Private Const wdHeaderFooterPrimary As Long = 1
 Private Const wdFieldEmpty As Long = -1
 Private Const wdFieldPage As Long = 33
-Private Const wdFieldIf As Long = 35
 Private Const wdFieldNumPages As Long = 26
 Private Const wdFormatXMLDocument As Long = 12
 Private Const wdDoNotSaveChanges As Long = 0
@@ -445,109 +444,76 @@ End Function
 ' Lay the document out, find the page each portion is on, and make the
 ' header's and footer's marking line show each page the highest marking of
 ' the portions on it (the cover: the overall one). Falls back to the overall
-' marking on every page when a page can't be read, Word fails while the
-' fields go in, the fields moved any portion to another page, or sameOrder
-' is False (the classification order changed since the exam was approved);
-' note then says why.
+' marking on every page when a page can't be read, the page count changed
+' after the fields went in, or sameOrder is False (the classification order
+' changed since the exam was approved); note then says why.
 Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
-    Dim nPages As Long, n2 As Long, pgRk() As Long, chk() As Long, p As Long, ok As Boolean, sec As Object
+    Dim nPages As Long, pgRk() As Long, i As Long, p As Long, p0 As Long, p1 As Long, ok As Boolean
+    Dim sec As Object
     Set sec = m_doc.Sections(1)
     On Error Resume Next
     m_doc.ActiveWindow.View.Type = wdPrintView      ' page numbers as printed
-    On Error GoTo NoPages
-    ok = sameOrder
-    If ok Then ok = PageRanks(overall, nPages, pgRk)
-    If ok Then
-        PageMarkings sec.Headers(wdHeaderFooterPrimary), pgRk, overall
-        PageMarkings sec.Footers(wdHeaderFooterPrimary), pgRk, overall
-        ' The fields must leave every portion on its page.
-        ok = PageRanks(overall, n2, chk)
-        If ok Then ok = (n2 = nPages)
-        If ok Then
-            For p = 1 To nPages
-                If chk(p) <> pgRk(p) Then ok = False
-            Next
-        End If
-    End If
-Stamped:
     On Error GoTo 0
-    If Not ok Then SetMarking sec, RankMarking(overall)   ' also replaces any fields put in
+    m_doc.Repaginate
+    nPages = m_doc.ComputeStatistics(wdStatisticPages)
+    ok = sameOrder And nPages >= 1
+    If ok Then
+        ReDim pgRk(1 To nPages)
+        pgRk(1) = overall
+        ' Every page a portion touches: a paragraph is kept whole on its
+        ' page, but one longer than a page still runs on.
+        For i = 0 To m_pN - 1
+            p0 = PageOf(m_pS(i)): p1 = PageOf(m_pE(i) - 1)
+            If p0 < 1 Or p1 < p0 Or p1 > nPages Then ok = False: Exit For
+            For p = p0 To p1
+                If m_pRank(i) > pgRk(p) Then pgRk(p) = m_pRank(i)
+            Next
+        Next
+    End If
+    If ok Then
+        For p = 2 To nPages
+            If pgRk(p) = 0 Then pgRk(p) = overall          ' a page with no marked portion found
+        Next
+        PageMarkings sec.Headers(wdHeaderFooterPrimary), pgRk
+        PageMarkings sec.Footers(wdHeaderFooterPrimary), pgRk
+        m_doc.Repaginate
+        ok = (m_doc.ComputeStatistics(wdStatisticPages) = nPages)
+    End If
+    If Not ok Then SetMarking sec, RankMarking(overall)
     If Not sameOrder Then
         note = "The classification order was changed after the SM approved this exam, so every page carries the higher of " & _
             "the overall marking approved then and the exam's highest marking now."
     ElseIf Not ok Then
-        note = "Word couldn't place each page's own marking reliably, so every page carries the exam's overall marking."
+        note = "Word couldn't work out which page each question is on, so every page carries the exam's overall marking."
     End If
-    Exit Sub
-NoPages:
-    ok = False
-    Resume Stamped
 End Sub
-
-' Lay the document out and read, for each of its nPages pages, the highest
-' rank of the portions on it into pgRk(1 To nPages): the cover, and a page
-' with no portion, get overall. A portion longer than a page counts on every
-' page it touches. False when a portion's page can't be read.
-Private Function PageRanks(ByVal overall As Long, ByRef nPages As Long, ByRef pgRk() As Long) As Boolean
-    Dim i As Long, p As Long, p0 As Long, p1 As Long
-    m_doc.Repaginate
-    nPages = m_doc.ComputeStatistics(wdStatisticPages)
-    If nPages < 1 Then Exit Function
-    ReDim pgRk(1 To nPages)
-    pgRk(1) = overall
-    For i = 0 To m_pN - 1
-        p0 = PageOf(m_pS(i)): p1 = PageOf(m_pE(i) - 1)
-        If p0 < 1 Or p1 < p0 Or p1 > nPages Then Exit Function
-        For p = p0 To p1
-            If m_pRank(i) > pgRk(p) Then pgRk(p) = m_pRank(i)
-        Next
-    Next
-    For p = 2 To nPages
-        If pgRk(p) = 0 Then pgRk(p) = overall
-    Next
-    PageRanks = True
-End Function
 
 ' Make the marking line (the first paragraph) of header or footer hf show,
 ' on each page p, the marking of rank pgRk(p): one { IF { PAGE } = p
 ' "marking" "" } field per page, of which only that page's shows anything.
-' Word works the fields out per page as it lays the pages out. The results
-' saved with them are the overall marking in the first and nothing in the
-' rest, so a viewer that doesn't work fields out shows the overall marking.
-Private Sub PageMarkings(hf As Object, pgRk() As Long, ByVal overall As Long)
-    Dim r As Object, f As Object, c As Object, p As Long, k As Long, mk As String, rk As Long, first As Boolean
+Private Sub PageMarkings(hf As Object, pgRk() As Long)
+    Dim r As Object, f As Object, c As Object, p As Long, k As Long, mk As String
     Set r = hf.Range.Paragraphs(1).Range
     r.MoveEnd 1, -1                         ' wdCharacter: keep the paragraph mark
     r.Text = ""
-    rk = -1
     For p = UBound(pgRk) To 1 Step -1       ' each at the line's start, so they end up in page order
-        If pgRk(p) <> rk Then
-            rk = pgRk(p)
-            mk = Replace(Replace(RankMarking(rk), "\", "\\"), """", "\""")
-        End If
+        mk = Replace(Replace(RankMarking(pgRk(p)), "\", "\\"), """", "\""")
         Set r = hf.Range.Paragraphs(1).Range
         r.Collapse wdCollapseStart
-        Set f = hf.Range.Fields.Add(r, wdFieldEmpty, "IF PAGENO = " & p & " """ & mk & """ """"", False)
+        Set f = hf.Range.Fields.Add(r, wdFieldEmpty, "IF PAGENO = " & p & " """ & mk & """ """""", False)
         ' The page number goes in as a field of its own, inside the IF.
         Set c = f.Code
         k = InStr(c.Text, "PAGENO")
-        If k = 0 Then Err.Raise vbObjectError + 513, "modExamDoc.PageMarkings", "The page field couldn't be placed."
         c.SetRange c.Start + k - 1, c.Start + k + 5
         hf.Range.Fields.Add c, wdFieldPage
     Next
     hf.Range.Fields.Update
-    first = True
-    For Each f In hf.Range.Fields
-        If f.Type = wdFieldIf Then
-            If first Then f.Result.Text = RankMarking(overall): first = False Else f.Result.Text = ""
-        End If
-    Next
     BannerFormat hf.Range.Paragraphs(1).Range
 End Sub
 
 ' The page character position pos is on.
 Private Function PageOf(ByVal pos As Long) As Long
-    PageOf = m_doc.Range(pos, pos).Information(wdActiveEndAdjustedPageNumber)
+    PageOf = m_doc.Range(pos, pos).Information(wdActiveEndPageNumber)
 End Function
 
 ' The marking of the classification level of rank rk ("SECRET").
