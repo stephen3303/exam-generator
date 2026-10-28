@@ -24,7 +24,9 @@ Option Explicit
 ' not add questions given lately over the limit) and signs off. One sign-off
 ' completes the topic: the signer's task is Done and the other SMEs' tasks
 ' on it are Closed. When the exam's last topic is signed off, the exam goes
-' to the DH for approval (In Review), which build phase 8 handles.
+' to the DH for approval (In Review; modExamApprovals). An approver who
+' sends it back reopens one topic or all of them (Rejected): their SMEs get
+' new reviews, and the last sign-off sends it to the DH again.
 '
 ' Every write checks the person's right in the data file at the moment of
 ' the write (RequireExamMaker, RequireReviewer) and raises ERR_NOT_ALLOWED
@@ -36,6 +38,8 @@ Public Const ITEM_EXAM As String = "Exam"
 ' Exam statuses (tblStatuses, AppliesTo Exam).
 Public Const ES_SME_REVIEW As String = "SME Review"
 Public Const ES_REVIEW As String = "In Review"
+Public Const ES_APPROVED As String = "Approved"
+Public Const ES_REJECTED As String = "Rejected"
 
 ' Review tasks (tblTasks).
 Public Const TASK_SME_REVIEW As String = "SME Review"
@@ -156,7 +160,7 @@ End Function
 
 ' The active SMEs of topic topicId whom the Personnel file lets use the
 ' app, as ids joined with commas ("" for none). Only they get review tasks.
-Private Function TopicReviewers(ByVal topicId As Long) As String
+Public Function TopicReviewers(ByVal topicId As Long) As String
     Dim rs As DAO.Recordset, s As String
     Set rs = CurrentDb.OpenRecordset("SELECT s.PersonID FROM tblTopicSMEs AS s INNER JOIN tblPeople AS pp ON s.PersonID=pp.PersonID " & _
         "WHERE s.TopicID=" & topicId & " AND pp.IsActive AND s.PersonID IN (SELECT PersonID FROM tblPersonRoles WHERE RoleID=" & _
@@ -432,7 +436,8 @@ Public Function SwapCandidatesSql(ByVal etId As Long, ByVal keys As String, ByVa
 End Function
 
 ' Why the signed-in person can't change or sign off exam topic etId now, or
-' "": the topic must still wait for its sign-off on an exam in SME review,
+' "": the topic must still wait for its sign-off on an exam in SME review
+' (or sent back to it),
 ' and the person must be an active SME of the topic with an open review
 ' task for it, whom the Personnel file lets use the app.
 Public Function ReviewProblem(ByVal etId As Long) As String
@@ -445,7 +450,7 @@ Public Function ReviewProblem(ByVal etId As Long) As String
     ElseIf Not IsNull(rs!SignedOffByPersonID) Then
         s = "Signed off by " & SignerName(rs!SignedOffByPersonID) & " on " & Format$(rs!SignedOffOn, "d mmm yyyy") & _
             ", so its questions are settled."
-    ElseIf rs!StatusID <> ExamStatusID(ES_SME_REVIEW) Then
+    ElseIf rs!StatusID <> ExamStatusID(ES_SME_REVIEW) And rs!StatusID <> ExamStatusID(ES_REJECTED) Then
         s = "The exam is past SME review, so its questions can't be changed here."
     Else
         topicId = rs!TopicID
@@ -630,13 +635,13 @@ Fail:
 End Function
 
 ' Send exam examId to the DH for approval (In Review, at the DH's step) when
-' every topic is signed off and it is still in SME review. Safe to call
-' twice: only the call that moves it writes the audit row.
+' every topic is signed off and it is still in SME review, or sent back.
+' Safe to call twice: only the call that moves it writes the audit row.
 Private Sub SendWhenSignedOff(ByVal examId As Long)
     Dim n As Long
     If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Sub
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REVIEW) & ", CurrentStepRoleID=" & RoleID("DH") & _
-        " WHERE ExamID=" & examId & " AND StatusID=" & ExamStatusID(ES_SME_REVIEW))
+        " WHERE ExamID=" & examId & " AND StatusID IN (" & ExamStatusID(ES_SME_REVIEW) & "," & ExamStatusID(ES_REJECTED) & ")")
     If n > 0 Then AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_SUBMITTED, RoleID("DH"), _
         "Every topic signed off"
 End Sub
