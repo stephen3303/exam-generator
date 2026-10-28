@@ -242,7 +242,7 @@ End Function
 
 ' Make the picked person an SME of the open topic.
 Private Sub AddSME()
-    Dim pid As Long
+    Dim pid As Long, ws As DAO.Workspace, inTrans As Boolean
     If m_id = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     pid = Nz(Me.txtSMEKey, 0)
@@ -254,25 +254,50 @@ Private Sub AddSME()
     If DCount("*", "tblTopicSMEs", "TopicID=" & m_id & " AND PersonID=" & pid) > 0 Then
         KitToast "They're already an SME of this topic.", "info"
     Else
+        On Error GoTo Fail
+        Set ws = DBEngine.Workspaces(0)
+        ws.BeginTrans: inTrans = True       ' the role, the topic and the audit row together
         SetPersonRole pid, "SME", True
         KitExecute "INSERT INTO tblTopicSMEs (TopicID, PersonID) VALUES (" & m_id & ", " & pid & ")"
+        AuditAdmin ITEM_PERSON, pid, PersonName(pid) & " made an SME of the topic " & TopicNameOf(m_id)
+        ws.CommitTrans: inTrans = False
         KitToast "SME added.", "success"
     End If
     Me.txtSMEKey = Null
     KitPickShow Me.txtSME
     SMEsChanged pid
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmTopics.AddSME", m_id & " " & pid
 End Sub
 
 ' Take the selected SME off the open topic. Their SME role stays.
 Private Sub RemoveSME()
-    Dim pid As Long
+    Dim pid As Long, ws As DAO.Workspace, inTrans As Boolean
     pid = Nz(Me.sfSMEs.Form.txtSel, 0)
     If m_id = 0 Or pid = 0 Then Exit Sub
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    KitExecute "DELETE FROM tblTopicSMEs WHERE TopicID=" & m_id & " AND PersonID=" & pid
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True           ' the change and its audit row together
+    If KitExecute("DELETE FROM tblTopicSMEs WHERE TopicID=" & m_id & " AND PersonID=" & pid) > 0 Then
+        AuditAdmin ITEM_PERSON, pid, PersonName(pid) & " taken off the topic " & TopicNameOf(m_id)
+    End If
+    ws.CommitTrans: inTrans = False
+    On Error GoTo 0
     SMEsChanged 0
     KitToast "Taken off this topic. They keep the SME role for any other topic.", "success"
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmTopics.RemoveSME", m_id & " " & pid
 End Sub
+
+' A topic's name, for audit rows; "" when it is gone.
+Private Function TopicNameOf(ByVal topicId As Long) As String
+    TopicNameOf = Nz(DLookup("TopicName", "tblTopics", "TopicID=" & topicId), "")
+End Function
 
 ' The SMEs changed: their table (pid selected, 0 for none) and the list's row.
 Private Sub SMEsChanged(ByVal pid As Long)
