@@ -137,7 +137,7 @@ Public Sub Build_pgAdmRules()
     Lbl "lblRuleIntro", "A new exam may reuse questions given in recent exams, up to a limit. These settings set " & _
         "that limit for every topic.", fx, y + px(40), fw, px(36), 9, False, CLR_MUTED_FG
     FieldLbl "lblPct", "MOST OF A TOPIC'S QUESTIONS THAT MAY REPEAT", fx, y + px(88), fw
-    Slider "sldPct", "", fx, y + px(108), fw, 0, 100, 5, "RuleChanged", True, "0\%"
+    Slider "sldPct", "", fx, y + px(108), fw, 0, 100, 5, "RuleChanged", True, "0""%"""   ' a quoted %: Access drops the backslash of 0\%, and a bare % multiplies by 100
     Lbl "lblPctHint", "0% means every question must be fresh; 100% means repeats are never limited.", _
         fx, y + px(132), fw, px(18), 9, False, CLR_MUTED_FG
     FieldLbl "lblWindow", "RECENT EXAMS CHECKED", fx, y + px(168), fw
@@ -148,9 +148,9 @@ Public Sub Build_pgAdmRules()
     Set c = Txt("txtDefault", "", fx, y + px(266), px(80), px(30))
     c.TextAlign = 3
     Ev c, "OnChange"
-    Lbl "lblDefaultHint", "What a new topic, and a topic added to a template, starts with (" & _
+    Lbl "lblDefaultHint", "What new topics, and topics added to a template, start with (" & _
         MIN_QUESTIONS_PER_TOPIC & " to " & MAX_QUESTIONS_PER_TOPIC & ").", _
-        fx + px(92), y + px(266), fw - px(92), px(30), 9, False, CLR_MUTED_FG
+        fx + px(92), y + px(264), fw - px(92), px(38), 9, False, CLR_MUTED_FG
     Alert "alShort", fx, y + px(312), fw, px(160), "info", "Topics short of questions"
     Set c = Btn("btnSave", "Save", fx, y + h - px(48), px(88), px(32)): c.ControlTipText = "Save (Ctrl+S)": Anchor c, 0, 1
     Set c = Btn("btnUndo", "Undo changes", fx + px(96), y + h - px(48), px(120), px(32), "ghost"): Anchor c, 0, 1
