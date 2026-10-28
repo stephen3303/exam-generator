@@ -16,6 +16,12 @@ Option Explicit
 '
 ' Someone else's save while the editor is open shows as a newer audit row
 ' than the one the editor loaded (m_stamp); Save asks before overwriting it.
+'
+' Owner: the question bank (build phase 5). Depends on: modAdmin,
+' modApprovals, modErrors, modGlobals, modNotify, modQuestions, modSignIn,
+' modUI; the
+' kit's modKitKeys, modKitLocks, modKitPalette, modKitPurge, modKitUI,
+' modKitUtil, modMenu, modUIKit.
 
 Private Const MSG_TITLE As String = "Question editor"
 
@@ -114,19 +120,22 @@ Private Sub btnSubmit_Click()
             "and the senior member. You can't change it while it is in review; if it is rejected, it comes back to you.", _
             vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     If Not SaveNow(True) Then Exit Sub
+    StartNotices                            ' the toast reports this submit's emails only
     problem = SubmitQuestion(m_id)
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
+    SendQueuedNotices                       ' the DHs' emails, straight after the submit
     who = RoleHolders("DH")
     LoadQuestion m_id, False
     If Len(who) = 0 Then
-        KitMsgBox "Submitted. Nobody holds the department head role yet, so it waits until the admin gives someone " & _
-            "that role on the People and routing page.", vbInformation, MSG_TITLE
+        KitMsgBox WithNoticeNote("Submitted. Nobody holds the department head role yet, so it waits until the admin gives " & _
+            "someone that role on the People and routing page."), vbInformation, MSG_TITLE
     Else
-        KitToast "Submitted to " & who & ".", "success"
+        KitToast WithNoticeNote("Submitted to " & who & "."), "success"
     End If
     Exit Sub
 Err_Handler:
     HandleError "pgQuestionEdit.btnSubmit_Click", m_id
+    SendNoticesWithToast                    ' any emails the submit queued go now, not with a later action
 End Sub
 
 Private Sub btnBack_Click()
@@ -167,19 +176,35 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub cboDiff_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.cboDiff_AfterUpdate", m_id
 End Sub
 
 Private Sub cboMark_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.cboMark_AfterUpdate", m_id
 End Sub
 
 Private Sub txtText_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.txtText_AfterUpdate", m_id
 End Sub
 
 Private Sub txtRefAns_AfterUpdate()
+    On Error GoTo Err_Handler
     Changed
+    Exit Sub
+Err_Handler:
+    HandleError "pgQuestionEdit.txtRefAns_AfterUpdate", m_id
 End Sub
 
 ' Points: shown as 4 or 1.5 when a number, and the parts' total checked.
@@ -752,9 +777,19 @@ Private Function SaveNow(ByVal forSubmit As Boolean) As Boolean
         GoToProblem Split(problems, vbCrLf)(0)
         Exit Function
     End If
-    If forSubmit And m_id <> 0 And Not IsDirty() Then SaveNow = True: Exit Function
     ' Someone else saved since this was loaded.
     last = LastQuestionAudit(m_key)
+    If forSubmit And m_id <> 0 And Not IsDirty() Then
+        ' Nothing of yours to save: submit only what you have seen.
+        If last <> m_stamp Then
+            KitMsgBox "Someone else changed this question while you had it open (" & AuditWho(last) & "). " & _
+                "It is shown as it stands now: check it, then submit again.", vbInformation, MSG_TITLE
+            LoadQuestion m_id, False
+            Exit Function
+        End If
+        SaveNow = True
+        Exit Function
+    End If
     If last <> m_stamp Then
         If KitMsgBox("Someone else changed this question while you had it open (" & AuditWho(last) & ")." & vbCrLf & vbCrLf & _
                 "Save yours over theirs? No keeps theirs; Undo changes in More then shows it.", _
@@ -898,7 +933,7 @@ End Sub
 Private Sub RefreshParts(ByVal pid As Long)
     Dim n As Long
     Me.sfParts.Form.Requery
-    SelectRow Me.sfParts, pid
+    GridSelect Me.sfParts, pid
     n = WorkPartCount()
     If n > 0 Then
         Me.cboMark = RolledUpMarking()
@@ -939,7 +974,7 @@ End Sub
 Private Sub RefreshOptions(ByVal id As Long)
     Dim n As Long, nParts As Long, keep As Variant
     Me.sfOptions.Form.Requery
-    SelectRow Me.sfOptions, id
+    GridSelect Me.sfOptions, id
     nParts = WorkPartCount()
     keep = Me.cboOptPart
     Me.cboOptPart.RowSource = "SELECT id, PartLabel FROM wq_part ORDER BY SortOrder"
@@ -986,7 +1021,7 @@ End Sub
 Private Sub RefreshRefs(ByVal id As Long)
     Dim n As Long
     Me.sfRefs.Form.Requery
-    SelectRow Me.sfRefs, id
+    GridSelect Me.sfRefs, id
     n = DCount("*", "wq_ref")
     If n = 0 Then
         ShowAlert Me, "alRefs", "No references yet. Cite at least one before the question is submitted.", "warning"
@@ -1020,17 +1055,3 @@ End Sub
 Private Function SelId(sf As Control) As Long
     SelId = Nz(sf.Form.txtSel, 0)
 End Function
-
-' Select row id of a table (0: none).
-Private Sub SelectRow(sf As Control, ByVal id As Long)
-    Dim g As Form
-    Set g = sf.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = id
-        End With
-    End If
-    g.Recalc
-End Sub

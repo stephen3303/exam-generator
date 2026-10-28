@@ -12,17 +12,21 @@ Option Explicit
 ' turns a difficulty level off or on, or deletes an entry nothing uses yet
 ' (one in use can be turned off or renamed instead). Classification levels
 ' are listed lowest first: their rank decides an exam's overall marking.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitKeys, modKitLocks,
+' modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Rules and lists"
 
-Private m_dirty As Boolean      ' the rule has changes not saved yet
-Private m_data As Boolean       ' a data file is linked
+Private m_isDirty As Boolean    ' the rule has changes not saved yet
+Private m_hasData As Boolean    ' a data file is linked
 
 Private Sub Form_Load()
     Dim c As Variant
     On Error GoTo Err_Handler
-    m_data = DataLinked()
-    If m_data Then
+    m_hasData = DataLinked()
+    If m_hasData Then
         Me.sfDiff.Form.RecordSource = DiffSql()
         Me.sfClass.Form.RecordSource = ClassSql()
         LoadRule
@@ -42,7 +46,7 @@ End Sub
 ' frmMain asks before it swaps or closes this page.
 Public Function CanLeave() As Boolean
     On Error GoTo Err_Handler
-    If Not m_dirty Then CanLeave = True: Exit Function
+    If Not m_isDirty Then CanLeave = True: Exit Function
     Select Case KitMsgBox("Save your changes to the overlap rule?", vbYesNoCancel + vbQuestion, MSG_TITLE)
         Case vbYes: CanLeave = SaveRule()
         Case vbNo: CanLeave = True
@@ -56,7 +60,7 @@ End Function
 Public Function Shortcut(ByVal action As String) As Boolean
     On Error GoTo Err_Handler
     If action = SHORTCUT_SAVE Then
-        If m_dirty Then SaveRule
+        If m_isDirty Then SaveRule
         Shortcut = True
     End If
     Exit Function
@@ -85,7 +89,7 @@ End Sub
 ' A slider moved (its onChange).
 Public Sub RuleChanged()
     On Error GoTo Err_Handler
-    If Not m_data Then Exit Sub
+    If Not m_hasData Then Exit Sub
     Edited
     ShowShort
     Exit Sub
@@ -122,23 +126,23 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub LoadRule()
-    SetSlider Me, "sldPct", SettingLong(SET_OVERLAP_PCT, 30)
-    SetSlider Me, "sldWindow", SettingLong(SET_OVERLAP_WINDOW, 10)
+    SetSlider Me, "sldPct", OverlapPct()
+    SetSlider Me, "sldWindow", OverlapWindow()
     Me.txtDefault = DefaultQuestionCount()
-    m_dirty = False
+    m_isDirty = False
     ShowShort
     ShowState
 End Sub
 
 Private Sub Edited()
-    If m_dirty Or Not m_data Then Exit Sub
-    m_dirty = True
+    If m_isDirty Or Not m_hasData Then Exit Sub
+    m_isDirty = True
     ShowState
 End Sub
 
 Private Sub ShowState()
-    SetEnabled Me.btnSave, m_dirty
-    SetEnabled Me.btnUndo, m_dirty
+    SetEnabled Me.btnSave, m_isDirty
+    SetEnabled Me.btnUndo, m_isDirty
 End Sub
 
 ' The topics short of approved questions under the sliders' values.
@@ -149,29 +153,40 @@ Private Sub ShowShort()
         ShowAlert Me, "alShort", "Every active topic has enough approved questions for exams under these values.", _
             "success", "No topics short"
     Else
-        ShowAlert Me, "alShort", s, "warning", n & IIf(n = 1, " topic is", " topics are") & " short of approved questions"
+        ShowAlert Me, "alShort", Replace(s, "&", "&&"), "warning", n & " " & Plural(n, "topic") & IIf(n = 1, " is", " are") & " short of approved questions"
     End If
 End Sub
 
 ' Save the three settings. False when the default count isn't a whole
-' number from 1 to 50 (the admin is told).
+' number from MIN_ to MAX_QUESTIONS_PER_TOPIC (the admin is told).
 Private Function SaveRule() As Boolean
-    Dim t As String
+    Dim t As String, ws As DAO.Workspace, inTrans As Boolean
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    t = Trim$(FieldText(Me.txtDefault))
-    If Not IsWhole(t, 1, 50) Then
-        KitMsgBox "Questions per topic to start with must be a whole number from 1 to 50.", vbExclamation, MSG_TITLE
+    t = Trim$(FieldText(Me, Me.txtDefault))
+    If Not IsWhole(t, MIN_QUESTIONS_PER_TOPIC, MAX_QUESTIONS_PER_TOPIC) Then
+        KitMsgBox "Questions per topic to start with must be a whole number from " & MIN_QUESTIONS_PER_TOPIC & _
+            " to " & MAX_QUESTIONS_PER_TOPIC & ".", vbExclamation, MSG_TITLE
         Me.txtDefault.SetFocus
         Exit Function
     End If
+    ' The three settings are one rule: all of them are saved, or none.
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
     SetSetting SET_OVERLAP_PCT, CStr(SliderValue(Me, "sldPct"))
     SetSetting SET_OVERLAP_WINDOW, CStr(SliderValue(Me, "sldWindow"))
     SetSetting SET_DEFAULT_COUNT, CStr(CLng(t))
+    ws.CommitTrans: inTrans = False
+    On Error GoTo 0
     Me.txtDefault = CLng(t)
-    m_dirty = False
+    m_isDirty = False
     ShowState
     KitToast "Saved. New exams follow the new rule.", "success"
     SaveRule = True
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmRules.SaveRule"
 End Function
 
 ' True when t is a whole number from lo to hi.
@@ -179,15 +194,6 @@ Private Function IsWhole(ByVal t As String, ByVal lo As Long, ByVal hi As Long) 
     If Len(t) = 0 Or Len(t) > 4 Then Exit Function
     If t Like "*[!0-9]*" Then Exit Function
     IsWhole = (CLng(t) >= lo And CLng(t) <= hi)
-End Function
-
-' A field's text: what is typed so far while it has the focus, else its value.
-Private Function FieldText(c As Control) As String
-    Dim act As String
-    On Error Resume Next
-    act = Me.ActiveControl.Name
-    On Error GoTo 0
-    If act = c.Name Then FieldText = Nz(c.Text, "") Else FieldText = Nz(c.Value, "")
 End Function
 
 ' ---------------------------------------------------------------------------
@@ -200,14 +206,17 @@ Private Sub btnDiffAdd_Click()
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     v = KitInputBox("Name of the new difficulty level:", "Difficulty levels")
     If IsNull(v) Then Exit Sub
-    problem = NameProblem(v, 30, "tblDifficultyLevels", "LevelName", "difficulty level")
+    problem = NameProblem(v, MAX_LEVEL_NAME, "tblDifficultyLevels", "LevelName", "difficulty level")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblDifficultyLevels (LevelName, SortOrder, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
-        NextOrder("tblDifficultyLevels", "SortOrder") & ", True)"
-    ListChanged Me.sfDiff, DLookup("DifficultyID", "tblDifficultyLevels", "LevelName=" & Q(Trim$(v)))
+    GridSelect Me.sfDiff, InsertRow("INSERT INTO tblDifficultyLevels (LevelName, SortOrder, IsActive) VALUES (" & _
+        Q(Trim$(v)) & ", " & NextOrder("tblDifficultyLevels", "SortOrder") & ", True)"), True
     KitToast "Level added.", "success"
     Exit Sub
 Err_Handler:
+    If Err.Number = 3022 Then               ' added by someone else at this moment (uxLevelName)
+        KitMsgBox "There is already a difficulty level called """ & Trim$(Nz(v, "")) & """.", vbExclamation, MSG_TITLE
+        Exit Sub
+    End If
     HandleError "pgAdmRules.btnDiffAdd_Click"
 End Sub
 
@@ -217,20 +226,23 @@ Private Sub btnClassAdd_Click()
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     m = KitInputBox("Marking of the new classification level (as an exam's banner shows it):", "Classification levels")
     If IsNull(m) Then Exit Sub
-    problem = NameProblem(m, 30, "tblClassLevels", "Marking", "classification level")
+    problem = NameProblem(m, MAX_LEVEL_NAME, "tblClassLevels", "Marking", "classification level")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     pm = KitInputBox("Its portion mark (as it shows before a question, without the brackets):", "Classification levels")
     If IsNull(pm) Then Exit Sub
-    problem = NameProblem(pm, 10, "tblClassLevels", "PortionMark", "portion mark")
+    problem = NameProblem(pm, MAX_PORTION_MARK, "tblClassLevels", "PortionMark", "portion mark")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & Q(Trim$(m)) & ", " & _
-        Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"
-    ListChanged Me.sfClass, DLookup("ClassLevelID", "tblClassLevels", "Marking=" & Q(Trim$(m)))
+    GridSelect Me.sfClass, InsertRow("INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & _
+        Q(Trim$(m)) & ", " & Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"), True
     ' A new level gets the next LevelRank, so it ranks highest and sits last in
     ' this lowest-first list; Move up makes it rank lower.
     KitToast "Added as the highest level, at the bottom of the list. Move it up if it ranks lower.", "success"
     Exit Sub
 Err_Handler:
+    If Err.Number = 3022 Then               ' added by someone else at this moment (uxMarking, uxPortionMark)
+        KitMsgBox "There is already a classification level with that marking or portion mark.", vbExclamation, MSG_TITLE
+        Exit Sub
+    End If
     HandleError "pgAdmRules.btnClassAdd_Click"
 End Sub
 
@@ -283,7 +295,7 @@ Private Sub DiffActions(ByVal atPointer As Boolean)
         Case "ren"
             v = KitInputBox("New name for """ & nm & """:", "Difficulty levels", nm)
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 30, "tblDifficultyLevels", "LevelName", "difficulty level", "DifficultyID=" & id)
+            problem = NameProblem(v, MAX_LEVEL_NAME, "tblDifficultyLevels", "LevelName", "difficulty level", "DifficultyID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblDifficultyLevels SET LevelName=" & Q(Trim$(v)) & " WHERE DifficultyID=" & id
         Case "up", "down"
@@ -294,25 +306,25 @@ Private Sub DiffActions(ByVal atPointer As Boolean)
         Case "del"
             used = DCount("*", "tblQuestions", "DifficultyID=" & id)
             If used > 0 Then
-                KitMsgBox """" & nm & """ is on " & used & IIf(used = 1, " question", " questions") & ", so it can't be deleted. " & _
+                KitMsgBox """" & nm & """ is on " & used & " " & Plural(used, "question") & ", so it can't be deleted. " & _
                     "Turn it off instead: those questions keep it, and new ones can't pick it.", vbInformation, MSG_TITLE
                 Exit Sub
             End If
             If Not KitConfirmTyped("Delete the difficulty level """ & nm & """?", "No question uses it. This can't be undone.", _
                 PURGE_WORD, "Delete", "Difficulty levels") Then Exit Sub
             KitExecute "DELETE FROM tblDifficultyLevels WHERE DifficultyID=" & id
-            ListChanged Me.sfDiff, Null
+            GridSelect Me.sfDiff, Null, True
             KitToast "Level deleted.", "destructive"
             Exit Sub
         Case Else
             Exit Sub
     End Select
-    ListChanged Me.sfDiff, id
+    GridSelect Me.sfDiff, id, True
 End Sub
 
 ' The selected classification level's actions.
 Private Sub ClassActions(ByVal atPointer As Boolean)
-    Dim id As Long, nm As String, pm As String, used As Long, k As String, v As Variant, problem As String
+    Dim id As Long, nm As String, pm As String, used As Long, k As String, v As Variant, problem As String, r As Long
     Dim a(5) As String
     id = Nz(Me.sfClass.Form.txtSel, 0)
     If id = 0 Then KitToast "Pick a level in the list first.", "info": Exit Sub
@@ -330,17 +342,30 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
         Case "ren"
             v = KitInputBox("New marking for """ & nm & """:", "Classification levels", nm)
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 30, "tblClassLevels", "Marking", "classification level", "ClassLevelID=" & id)
+            problem = NameProblem(v, MAX_LEVEL_NAME, "tblClassLevels", "Marking", "classification level", "ClassLevelID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET Marking=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "pm"
             v = KitInputBox("New portion mark for """ & nm & """:", "Classification levels", pm)
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 10, "tblClassLevels", "PortionMark", "portion mark", "ClassLevelID=" & id)
+            problem = NameProblem(v, MAX_PORTION_MARK, "tblClassLevels", "PortionMark", "portion mark", "ClassLevelID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET PortionMark=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "up", "down"
+            ' The top level can't go up, nor the bottom one down (MoveRow's
+            ' order: LevelRank, then ClassLevelID); nothing changes, so no stamp.
+            r = Nz(DLookup("LevelRank", "tblClassLevels", "ClassLevelID=" & id), 0)
+            If DCount("*", "tblClassLevels", IIf(k = "up", "LevelRank<" & r & " OR (LevelRank=" & r & " AND ClassLevelID<" & id & ")", _
+                "LevelRank>" & r & " OR (LevelRank=" & r & " AND ClassLevelID>" & id & ")")) = 0 Then Exit Sub
+            ' Exam documents made before now are made again at their next
+            ' download: the newest audit entry marks the moment. Written first,
+            ' so a move never stands without it, and again once it has moved,
+            ' so a document made while it moved counts as made before.
+            SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
             If Not MoveRow("tblClassLevels", "ClassLevelID", "LevelRank", id, IIf(k = "up", -1, 1)) Then Exit Sub
+            On Error Resume Next                ' if this fails, the first stamp still stands
+            SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
+            On Error GoTo 0
         Case "del"
             used = DCount("*", "tblQuestions", "ClassLevelID=" & id) + DCount("*", "tblQuestionParts", "ClassLevelID=" & id) + _
                 DCount("*", "tblExams", "OverallClassLevelID=" & id)
@@ -352,28 +377,13 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             If Not KitConfirmTyped("Delete the classification level """ & nm & """?", _
                 "No question, part or exam uses it. This can't be undone.", PURGE_WORD, "Delete", "Classification levels") Then Exit Sub
             KitExecute "DELETE FROM tblClassLevels WHERE ClassLevelID=" & id
-            ListChanged Me.sfClass, Null
+            GridSelect Me.sfClass, Null, True
             KitToast "Level deleted.", "destructive"
             Exit Sub
         Case Else
             Exit Sub
     End Select
-    ListChanged Me.sfClass, id
-End Sub
-
-' Reload a list and select id in it (Null: none).
-Private Sub ListChanged(sf As Control, ByVal id As Variant)
-    Dim g As Form
-    Set g = sf.Form
-    g.Requery
-    g.txtSel = Null
-    If Not IsNull(id) Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = id
-        End With
-    End If
-    g.Recalc
+    GridSelect Me.sfClass, id, True
 End Sub
 
 Private Function DiffSql() As String

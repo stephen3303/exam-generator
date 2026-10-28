@@ -11,12 +11,16 @@ Option Explicit
 ' Remove takes it off (the topic itself stays). More, or a right-click on a
 ' row, copies the template with its topics, or deletes it while no exam
 ' was made from it.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitKeys, modKitLocks,
+' modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Templates"
 
 Private m_id As Long            ' the open template (0 when none)
 Private m_search As String
-Private m_stale As Boolean      ' subTemplate saved a change the list doesn't show yet
+Private m_isStale As Boolean    ' subTemplate saved a change the list doesn't show yet
 
 Private Sub Form_Load()
     On Error GoTo Err_Handler
@@ -74,10 +78,10 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
     id = Nz(Me.sfList.Form.txtSel, 0)
     If id = 0 Then Exit Sub
     If Not ShowTemplate(id) Then
-        MarkRow m_id
+        GridSelect Me.sfList, m_id
         Exit Sub
     End If
-    If m_stale Then RefreshList id          ' the template left behind was saved with a change
+    If m_isStale Then RefreshList id          ' the template left behind was saved with a change
     Exit Sub
 Err_Handler:
     HandleError "pgAdmTemplates.GridClick", id
@@ -184,15 +188,14 @@ End Sub
 ' subTemplate saved a change (its AfterUpdate). The list catches up once
 ' the save that caused it is over (GridClick, TemplateSaved).
 Public Sub TemplateChanged()
-    m_stale = True
+    m_isStale = True
 End Sub
 
 ' subTemplate's Save or Active switch saved template id: show it in the list.
 Public Sub TemplateSaved(ByVal id As Long)
     On Error GoTo Err_Handler
-    m_stale = False
-    Me.sfList.Form.Requery
-    MarkRow id
+    m_isStale = False
+    GridSelect Me.sfList, id, True
     Exit Sub
 Err_Handler:
     HandleError "pgAdmTemplates.TemplateSaved", id
@@ -208,14 +211,33 @@ Private Sub NewTemplate()
     If Not SaveDetail(Me, "sfDetail") Then Exit Sub
     v = KitInputBox("Name of the new template:", "New template")
     If IsNull(v) Then Exit Sub
-    problem = NameProblem(v, 100, "tblTemplates", "TemplateName", "template")
+    problem = NameProblem(v, MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-    KitExecute "INSERT INTO tblTemplates (TemplateName, IsActive) VALUES (" & Q(Trim$(v)) & ", True)"
-    id = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q(Trim$(v)))
+    id = InsertRow("INSERT INTO tblTemplates (TemplateName, IsActive) VALUES (" & Q(Trim$(v)) & ", True)")
     If Len(m_search) > 0 Then m_search = "": SetSearch Me, "txtSearch", ""
     RefreshList id
     KitToast "Template added. Add its topics with Add topic.", "success"
 End Sub
+
+' Copy template fromId, with its topics, as an active template called nm.
+' Both inserts are one transaction, so a failure leaves no empty copy.
+' Returns the copy's TemplateID.
+Private Function CopyTemplate(ByVal fromId As Long, ByVal nm As String) As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean, id As Long
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    id = InsertRow("INSERT INTO tblTemplates (TemplateName, Description, IsActive) SELECT " & Q(nm) & _
+        ", Description, True FROM tblTemplates WHERE TemplateID=" & fromId)
+    KitExecute "INSERT INTO tblTemplateTopics (TemplateID, TopicID, QuestionCount, SortOrder) SELECT " & id & _
+        ", TopicID, QuestionCount, SortOrder FROM tblTemplateTopics WHERE TemplateID=" & fromId
+    ws.CommitTrans: inTrans = False
+    CopyTemplate = id
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmTemplates.CopyTemplate", fromId & " as " & nm
+End Function
 
 ' The open template's actions: copy it, or delete it.
 Private Sub TemplateActions(ByVal atPointer As Boolean)
@@ -230,15 +252,11 @@ Private Sub TemplateActions(ByVal atPointer As Boolean)
     If Len(k) > 0 Then RequireExamAdmin    ' the right is checked now, not as of sign-in
     Select Case k
         Case "copy"
-            v = KitInputBox("Name of the copy:", "Copy template", Left$("Copy of " & nm, 100))
+            v = KitInputBox("Name of the copy:", "Copy template", Left$("Copy of " & nm, MAX_TEMPLATE_NAME))
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 100, "tblTemplates", "TemplateName", "template")
+            problem = NameProblem(v, MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template")
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
-            KitExecute "INSERT INTO tblTemplates (TemplateName, Description, IsActive) SELECT " & Q(Trim$(v)) & _
-                ", Description, True FROM tblTemplates WHERE TemplateID=" & m_id
-            id = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q(Trim$(v)))
-            KitExecute "INSERT INTO tblTemplateTopics (TemplateID, TopicID, QuestionCount, SortOrder) SELECT " & id & _
-                ", TopicID, QuestionCount, SortOrder FROM tblTemplateTopics WHERE TemplateID=" & m_id
+            id = CopyTemplate(m_id, Trim$(v))
             If Len(m_search) > 0 Then m_search = "": SetSearch Me, "txtSearch", ""
             RefreshList id
             KitToast "Copied with its topics.", "success"
@@ -293,21 +311,10 @@ End Sub
 ' The topic list changed: its table (tid selected, 0 for none), the total
 ' and the list's row.
 Private Sub TopicsChanged(ByVal tid As Long)
-    Dim g As Form
-    Set g = Me.sfTopics.Form
-    g.Requery
-    g.txtSel = Null
-    If tid <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & tid
-            If Not .NoMatch Then g.Bookmark = .Bookmark: g.txtSel = tid
-        End With
-    End If
-    g.Recalc
+    GridSelect Me.sfTopics, tid, True
     ShowTotal
     ShowTopicState
-    Me.sfList.Form.Requery
-    MarkRow m_id
+    GridSelect Me.sfList, m_id, True
 End Sub
 
 ' "6 topics, 24 questions an exam" above the topics.
@@ -318,7 +325,7 @@ Private Sub ShowTotal()
     If n = 0 Then
         Me.lblTotal.Caption = "None yet: Add topic"
     Else
-        Me.lblTotal.Caption = n & IIf(n = 1, " topic, ", " topics, ") & q & IIf(q = 1, " question", " questions") & " an exam"
+        Me.lblTotal.Caption = n & " " & Plural(n, "topic") & ", " & q & " " & Plural(q, "question") & " an exam"
     End If
 End Sub
 
@@ -328,8 +335,12 @@ Private Sub ShowTopicState()
     If sel Then
         Set g = Me.sfTopics.Form
         With g.RecordsetClone
-            .MoveFirst: first = (!id = g.txtSel)
-            .MoveLast: last = (!id = g.txtSel)
+            If .RecordCount = 0 Then        ' emptied by another admin since the last requery
+                sel = False
+            Else
+                .MoveFirst: first = (!id = g.txtSel)
+                .MoveLast: last = (!id = g.txtSel)
+            End If
         End With
     End If
     SetEnabled Me.btnChange, sel
@@ -342,7 +353,7 @@ End Sub
 ' template; none listed: nothing).
 Private Sub RefreshList(ByVal openId As Long)
     Dim g As Form, n As Long
-    m_stale = False
+    m_isStale = False
     Set g = Me.sfList.Form
     g.RecordSource = ListSql()
     GridHighlight Me.sfList, m_search
@@ -354,30 +365,12 @@ Private Sub RefreshList(ByVal openId As Long)
         SetVisible Me.emptyList_b, False
     End If
     SetVisible Me.sfList, n > 0
-    If MarkRow(openId) Then
+    If GridSelect(Me.sfList, openId) Then
         ShowTemplate openId
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ClearTemplate
     End If
 End Sub
-
-' Select id's row in the list. False when it isn't listed.
-Private Function MarkRow(ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = Me.sfList.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function
 
 ' Open template id on the right with its topics. False when the open
 ' template can't be saved first (it stays).

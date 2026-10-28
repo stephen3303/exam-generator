@@ -6,6 +6,9 @@ Option Explicit
 ' every save checks the name (filled in, unique) in Form_BeforeUpdate and
 ' is refused until it is right. Save and the Active switch save at once and
 ' show the change in the page's list.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modSignIn; the kit's modKitLocks, modKitUI.
 
 Private Const REQUIRED As String = "txtName=Template"
 
@@ -14,7 +17,7 @@ Private Sub Form_BeforeUpdate(Cancel As Integer)
     On Error GoTo Err_Handler
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If Not CheckRequired(Me, REQUIRED) Then Cancel = True: Exit Sub
-    problem = NameProblem(Nz(Me.txtName, ""), 100, "tblTemplates", "TemplateName", "template", _
+    problem = NameProblem(Nz(Me.txtName, ""), MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template", _
         "TemplateID=" & Nz(Me!TemplateID, 0))
     If Len(problem) > 0 Then
         KitRefuseSave

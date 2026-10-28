@@ -22,11 +22,16 @@ Option Explicit
 ' did not write the question. Every approval, rejection and retirement
 ' writes an audit row (modQuestions.AddAudit); the reason for a rejection is
 ' its Comments.
+'
+' Owner: question approvals (build phase 6). Depends on: modAdmin,
+' modErrors, modGlobals, modQuestions, modSignIn; the kit's modKitLocks,
+' modPersonnel.
 
 Public Const AU_APPROVED As String = "Approved"
 Public Const AU_REJECTED As String = "Rejected"
 
 Public Const MAX_REASON As Long = 2000          ' longest rejection reason
+Private Const MOVED_ON_Q As String = "Someone else approved or sent back this question a moment ago. The list now shows where it stands."
 
 ' ---------------------------------------------------------------------------
 ' The chain
@@ -60,8 +65,9 @@ End Function
 
 ' Why the signed-in person may not approve or reject question qid now, or
 ' "" when they may. Reads the data file, so a role taken away since sign-in,
-' or a step someone else moved on, counts at once.
-Public Function ApproveProblem(ByVal qid As Long) As String
+' or a step someone else moved on, counts at once. expectStep, when given,
+' is the step the person saw: one moved on since counts as acted on.
+Public Function ApproveProblem(ByVal qid As Long, Optional ByVal expectStep As Long = 0) As String
     Dim rs As DAO.Recordset, pid As Long, st As String, stepId As Long, code As String, author As Long
     If Not DataLinked() Then ApproveProblem = "This copy has no data file.": Exit Function
     Set rs = CurrentDb.OpenRecordset("SELECT StatusID, CurrentStepRoleID, AuthorPersonID FROM tblQuestions WHERE QuestionID=" & qid, _
@@ -79,6 +85,7 @@ Public Function ApproveProblem(ByVal qid As Long) As String
         ApproveProblem = "It is " & LCase$(st) & " now, so it isn't waiting for an approval."
         Exit Function
     End If
+    If expectStep <> 0 And stepId <> expectStep Then ApproveProblem = MOVED_ON_Q: Exit Function
     code = RoleCodeOf(stepId)
     pid = SignedInPersonID()
     If pid = 0 Or Not Nz(DLookup("IsActive", "tblPeople", "PersonID=" & pid), False) Or Not PersonHasRole(pid, code) Then
@@ -98,9 +105,9 @@ End Function
 ' Raise ERR_NOT_ALLOWED unless the signed-in person may approve or reject
 ' question qid now (ApproveProblem). Called first by ApproveQuestion and
 ' RejectQuestion. No side effects.
-Public Sub RequireApprover(ByVal qid As Long)
+Public Sub RequireApprover(ByVal qid As Long, Optional ByVal expectStep As Long = 0)
     Dim problem As String
-    problem = ApproveProblem(qid)
+    problem = ApproveProblem(qid, expectStep)
     If Len(problem) > 0 Then Err.Raise ERR_NOT_ALLOWED, "modApprovals.RequireApprover", problem
 End Sub
 
@@ -120,13 +127,17 @@ End Function
 ' RetiredOn, not current), all in one transaction. Returns "" and what
 ' happened, for the toast, in doneText; or why it can't be approved now
 ' (someone else acted on it first).
+' expectStep is the step the person saw (0: as it stands); moved on since,
+' it returns why instead.
 ' Errors: ERR_NOT_ALLOWED when the person may not approve it (RequireApprover).
-Public Function ApproveQuestion(ByVal qid As Long, ByRef doneText As String) As String
+Public Function ApproveQuestion(ByVal qid As Long, ByRef doneText As String, Optional ByVal expectStep As Long = 0) As String
     Dim ws As DAO.Workspace, rs As DAO.Recordset, inTrans As Boolean, stepId As Long, nextId As Long
     Dim key As Long, ver As Long, n As Long, oldVers As String, num As Long, desc As String, src As String
-    RequireApprover qid
     doneText = ""
+    ' One step for the rights check and the guarded write: the one shown.
     stepId = Nz(DLookup("CurrentStepRoleID", "tblQuestions", "QuestionID=" & qid), 0)
+    If expectStep <> 0 And stepId <> expectStep Then ApproveQuestion = MOVED_ON_Q: Exit Function
+    RequireApprover qid, stepId
     nextId = NextStepRoleID(stepId)
     key = Nz(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), 0)
     ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid), 0)
@@ -161,6 +172,7 @@ Public Function ApproveQuestion(ByVal qid As Long, ByRef doneText As String) As 
     End If
     ws.CommitTrans: inTrans = False
     If nextId <> 0 Then
+        NoticeQuestionAtStep qid            ' queues the next step's emails; never raises
         doneText = "Approved. " & QuestionRef(key, ver) & " goes to the " & RoleCodeOf(nextId) & " next."
     ElseIf Len(oldVers) > 0 Then
         doneText = "Approved. " & QuestionRef(key, ver) & " is in use now; " & oldVers & " is retired."
@@ -179,15 +191,19 @@ End Function
 ' the audit row). It goes back to its author: Rejected, at no step. Returns
 ' "" or why it can't be rejected now (no reason, or someone else acted on it
 ' first).
+' expectStep is the step the person saw (0: as it stands); moved on since,
+' it returns why instead.
 ' Errors: ERR_NOT_ALLOWED when the person may not reject it (RequireApprover).
-Public Function RejectQuestion(ByVal qid As Long, ByVal reason As Variant) As String
+Public Function RejectQuestion(ByVal qid As Long, ByVal reason As Variant, Optional ByVal expectStep As Long = 0) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, stepId As Long, ver As Long, n As Long, r As String
     Dim num As Long, desc As String, src As String
-    RequireApprover qid
+    ' One step for the rights check and the guarded write: the one shown.
+    stepId = Nz(DLookup("CurrentStepRoleID", "tblQuestions", "QuestionID=" & qid), 0)
+    If expectStep <> 0 And stepId <> expectStep Then RejectQuestion = MOVED_ON_Q: Exit Function
+    RequireApprover qid, stepId
     RejectQuestion = ReasonProblem(reason)
     If Len(RejectQuestion) > 0 Then Exit Function
     r = CleanText(reason)
-    stepId = Nz(DLookup("CurrentStepRoleID", "tblQuestions", "QuestionID=" & qid), 0)
     ver = Nz(DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid), 0)
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
@@ -200,6 +216,7 @@ Public Function RejectQuestion(ByVal qid As Long, ByVal reason As Variant) As St
     End If
     AddAudit ITEM_QUESTION, qid, ver, AU_REJECTED, stepId, r
     ws.CommitTrans: inTrans = False
+    NoticeQuestionReturned qid              ' queues the author's email; never raises
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
@@ -210,11 +227,11 @@ End Function
 
 ' What is wrong with a rejection's reason ("" when fine): it is required,
 ' and at most MAX_REASON characters once tidied.
-Public Function ReasonProblem(ByVal reason As Variant) As String
+Public Function ReasonProblem(ByVal reason As Variant, Optional ByVal who As String = "its author knows") As String
     Dim r As String
     r = Nz(CleanText(reason), "")
     If Len(r) = 0 Then
-        ReasonProblem = "Give the reason, so its author knows what to change."
+        ReasonProblem = "Give the reason, so " & who & " what to change."
     ElseIf Len(r) > MAX_REASON Then
         ReasonProblem = "The reason can be at most " & MAX_REASON & " characters; it is " & Len(r) & "."
     End If

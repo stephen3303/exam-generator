@@ -10,14 +10,21 @@ Option Explicit
 ' this front end to it when build.ps1 is given its path, so UI work never
 ' touches data.
 '
-' Steps, in order: link, local tables (the question editor's working copy),
+' Steps, in order: link, local tables (the question editor's working copy
+' and the Statistics page's figures),
 ' user interface (subforms, then pages, then dialogs, then the shell last),
 ' help, startup. A failed build returns
 ' "ERROR during <step>: <number> <description> [<last form traced>]".
 '
-' Phase 1 builds every page as a placeholder (its header and an empty state
-' naming the build phase that fills it), so the shell can be clicked
-' through. Each phase replaces its pages' placeholders with Build_<page>.
+' Each page has its Build_<page>, here or in a modBuild<area> module. (Up to
+' phase 9, a page not built yet was a placeholder naming its phase; phase 10
+' built the last one.)
+'
+' Owner: the shell and the build (build phase 1). Depends on: modBuildAdmin,
+' modBuildAppearance, modBuildDash, modBuildExams, modBuildLogs, modBuildQuestions, modErrors, modGlobals,
+' modQuestions, modStats; the kit's modDarkMode, modGridCols, modGridFilter,
+' modKitBackend, modKitHelp, modKitKeys, modKitPalette, modKitShell,
+' modMenu, modPersonnelUI, modTrust, modUIKit.
 
 Public Const APP_VERSION As String = "0.1.0"
 
@@ -46,9 +53,10 @@ Public Function BuildAll(ByVal srcRoot As String, ByVal outDir As String, ByVal 
         m_step = "link": LinkBackEnd bePath
     End If
     m_step = "local tables": EnsureWorkTables      ' the question editor's working copy (modQuestions)
+    EnsureStatTables                                ' the Statistics page's figures (modStats)
     m_step = "user interface": BuildUserInterface
     m_step = "help": LoadHelpTopics srcRoot & "\help\help.txt"
-    m_step = "startup": SetStartupOptions
+    m_step = "startup": SetStartupOptions uiOnly, bePath
     g_Silent = False
     BuildAll = "OK"
     Exit Function
@@ -91,6 +99,9 @@ Private Sub BuildUserInterface()
     Build_dlgReference             ' cite or add a reference
     Build_dlgHistory               ' a question's history
     Build_dlgReject                ' send a question back to its author
+    Build_dlgNewExam               ' generate an exam (modBuildExams)
+    Build_dlgSwap                  ' swap a question on an exam topic
+    Build_dlgRejectExam            ' send an exam back to its SMEs
     BuildMessageDialog             ' the kit's dlgMessage, for KitMsgBox
     BuildInputDialog               ' dlgInput, for KitInputBox
     BuildConfirmDialog             ' dlgConfirm, for KitConfirmTyped
@@ -109,40 +120,28 @@ Private Sub BuildUserInterface()
     Build_frmMain
 End Sub
 
-' The pages, in sidebar order. Each phase swaps its placeholders for the
-' real Build_<page>.
+' The pages, in sidebar order, after the tables they host.
 Private Sub BuildPages()
     BuildGrid "subGridHelp", HelpCols(), HELP_LIST_W - px(32)
     BuildAdminGrids                ' the admin pages' tables and detail forms (modBuildAdmin)
     BuildQuestionGrids             ' the question pages' and dialogs' tables (modBuildQuestions)
-    Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
-    Build_Stub "pgReview", "My reviews", "Each exam topic you review: check the drawn questions, swap any out and sign off.", 7
+    BuildExamGrids                 ' the exam pages' and dialogs' tables (modBuildExams)
+    BuildDashGrids                 ' the Dashboard's and Statistics' tables (modBuildDash)
+    BuildLogGrids                  ' Admin: Logs' tables (modBuildLogs)
+    Build_pgDash
+    Build_pgReview                 ' an SME's exam topic reviews (modBuildExams)
     Build_pgApprovals              ' question approvals (modBuildQuestions)
-    Build_Stub "pgExams", "Exams", "Every exam and where it stands in review and approval.", 8
+    Build_pgExams                  ' every exam, and the DH's New exam (modBuildExams)
     Build_pgQuestions
     Build_pgQuestionEdit
-    Build_Stub "pgStats", "Statistics", "Questions given per topic and per reference over a period or series.", 9
+    Build_pgStats
     Build_pgAdmTopics
     Build_pgAdmTemplates
     Build_pgAdmPeople
     Build_pgAdmRules
     Build_pgAdmHelp
-    Build_Stub "pgAdmLogs", "Admin: Logs", "The audit trail and the error log.", 10
-    Build_pgMySettings
-End Sub
-
-' My settings: for now only the palette picker (Appearance); the
-' notification switches come in phase 9.
-Private Sub Build_pgMySettings()
-    Dim c As Control
-    NewForm "", 0, PAGE_W, PAGE_H
-    PageHeader "My settings", "Your colors now; your notification switches come in build phase 9.", PAGE_PAD
-    Card "Colors", "Colors", PAGE_PAD, px(84), px(480), px(120)
-    Lbl "lblColors", "Choose the palette the whole app uses on this computer: light, dark and six more.", _
-        PAGE_PAD + px(16), px(124), px(448), px(36), 9, False, CLR_MUTED_FG
-    Set c = Btn("btnAppearance", "Appearance", PAGE_PAD + px(16), px(164), px(120), px(28), "outline")
-    c.OnClick = "=AppAppearance()"
-    SaveForm "pgMySettings"
+    Build_pgAdmLogs
+    Build_pgMySettings             ' a sidebar link, not a page in the list (modBuildDash)
 End Sub
 
 ' Help topics (pgAdmHelp): the topics on the left, the open topic's key,
@@ -200,19 +199,36 @@ Private Function HelpCols() As Variant
     HelpCols = Array("topic|Topic|190|bs", "topic_key|Key|118|ms")
 End Function
 
+' Grouping the controls a page shows and hides together (one tab's): call
+' NamesNow before building them and GroupSince after.
+
+' The names of the form's controls now.
+Public Function NamesNow() As Object
+    Dim c As Control, d As Object
+    Set d = CreateObject("Scripting.Dictionary")
+    For Each c In F.Controls
+        d(c.Name) = True
+    Next
+    Set NamesNow = d
+End Function
+
+' List the controls built since before that show (Visible) in a hidden
+' label nm, "a;b;c", for the page to show and hide as a group.
+Public Sub GroupSince(before As Object, ByVal nm As String)
+    Dim c As Control, s As String
+    For Each c In F.Controls
+        If Not before.Exists(c.Name) Then
+            If c.Visible Then s = s & ";" & c.Name
+        End If
+    Next
+    If Len(s) > 2048 Then Err.Raise 5, , "Group " & nm & " lists too many controls for a label caption"
+    Set c = Lbl(nm, Mid$(s, 2), 0, 0, px(8), px(8))
+    c.Visible = False
+End Sub
+
 ' 8pt bold muted uppercase caption above a field.
 Public Sub FieldLbl(ByVal nm As String, ByVal cap As String, ByVal x As Long, ByVal y As Long, ByVal w As Long)
     Lbl nm, cap, x, y, w, px(16), 8, True, CLR_MUTED_FG
-End Sub
-
-' A placeholder page: the page's header and an empty state naming the build
-' phase that fills it in.
-Private Sub Build_Stub(ByVal formName As String, ByVal title As String, ByVal tip As String, ByVal phase As Long)
-    NewForm "", 0, PAGE_W, PAGE_H
-    PageHeader title, tip, PAGE_PAD
-    EmptyState "emptyStub", PAGE_PAD, px(140), ContentW(), "E946", "This page comes in build phase " & phase, _
-        "It is a placeholder so the sidebar can be clicked through. " & tip, shown:=True
-    SaveForm formName
 End Sub
 
 ' The shell: the sidebar of pages and the page host sfPage. At sign-in the
@@ -236,15 +252,17 @@ End Sub
 ' Startup
 ' ---------------------------------------------------------------------------
 
+' Set database property name, adding it when the front end hasn't got it
+' yet (error 3270). Any other failure, and a failed add, stops the build.
 Private Sub SetProp(ByVal name As String, ByVal kind As Integer, ByVal value As Variant)
     Dim db As DAO.Database
     Set db = CurrentDb
-    On Error Resume Next
+    On Error GoTo Missing
     db.Properties(name) = value
-    If Err.Number = 3270 Then
-        Err.Clear
-        db.Properties.Append db.CreateProperty(name, kind, value)
-    End If
+    Exit Sub
+Missing:
+    If Err.Number <> 3270 Then RaiseAgain "modBuild.SetProp", name
+    db.Properties.Append db.CreateProperty(name, kind, value)   ' an error here goes up to BuildAll
 End Sub
 
 ' Open on the splash screen, which opens frmMain, without Access's own
@@ -252,7 +270,14 @@ End Sub
 ' end was built (error-log entries and the splash show it). BuildTrustCheck
 ' opens the splash at startup (in place of StartUpForm) and shows the kit's
 ' trust page when Access would ask to enable content.
-Private Sub SetStartupOptions()
+' Shift at opening (AllowBypassKey) and F11 (AllowSpecialKeys) stay on in
+' this .accdb, the developer's copy; build.ps1 -Release turns them off in
+' the locked .accde users get.
+' HasDataFile records whether this front end was built linked to a data file,
+' so a copy that loses its tblSettings link isn't taken for a UI-only build
+' (modSignIn.DataLinked). -UiOnly keeps the value the full build set.
+Private Sub SetStartupOptions(ByVal uiOnly As Boolean, ByVal bePath As String)
+    If Not uiOnly Then SetProp "HasDataFile", dbBoolean, (Len(bePath) > 0)
     SetProp "AppTitle", dbText, APP_NAME
     SetProp "StartUpShowDBWindow", dbBoolean, False
     SetProp "ShowDocumentTabs", dbBoolean, False

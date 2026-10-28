@@ -2,14 +2,19 @@ Option Compare Database
 Option Explicit
 
 ' Reject a question (Build_dlgReject), from the Approvals page. OpenArgs
-' "id=<QuestionID>". Shows who it goes back to and asks the reason, which is
-' required. Reject sends it back (modApprovals.RejectQuestion: Rejected, at
-' no step, the reason in the audit row); RunDialog sees DialogResult "ok".
-' Cancel, or Esc, changes nothing.
+' "id=<QuestionID>;step=<the step's RoleID the page showed>". Shows who it
+' goes back to and asks the reason, which is required. Reject sends it back
+' (modApprovals.RejectQuestion: Rejected, at no step, the reason in the
+' audit row); RunDialog sees DialogResult "ok". Cancel, or Esc, changes
+' nothing.
+'
+' Owner: question approvals (build phase 6). Depends on: modApprovals,
+' modErrors, modQuestions, modUI; the kit's modKitUI, modKitUtil.
 
 Private Const MSG_TITLE As String = "Reject"
 
 Private m_qid As Long
+Private m_step As Long          ' the step the page showed: rejects at that step only
 
 Public Property Get HelpTopic() As String
     HelpTopic = "approvals.reject"
@@ -18,7 +23,8 @@ End Property
 Private Sub Form_Load()
     Dim key As Variant, ver As Variant
     On Error GoTo Err_Handler
-    m_qid = ArgLong("id")
+    m_qid = OpenArgLong(Me, "id")
+    m_step = OpenArgLong(Me, "step")
     key = DLookup("QuestionKey", "tblQuestions", "QuestionID=" & m_qid)
     ver = DLookup("VersionNo", "tblQuestions", "QuestionID=" & m_qid)
     Me.Caption = "Reject " & QuestionRef(key, ver)
@@ -41,7 +47,7 @@ Private Sub btnReject_Click()
         Me.txtReason.SetFocus
         Exit Sub
     End If
-    problem = RejectQuestion(m_qid, Me.txtReason)
+    problem = RejectQuestion(m_qid, Me.txtReason, m_step)
     If Len(problem) > 0 Then                ' someone acted on it first: nothing to fix here
         KitMsgBox problem, vbInformation, MSG_TITLE
         DoCmd.Close acForm, Me.Name, acSaveNo
@@ -61,12 +67,3 @@ Private Sub btnCancel_Click()
 Err_Handler:
     HandleError "dlgReject.btnCancel_Click"
 End Sub
-
-' The number after name= in OpenArgs ("id=3"), or 0.
-Private Function ArgLong(ByVal name As String) As Long
-    Dim part As Variant, v As String
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then v = Mid$(part, Len(name) + 2)
-    Next
-    If IsNumeric(v) Then ArgLong = CLng(v)
-End Function

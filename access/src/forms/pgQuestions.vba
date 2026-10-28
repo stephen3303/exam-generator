@@ -15,6 +15,10 @@ Option Explicit
 ' cite each. SMEs and the admin change a reference's title, number and
 ' revision, turn it off (it can't be cited again; citations stay) or delete
 ' one nothing cites. New reference adds one.
+'
+' Owner: the question bank (build phase 5). Depends on: modErrors,
+' modGlobals, modQuestions, modSignIn, modUI; the kit's modGridFilter,
+' modKitFiles, modKitKeys, modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Question bank"
 
@@ -247,7 +251,7 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
         Case "sfRefs"
             id = Nz(Me.sfRefs.Form.txtSel, 0)
             If id = m_rid Then Exit Sub
-            If Not RefLeaveOK() Then MarkRow Me.sfRefs, m_rid: Exit Sub
+            If Not RefLeaveOK() Then GridSelect Me.sfRefs, m_rid: Exit Sub
             ShowRef id
         Case "sfRefQs"
             id = Nz(Me.sfRefQs.Form.txtSel, 0)
@@ -373,7 +377,7 @@ Private Sub AfterFilter()
         End If
         SetVisible Me.sfList, n > 0
     End If
-    If MarkRow(Me.sfList, m_qid) Then
+    If GridSelect(Me.sfList, m_qid) Then
         ShowQuestion m_qid
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ShowQuestion 0
@@ -531,7 +535,7 @@ Private Sub RefreshRefs(ByVal openId As Long)
         SetVisible Me.sfRefs, n > 0
     End If
     SetCount Me.tab_r, DCount("*", "tblSourceRefs")
-    If MarkRow(Me.sfRefs, openId) Then
+    If GridSelect(Me.sfRefs, openId) Then
         ShowRef openId
     ElseIf IsNull(SelectFirstRow(Me.sfRefs)) Then
         ShowRef 0
@@ -611,13 +615,34 @@ Private Function SaveRef() As Boolean
                 "the change. Correcting a typo or a revision is fine; a different document should be a new reference." & vbCrLf & vbCrLf & _
                 "Save the change?", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Function
     End If
-    RequireReferenceWriter                  ' the right is checked now, not as of sign-in
-    KitExecute "UPDATE tblSourceRefs SET RefTitle=" & Q(Trim$(Me.txtRefTitle)) & ", RefNumber=" & _
-        IIf(IsNull(NullIfEmpty(Me.txtRefNumber)), "Null", Q(NullIfEmpty(Me.txtRefNumber))) & ", Revision=" & _
-        IIf(IsNull(NullIfEmpty(Me.txtRefRev)), "Null", Q(NullIfEmpty(Me.txtRefRev))) & " WHERE RefID=" & m_rid
+    On Error GoTo Fail
+    ChangeReference m_rid, Me.txtRefTitle, Me.txtRefNumber, Me.txtRefRev     ' checks the right now, and writes the audit row
+    On Error GoTo 0
     RefreshRefs m_rid
     Me.lblRefState.Caption = "Saved."
     SaveRef = True
+    Exit Function
+Fail:
+    If Err.Number = 3022 Then               ' another reference got this title and number at this moment
+        KitMsgBox "There is already a reference with this title and number, so this one wasn't changed.", vbExclamation, MSG_TITLE
+        Exit Function
+    End If
+    RaiseAgain "pgQuestions.SaveRef", m_rid
+End Function
+
+' Delete reference rid. False when a question has cited it since the check
+' before the confirm (error 3200 on the rQR_R relationship): the user is told.
+Private Function DeleteRef(ByVal rid As Long) As Boolean
+    On Error GoTo Fail
+    DeleteReference rid
+    DeleteRef = True
+    Exit Function
+Fail:
+    If Err.Number = 3200 Then
+        KitMsgBox "A question has just cited this reference, so it can't be deleted. Turn it off instead.", vbInformation, MSG_TITLE
+        Exit Function
+    End If
+    RaiseAgain "pgQuestions.DeleteRef", rid
 End Function
 
 ' Before the shown reference is left: save, drop or stay.
@@ -645,7 +670,7 @@ Private Sub RefActions(ByVal atPointer As Boolean)
     If k = "onoff" Or k = "del" Then RequireReferenceWriter
     Select Case k
         Case "onoff"
-            KitExecute "UPDATE tblSourceRefs SET IsActive=" & IIf(isOn, "False", "True") & " WHERE RefID=" & m_rid
+            SetReferenceActive m_rid, Not isOn
             RefreshRefs m_rid
             KitToast IIf(isOn, "Turned off. Questions citing it keep it; no new citations.", "Turned on."), "success"
         Case "citing"
@@ -657,7 +682,7 @@ Private Sub RefActions(ByVal atPointer As Boolean)
             End If
             If KitMsgBox("Delete the reference """ & nm & """? No question cites it.", vbYesNo + vbQuestion + vbDefaultButton2, _
                     MSG_TITLE) <> vbYes Then Exit Sub
-            KitExecute "DELETE FROM tblSourceRefs WHERE RefID=" & m_rid
+            If Not DeleteRef(m_rid) Then Exit Sub
             m_rid = 0
             RefreshRefs 0
             KitToast "Reference deleted.", "destructive"
@@ -704,21 +729,3 @@ Private Sub ShowGroup()
         If DataLinked() Then RefreshRefs m_rid Else ShowRef 0
     End If
 End Sub
-
-' Select row id of a table. False when it isn't listed.
-Private Function MarkRow(sf As Control, ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = sf.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function
