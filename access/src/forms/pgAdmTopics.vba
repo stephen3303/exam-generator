@@ -179,7 +179,7 @@ Private Sub NewTopic()
     If Not SaveDetail(Me, "sfDetail") Then Exit Sub
     v = KitInputBox("Name of the new topic:", "New topic")
     If IsNull(v) Then Exit Sub
-    problem = NameProblem(v, 100, "tblTopics", "TopicName", "topic")
+    problem = NameProblem(v, MAX_TOPIC_NAME, "tblTopics", "TopicName", "topic")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     KitExecute "INSERT INTO tblTopics (TopicName, DefaultCount, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
         DefaultQuestionCount() & ", True)"
@@ -343,7 +343,7 @@ Private Sub ShowSupply()
     If rs.EOF Then rs.Close: HideAlert Me, "alSupply": Exit Sub
     have = rs!on_hand: per = rs!per_exam
     rs.Close
-    need = QuestionsNeeded(per, SettingLong(SET_OVERLAP_PCT, 30), SettingLong(SET_OVERLAP_WINDOW, 10))
+    need = QuestionsNeeded(per, OverlapPct(), OverlapWindow())
     If per = 0 Then
         ShowAlert Me, "alSupply", have & " approved " & Plural(have, "question") & ". No active template gives this topic " & _
             "questions yet.", "info"
@@ -364,8 +364,8 @@ Private Function ListSql() As String
         where = " WHERE s.TopicID IN (SELECT TopicID FROM tblTopics WHERE TopicName LIKE " & t & " OR Description LIKE " & t & ")"
     End If
     ListSql = "SELECT s.TopicID AS id, s.TopicName, TopicSMEsText(s.TopicID) AS smes, s.on_hand, " & _
-        "IIf(Not Nz(s.IsActive,False),'Off',IIf(s.on_hand<QuestionsNeeded(s.per_exam," & SettingLong(SET_OVERLAP_PCT, 30) & "," & _
-        SettingLong(SET_OVERLAP_WINDOW, 10) & "),'Short','Active')) AS state FROM (" & TopicSupplySql() & ") AS s" & where & _
+        "IIf(Not Nz(s.IsActive,False),'Off',IIf(s.on_hand<QuestionsNeeded(s.per_exam," & OverlapPct() & "," & _
+        OverlapWindow() & "),'Short','Active')) AS state FROM (" & TopicSupplySql() & ") AS s" & where & _
         " ORDER BY s.TopicName"
 End Function
 

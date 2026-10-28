@@ -14,7 +14,7 @@ Private Sub Form_BeforeUpdate(Cancel As Integer)
     On Error GoTo Err_Handler
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     If Not CheckRequired(Me, REQUIRED) Then Cancel = True: Exit Sub
-    problem = NameProblem(Nz(Me.txtName, ""), 100, "tblTemplates", "TemplateName", "template", _
+    problem = NameProblem(Nz(Me.txtName, ""), MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template", _
         "TemplateID=" & Nz(Me!TemplateID, 0))
     If Len(problem) > 0 Then
         KitRefuseSave

@@ -3,7 +3,7 @@ Option Explicit
 
 ' The open topic on pgAdmTopics (Build_subTopic), bound to tblTopics. The
 ' page saves a changed topic before it opens another; every save checks
-' the name (filled in, unique) and the questions per exam (1 to 50) in
+' the name (filled in, unique) and the questions per exam (MIN_ to MAX_QUESTIONS_PER_TOPIC) in
 ' Form_BeforeUpdate and is refused until they are right. Save and the
 ' Active switch save at once and show the change in the page's list.
 
@@ -69,15 +69,19 @@ Public Function SaveTopic() As Boolean
     SaveTopic = True
 End Function
 
+Private Function CountProblem() As String
+    CountProblem = "Questions per exam must be a whole number from " & MIN_QUESTIONS_PER_TOPIC & " to " & MAX_QUESTIONS_PER_TOPIC & "."
+End Function
+
 ' What is wrong with the topic as typed, or "".
 Private Function TopicProblem() As String
     Dim n As Variant
-    TopicProblem = NameProblem(Nz(Me.txtName, ""), 100, "tblTopics", "TopicName", "topic", "TopicID=" & Nz(Me!TopicID, 0))
+    TopicProblem = NameProblem(Nz(Me.txtName, ""), MAX_TOPIC_NAME, "tblTopics", "TopicName", "topic", "TopicID=" & Nz(Me!TopicID, 0))
     If Len(TopicProblem) > 0 Then Exit Function
     n = Me.txtCount
     If Not IsNumeric(n) Then
-        TopicProblem = "Questions per exam must be a whole number from 1 to 50."
-    ElseIf n < 1 Or n > 50 Or n <> Int(n) Then
-        TopicProblem = "Questions per exam must be a whole number from 1 to 50."
+        TopicProblem = CountProblem()
+    ElseIf n < MIN_QUESTIONS_PER_TOPIC Or n > MAX_QUESTIONS_PER_TOPIC Or n <> Int(n) Then
+        TopicProblem = CountProblem()
     End If
 End Function

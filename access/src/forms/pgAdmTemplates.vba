@@ -207,7 +207,7 @@ Private Sub NewTemplate()
     If Not SaveDetail(Me, "sfDetail") Then Exit Sub
     v = KitInputBox("Name of the new template:", "New template")
     If IsNull(v) Then Exit Sub
-    problem = NameProblem(v, 100, "tblTemplates", "TemplateName", "template")
+    problem = NameProblem(v, MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     KitExecute "INSERT INTO tblTemplates (TemplateName, IsActive) VALUES (" & Q(Trim$(v)) & ", True)"
     id = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q(Trim$(v)))
@@ -229,9 +229,9 @@ Private Sub TemplateActions(ByVal atPointer As Boolean)
     If Len(k) > 0 Then RequireExamAdmin    ' the right is checked now, not as of sign-in
     Select Case k
         Case "copy"
-            v = KitInputBox("Name of the copy:", "Copy template", Left$("Copy of " & nm, 100))
+            v = KitInputBox("Name of the copy:", "Copy template", Left$("Copy of " & nm, MAX_TEMPLATE_NAME))
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 100, "tblTemplates", "TemplateName", "template")
+            problem = NameProblem(v, MAX_TEMPLATE_NAME, "tblTemplates", "TemplateName", "template")
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "INSERT INTO tblTemplates (TemplateName, Description, IsActive) SELECT " & Q(Trim$(v)) & _
                 ", Description, True FROM tblTemplates WHERE TemplateID=" & m_id

@@ -145,7 +145,7 @@ Private Sub ShowNeed()
     End If
     n = SliderValue(Me, "sldCount")
     have = DCount("*", "tblQuestions", "TopicID=" & k & " AND IsCurrent AND StatusID=" & ApprovedStatusID())
-    need = QuestionsNeeded(n, SettingLong(SET_OVERLAP_PCT, 30), SettingLong(SET_OVERLAP_WINDOW, 10))
+    need = QuestionsNeeded(n, OverlapPct(), OverlapWindow())
     Me.lblNeed.Caption = "It has " & have & " approved " & Plural(have, "question") & "; the overlap rule needs " & _
         need & " when an exam takes " & n & "." & IIf(have < need, " Until more are approved it will be short.", "")
 End Sub

@@ -209,6 +209,8 @@ Private Sub SeedData()
         X "INSERT INTO tblStatuses (StatusName, AppliesTo) VALUES ('" & s & "','Exam')"
     Next
 
+    ' The front end falls back to the same three values when a row is missing
+    ' (modAdmin DEFAULT_OVERLAP_PCT, DEFAULT_OVERLAP_WINDOW, DEFAULT_QUESTION_COUNT).
     X "INSERT INTO tblSettings VALUES ('OverlapMaxPct','30','Max % of an exam''s questions that may appear in the lookback window')"
     X "INSERT INTO tblSettings VALUES ('OverlapWindowExams','10','Number of most recent exams checked for overlap')"
     X "INSERT INTO tblSettings VALUES ('DefaultQuestionCount','4','Default questions per topic in a template')"

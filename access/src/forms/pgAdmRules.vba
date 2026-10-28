@@ -122,8 +122,8 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub LoadRule()
-    SetSlider Me, "sldPct", SettingLong(SET_OVERLAP_PCT, 30)
-    SetSlider Me, "sldWindow", SettingLong(SET_OVERLAP_WINDOW, 10)
+    SetSlider Me, "sldPct", OverlapPct()
+    SetSlider Me, "sldWindow", OverlapWindow()
     Me.txtDefault = DefaultQuestionCount()
     m_dirty = False
     ShowShort
@@ -154,13 +154,14 @@ Private Sub ShowShort()
 End Sub
 
 ' Save the three settings. False when the default count isn't a whole
-' number from 1 to 50 (the admin is told).
+' number from MIN_ to MAX_QUESTIONS_PER_TOPIC (the admin is told).
 Private Function SaveRule() As Boolean
     Dim t As String
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     t = Trim$(FieldText(Me, Me.txtDefault))
-    If Not IsWhole(t, 1, 50) Then
-        KitMsgBox "Questions per topic to start with must be a whole number from 1 to 50.", vbExclamation, MSG_TITLE
+    If Not IsWhole(t, MIN_QUESTIONS_PER_TOPIC, MAX_QUESTIONS_PER_TOPIC) Then
+        KitMsgBox "Questions per topic to start with must be a whole number from " & MIN_QUESTIONS_PER_TOPIC & _
+            " to " & MAX_QUESTIONS_PER_TOPIC & ".", vbExclamation, MSG_TITLE
         Me.txtDefault.SetFocus
         Exit Function
     End If
@@ -191,7 +192,7 @@ Private Sub btnDiffAdd_Click()
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     v = KitInputBox("Name of the new difficulty level:", "Difficulty levels")
     If IsNull(v) Then Exit Sub
-    problem = NameProblem(v, 30, "tblDifficultyLevels", "LevelName", "difficulty level")
+    problem = NameProblem(v, MAX_LEVEL_NAME, "tblDifficultyLevels", "LevelName", "difficulty level")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     KitExecute "INSERT INTO tblDifficultyLevels (LevelName, SortOrder, IsActive) VALUES (" & Q(Trim$(v)) & ", " & _
         NextOrder("tblDifficultyLevels", "SortOrder") & ", True)"
@@ -208,11 +209,11 @@ Private Sub btnClassAdd_Click()
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
     m = KitInputBox("Marking of the new classification level (as an exam's banner shows it):", "Classification levels")
     If IsNull(m) Then Exit Sub
-    problem = NameProblem(m, 30, "tblClassLevels", "Marking", "classification level")
+    problem = NameProblem(m, MAX_LEVEL_NAME, "tblClassLevels", "Marking", "classification level")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     pm = KitInputBox("Its portion mark (as it shows before a question, without the brackets):", "Classification levels")
     If IsNull(pm) Then Exit Sub
-    problem = NameProblem(pm, 10, "tblClassLevels", "PortionMark", "portion mark")
+    problem = NameProblem(pm, MAX_PORTION_MARK, "tblClassLevels", "PortionMark", "portion mark")
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     KitExecute "INSERT INTO tblClassLevels (Marking, PortionMark, LevelRank) VALUES (" & Q(Trim$(m)) & ", " & _
         Q(Trim$(pm)) & ", " & NextOrder("tblClassLevels", "LevelRank") & ")"
@@ -274,7 +275,7 @@ Private Sub DiffActions(ByVal atPointer As Boolean)
         Case "ren"
             v = KitInputBox("New name for """ & nm & """:", "Difficulty levels", nm)
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 30, "tblDifficultyLevels", "LevelName", "difficulty level", "DifficultyID=" & id)
+            problem = NameProblem(v, MAX_LEVEL_NAME, "tblDifficultyLevels", "LevelName", "difficulty level", "DifficultyID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblDifficultyLevels SET LevelName=" & Q(Trim$(v)) & " WHERE DifficultyID=" & id
         Case "up", "down"
@@ -321,13 +322,13 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
         Case "ren"
             v = KitInputBox("New marking for """ & nm & """:", "Classification levels", nm)
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 30, "tblClassLevels", "Marking", "classification level", "ClassLevelID=" & id)
+            problem = NameProblem(v, MAX_LEVEL_NAME, "tblClassLevels", "Marking", "classification level", "ClassLevelID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET Marking=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "pm"
             v = KitInputBox("New portion mark for """ & nm & """:", "Classification levels", pm)
             If IsNull(v) Then Exit Sub
-            problem = NameProblem(v, 10, "tblClassLevels", "PortionMark", "portion mark", "ClassLevelID=" & id)
+            problem = NameProblem(v, MAX_PORTION_MARK, "tblClassLevels", "PortionMark", "portion mark", "ClassLevelID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET PortionMark=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
         Case "up", "down"

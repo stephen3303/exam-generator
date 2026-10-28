@@ -20,6 +20,24 @@ Public Const SET_OVERLAP_PCT As String = "OverlapMaxPct"
 Public Const SET_OVERLAP_WINDOW As String = "OverlapWindowExams"
 Public Const SET_DEFAULT_COUNT As String = "DefaultQuestionCount"
 
+' The settings' values when tblSettings has no row for them. The back end's
+' seed rows (backend\modBuildBackEnd.bas, SeedData) start with the same values.
+Public Const DEFAULT_OVERLAP_PCT As Long = 30
+Public Const DEFAULT_OVERLAP_WINDOW As Long = 10
+Public Const DEFAULT_QUESTION_COUNT As Long = 4
+
+' Questions per topic on one exam: a topic's DefaultCount, a template topic's
+' QuestionCount and the DefaultQuestionCount setting all keep to this range.
+Public Const MIN_QUESTIONS_PER_TOPIC As Long = 1
+Public Const MAX_QUESTIONS_PER_TOPIC As Long = 50
+
+' The longest names the admin pages accept. Each mirrors its column's size in
+' the back end (backend\modBuildBackEnd.bas, CreateTables).
+Public Const MAX_TOPIC_NAME As Long = 100       ' tblTopics.TopicName TEXT(100)
+Public Const MAX_TEMPLATE_NAME As Long = 100    ' tblTemplates.TemplateName TEXT(100)
+Public Const MAX_LEVEL_NAME As Long = 30        ' tblDifficultyLevels.LevelName and tblClassLevels.Marking TEXT(30)
+Public Const MAX_PORTION_MARK As Long = 10      ' tblClassLevels.PortionMark TEXT(10)
+
 ' The person's name as the pickers show it: "Smith, John (LT)". p is the
 ' alias of the Personnel table (kit_person) in the query.
 Public Function PersonNameSql(Optional ByVal p As String = "p") As String
@@ -54,7 +72,19 @@ End Sub
 
 ' Questions per topic for a new topic or template topic.
 Public Function DefaultQuestionCount() As Long
-    DefaultQuestionCount = SettingLong(SET_DEFAULT_COUNT, 4)
+    DefaultQuestionCount = SettingLong(SET_DEFAULT_COUNT, DEFAULT_QUESTION_COUNT)
+End Function
+
+' The overlap rule's most percent of an exam's questions that may repeat
+' (setting OverlapMaxPct, DEFAULT_OVERLAP_PCT when it isn't set).
+Public Function OverlapPct() As Long
+    OverlapPct = SettingLong(SET_OVERLAP_PCT, DEFAULT_OVERLAP_PCT)
+End Function
+
+' The overlap rule's look-back, in exams (setting OverlapWindowExams,
+' DEFAULT_OVERLAP_WINDOW when it isn't set).
+Public Function OverlapWindow() As Long
+    OverlapWindow = SettingLong(SET_OVERLAP_WINDOW, DEFAULT_OVERLAP_WINDOW)
 End Function
 
 ' ---------------------------------------------------------------------------
