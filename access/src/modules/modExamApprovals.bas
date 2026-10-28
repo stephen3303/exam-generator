@@ -83,12 +83,14 @@ End Function
 
 ' Why the signed-in person may not approve or reject exam examId now, or ""
 ' when they may. Reads the data file, so a role taken away since sign-in, or
-' a step someone else moved on, counts at once. expectStep, when given, is
-' the step the person saw: one moved on since counts as acted on.
-Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectStep As Long = 0) As String
-    Dim rs As DAO.Recordset, pid As Long, st As String, stepId As Long, code As String
+' a step someone else moved on, counts at once. expectStep and expectVer,
+' when given, are the step and version the person saw: one moved on, or sent
+' back and resubmitted, since counts as acted on.
+Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectStep As Long = 0, _
+        Optional ByVal expectVer As Long = 0) As String
+    Dim rs As DAO.Recordset, pid As Long, st As String, stepId As Long, code As String, ver As Long
     If Not DataLinked() Then ExamApproveProblem = "This copy has no data file.": Exit Function
-    Set rs = CurrentDb.OpenRecordset("SELECT StatusID, CurrentStepRoleID FROM tblExams WHERE ExamID=" & examId, dbOpenSnapshot)
+    Set rs = CurrentDb.OpenRecordset("SELECT StatusID, CurrentStepRoleID, VersionNo FROM tblExams WHERE ExamID=" & examId, dbOpenSnapshot)
     If rs.EOF Then
         rs.Close
         ExamApproveProblem = "This exam was deleted."
@@ -96,6 +98,7 @@ Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectSt
     End If
     st = ExamStatusName(rs!StatusID)
     stepId = Nz(rs!CurrentStepRoleID, 0)
+    ver = Nz(rs!VersionNo, 1)
     rs.Close
     If st <> ES_REVIEW Or stepId = 0 Then
         Select Case st
@@ -108,6 +111,7 @@ Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectSt
         Exit Function
     End If
     If expectStep <> 0 And stepId <> expectStep Then ExamApproveProblem = MOVED_ON_X: Exit Function
+    If expectVer <> 0 And ver <> expectVer Then ExamApproveProblem = MOVED_ON_X: Exit Function
     code = RoleCodeOf(stepId)
     pid = SignedInPersonID()
     If pid = 0 Or Not Nz(DLookup("IsActive", "tblPeople", "PersonID=" & pid), False) Or Not PersonHasRole(pid, code) Then
@@ -155,14 +159,14 @@ Public Function ApproveExam(ByVal examId As Long, ByRef doneText As String, ByRe
     ' One step for the rights check and the guarded write: the one shown.
     stepId = Nz(DLookup("CurrentStepRoleID", "tblExams", "ExamID=" & examId), 0)
     If expectStep <> 0 And stepId <> expectStep Then ApproveExam = MOVED_ON_X: Exit Function
+    ver = Nz(DLookup("VersionNo", "tblExams", "ExamID=" & examId), 1)
+    If expectVer <> 0 And ver <> expectVer Then ApproveExam = MOVED_ON_X: Exit Function
     RequireExamApprover examId, stepId
     nextId = NextStepRoleID(stepId)
     If nextId = 0 Then
         ApproveExam = UnmarkedProblem(examId)
         If Len(ApproveExam) > 0 Then Exit Function
     End If
-    ver = Nz(DLookup("VersionNo", "tblExams", "ExamID=" & examId), 1)
-    If expectVer <> 0 And ver <> expectVer Then ApproveExam = MOVED_ON_X: Exit Function
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
@@ -301,10 +305,11 @@ Public Function UnmarkedProblem(ByVal examId As Long) As String
 End Function
 
 ' " WHERE" for an update that only touches exam examId while it is still in
-' review at step stepId.
+' review at step stepId and, when ver is given, at that version (Null reads
+' as 1, as everywhere else).
 Private Function StillAtStep(ByVal examId As Long, ByVal stepId As Long, Optional ByVal ver As Long = 0) As String
     StillAtStep = " WHERE ExamID=" & examId & " AND StatusID=" & ExamStatusID(ES_REVIEW) & " AND CurrentStepRoleID=" & stepId & _
-        IIf(ver <> 0, " AND VersionNo=" & ver, "")
+        IIf(ver <> 0, " AND (VersionNo=" & ver & IIf(ver = 1, " OR VersionNo Is Null", "") & ")", "")
 End Function
 
 ' The classification level with the highest LevelRank of any question or

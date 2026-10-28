@@ -2,7 +2,8 @@ Option Compare Database
 Option Explicit
 
 ' Send an exam back (Build_dlgRejectExam), from the Approvals page's Exams
-' tab. OpenArgs "id=<ExamID>;step=<the step's RoleID the page showed>". The
+' tab. OpenArgs "id=<ExamID>;step=<the step's RoleID the page showed>;
+' ver=<the version it showed>". The
 ' approver picks one topic or every topic, sees whose reviews reopen
 ' (ExamReturnsToText) and gives the reason, which is required. Send back
 ' calls modExamApprovals.RejectExam: those topics' sign-offs are cleared,
@@ -26,7 +27,7 @@ Private Sub Form_Load()
     m_id = OpenArgLong(Me, "id")
     m_step = OpenArgLong(Me, "step")
     m_ver = OpenArgLong(Me, "ver")
-    ref = ExamRef(m_id, IIf(m_ver <> 0, m_ver, DLookup("VersionNo", "tblExams", "ExamID=" & m_id)))
+    ref = ExamRef(m_id, IIf(m_ver <> 0, m_ver, Nz(DLookup("VersionNo", "tblExams", "ExamID=" & m_id), 1)))
     Me.Caption = "Send back " & ref
     Me.lblHead.Caption = "Send " & ref & " back to its SMEs?"
     Me.lblSub.Caption = "The topics you send back lose their sign-off and their SMEs review them again. Once every topic is " & _
@@ -65,8 +66,7 @@ Private Sub btnReject_Click()
     If Len(problem) > 0 Then
         KitMsgBox problem, vbInformation, MSG_TITLE
         ' Acted on first (moved on, or sent back and resubmitted): nothing to fix here.
-        If Len(ExamApproveProblem(m_id, m_step)) > 0 Or _
-                (m_ver <> 0 And Nz(DLookup("VersionNo", "tblExams", "ExamID=" & m_id), 0) <> m_ver) Then
+        If Len(ExamApproveProblem(m_id, m_step, m_ver)) > 0 Then
             DoCmd.Close acForm, Me.Name, acSaveNo
         End If
         Exit Sub

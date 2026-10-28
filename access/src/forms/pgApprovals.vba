@@ -23,7 +23,8 @@ Option Explicit
 ' the Questions tab through TempVars("ApprovalsQuestionID").
 '
 ' Approve and reject act only at the step the person was shown (m_qstep,
-' m_xstep): one moved on since counts as someone else having acted.
+' m_xstep), and for an exam at the version shown (m_xver): one moved on, or
+' sent back and resubmitted, since counts as someone else having acted.
 '
 ' Owner: question approvals (build phase 6); exam approvals from build
 ' phase 8. Depends on: modApprovals, modErrors, modExamApprovals, modExamDoc,
@@ -224,7 +225,7 @@ Public Sub GridRightClick(ByVal grid As String)
     On Error GoTo Err_Handler
     If grid = "sfXList" Then
         If m_xid = 0 Then Exit Sub
-        ok = (Len(ExamApproveProblem(m_xid, m_xstep)) = 0)
+        ok = (Len(ExamApproveProblem(m_xid, m_xstep, m_xver)) = 0)
         k = KitMenuAt(IIf(ok, "", "~") & "approve|Approve|E8FB", IIf(ok, "", "~") & "reject|!Reject|E711", "-", _
             "hist|History|E81C", "exams|Show on the Exams page|E8A5")
         Select Case k
@@ -302,7 +303,7 @@ End Sub
 Private Sub XApproveClicked()
     Dim problem As String, done As String, isFinal As Boolean, note As String, mk As String, nR As Long
     If m_xid = 0 Then Exit Sub
-    problem = ExamApproveProblem(m_xid, m_xstep)
+    problem = ExamApproveProblem(m_xid, m_xstep, m_xver)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     If NextStepRoleID(m_xstep) = 0 Then
         problem = UnmarkedProblem(m_xid)        ' before asking, so the person isn't refused after saying yes
@@ -338,7 +339,7 @@ End Sub
 Private Sub XRejectClicked()
     Dim problem As String, ok As Boolean
     If m_xid = 0 Then Exit Sub
-    problem = ExamApproveProblem(m_xid, m_xstep)
+    problem = ExamApproveProblem(m_xid, m_xstep, m_xver)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     StartNotices                            ' the toast reports this send-back's emails only
     ok = RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep & ";ver=" & m_xver)
@@ -494,7 +495,7 @@ Private Sub ShowExam(ByVal examId As Long)
                 nQ & IIf(nQ = 1, " question", " questions") & " in " & nT & IIf(nT = 1, " topic", " topics") & "."
             m_xstep = Nz(rs!CurrentStepRoleID, 0)
             m_xver = Nz(rs!VersionNo, 1)
-            problem = ExamApproveProblem(examId, m_xstep)
+            problem = ExamApproveProblem(examId, m_xstep, m_xver)
             ' The final approval refuses an exam it can't mark; it can still be sent back.
             If Len(problem) = 0 And NextStepRoleID(m_xstep) = 0 Then unm = UnmarkedProblem(examId)
             If Len(problem) > 0 Then s = problem Else s = "Waiting on you as the " & RoleCodeOf(m_xstep) & "."
