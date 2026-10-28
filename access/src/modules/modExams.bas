@@ -302,7 +302,7 @@ Private Function DrawPlan(ByVal tplId As Long, ByVal keys As String, ByVal allow
         Else
             need = n - IIf(nFresh < n, nFresh, n)       ' questions given lately it has to take
             If need > RepeatsAllowed(n) And Not allowRepeats Then over = over & IIf(Len(over) > 0, ", ", "") & rs!TopicName
-            plan.Add Array(rs!TopicID, rs!TopicName, n, PickIds(fresh, given, n), smes)
+            plan.Add Array(CLng(rs!TopicID), CStr(rs!TopicName), n, PickIds(fresh, given, n), smes)
         End If
         rs.MoveNext
     Loop
