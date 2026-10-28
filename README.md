@@ -103,7 +103,7 @@ The front end was built in the ten phases of the front-end plan. Until a page's 
 
 ## Known gaps
 
-- **Page markings on multi-page exams.** The Word document tries to make each page its own section so it can carry that page's highest marking. On a test VM, a multi-page exam fell back to the overall marking on every page. That errs high, never low, and a one-page exam is unaffected. Stephen chose to keep it this way for now (Oct 28). Per-page markings in the editable .docx are risky because Word re-paginates on each PC, so a later fix would more likely mark pages in a PDF made at approval. A reviewed field-based version is in the history of `claude/project-thread-h46jbj` (b5b897e, reverted).
+- **Page markings on multi-page exams.** The Word document tries to make each page its own section so it can carry that page's highest marking. On a test VM, a multi-page exam fell back to the overall marking on every page. That errs high, never low, and a one-page exam is unaffected. Stephen chose to keep it this way for now (Oct 28). Per-page markings in the editable .docx are risky because Word re-paginates on each PC, so a later fix would more likely mark pages in a PDF made at approval. A field-based version (review fixes applied, never run in Word) is kept at the tag `page-markings-fields`.
 
 ## Updating the kit
 
