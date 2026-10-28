@@ -68,8 +68,9 @@ Start-Process .\build\ExamGenerator.accdb
 4. **Topics.** **New topic** and name it `Smoke test`. Set questions per exam to **1** and **Save**. Under SMEs, pick Test SME and **Add**.
 5. **Templates.** **New template** and name it `Smoke`. **Add topic**, pick Smoke test, set the slider to **1**, and **Add**.
 6. **Let yourself pick who signs in.** People and routing, then **Personnel**. Open yourself, note your sign-in name, clear **Windows account**, and Save.
-   - Why: the app has no Sign out yet and signs you in by Windows account. With the account cleared, each start shows the sign-in screen, so you can be you or Test SME.
+   - Why: this branch has no Sign out and signs you in by Windows account. With the account cleared, each start shows the sign-in screen, so you can be you or Test SME.
    - Put the Windows account back when you're done.
+   - Optional: the `feature-sign-out` branch, built on this one, adds **Sign out** under **My settings**, so you can switch people without closing Access and skip this step. Build it the same way after `git switch feature-sign-out`. It is reviewed but, like the rest, not yet run in Access.
 
 ## 5. Smoke path
 
