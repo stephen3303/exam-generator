@@ -281,14 +281,17 @@ End Sub
 ' first, then makes the exam's Word document; the approval stands if that
 ' fails, and Download a copy on the Exams page tries again.
 Private Sub XApproveClicked()
-    Dim problem As String, done As String, isFinal As Boolean, note As String, mk As String
+    Dim problem As String, done As String, isFinal As Boolean, note As String, mk As String, nR As Long
     If m_xid = 0 Then Exit Sub
     problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
     If NextStepRoleID(m_xstep) = 0 Then
         mk = LevelMarking(OverallLevelID(m_xid))
+        nR = ExamReplacedCount(m_xid)
         If KitMsgBox("Give " & ExamRef(m_xid, DLookup("VersionNo", "tblExams", "ExamID=" & m_xid)) & " final approval? " & _
                 IIf(Len(mk) > 0, "It is marked " & mk & " overall, its highest portion marking. ", "") & _
+                IIf(nR > 0, nR & IIf(nR = 1, " of its questions was", " of its questions were") & " replaced or retired since the " & _
+                    "draw and will print as drawn; send it back instead to have them swapped. ", "") & _
                 "Its Word document is made now, and anyone can download a copy from the Exams page.", _
                 vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     End If
@@ -352,7 +355,7 @@ Private Sub AfterFilter()
         End If
         SetVisible Me.sfList, n > 0
     End If
-    If MarkRow(Me.sfList, m_qid) Then
+    If GridSelect(Me.sfList, m_qid) Then
         ShowQuestion m_qid
     ElseIf IsNull(SelectFirstRow(Me.sfList)) Then
         ShowQuestion 0
@@ -434,7 +437,7 @@ Private Sub AfterXFilter()
         End If
         SetVisible Me.sfXList, n > 0
     End If
-    If MarkRow(Me.sfXList, m_xid) Then
+    If GridSelect(Me.sfXList, m_xid) Then
         ShowExam m_xid
     ElseIf IsNull(SelectFirstRow(Me.sfXList)) Then
         ShowExam 0
@@ -446,7 +449,7 @@ End Sub
 ' Show exam examId on the right (0: the hint instead).
 Private Sub ShowExam(ByVal examId As Long)
     Dim rs As DAO.Recordset, isOpen As Boolean, nm As Variant, c As Control, s As String, problem As String
-    Dim nQ As Long, nT As Long, mk As String, by As String, k As String
+    Dim nQ As Long, nT As Long, mk As String, by As String, k As String, nR As Long
     m_xid = examId: m_xstep = 0
     isOpen = (examId <> 0)
     If isOpen Then
@@ -468,6 +471,8 @@ Private Sub ShowExam(ByVal examId As Long)
             If Len(problem) > 0 Then s = problem Else s = "Waiting on you as the " & RoleCodeOf(m_xstep) & "."
             mk = LevelMarking(OverallLevelID(examId))
             If Len(mk) > 0 Then s = s & " Its highest portion marking is " & mk & "."
+            nR = ExamReplacedCount(examId)
+            If nR > 0 Then s = s & " " & nR & IIf(nR = 1, " question was", " questions were") & " replaced or retired since the draw."
             Me.lblXState.Caption = s
             ' The preview reads every question: built on the Exams tab only,
             ' and again only when another exam or version is shown.
@@ -521,21 +526,3 @@ Private Sub ShowGroup()
         End If
     End If
 End Sub
-
-' Select row id of a table. False when it isn't listed.
-Private Function MarkRow(sf As Control, ByVal id As Long) As Boolean
-    Dim g As Form
-    Set g = sf.Form
-    g.txtSel = Null
-    If id <> 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & id
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = id
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function

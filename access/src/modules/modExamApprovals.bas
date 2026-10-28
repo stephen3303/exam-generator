@@ -386,6 +386,14 @@ End Function
 ' What the pages show
 ' ---------------------------------------------------------------------------
 
+' How many questions on exam examId are no longer the approved version in
+' use (a newer version approved since the draw, or retired): the SMEs may
+' have signed them off, so the approvers are told.
+Public Function ExamReplacedCount(ByVal examId As Long) As Long
+    ExamReplacedCount = CountOf("SELECT Count(*) FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID " & _
+        "WHERE eq.ExamID=" & examId & " AND NOT (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ")")
+End Function
+
 ' The exams waiting for the signed-in person (QueueWhere), the longest
 ' waiting first. Columns: id, ref, exam (who
 ' it is for), TemplateName, step, since, since_txt. search keeps those whose
@@ -481,7 +489,7 @@ End Function
 Public Function ExamPreview(ByVal examId As Long) As String
     Dim rs As DAO.Recordset, s As String, i As Long, lastEt As Long, signer As String
     Set rs = CurrentDb.OpenRecordset("SELECT eq.QuestionID, eq.ExamTopicID, q.QuestionKey, q.VersionNo, tp.TopicName, " & _
-        "et.SignedOffByPersonID, et.SignedOffOn FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
+        "et.SignedOffByPersonID, et.SignedOffOn, (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ") AS inUse FROM ((tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
         "INNER JOIN tblExamTopics AS et ON eq.ExamTopicID=et.ExamTopicID) LEFT JOIN tblTopics AS tp ON et.TopicID=tp.TopicID " & _
         "WHERE eq.ExamID=" & examId & " ORDER BY eq.SortOrder, eq.ExamQuestionID", dbOpenSnapshot)
     Do While Not rs.EOF
@@ -493,7 +501,8 @@ Public Function ExamPreview(ByVal examId As Long) As String
                 " on " & Format$(rs!SignedOffOn, "d mmm") & ")")
         End If
         i = i + 1
-        s = s & vbCrLf & vbCrLf & i & ". " & QuestionRef(rs!QuestionKey, rs!VersionNo) & vbCrLf & QuestionPreview(rs!QuestionID)
+        s = s & vbCrLf & vbCrLf & i & ". " & QuestionRef(rs!QuestionKey, rs!VersionNo) & _
+            IIf(Nz(rs!inUse, False), "", " (REPLACED OR RETIRED SINCE THE DRAW)") & vbCrLf & QuestionPreview(rs!QuestionID)
         rs.MoveNext
         ' A text box holds about 64,000 characters.
         If Len(s) > PREVIEW_MAX And Not rs.EOF Then

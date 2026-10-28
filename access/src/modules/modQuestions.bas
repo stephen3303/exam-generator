@@ -238,12 +238,16 @@ End Function
 ' Audit rows
 ' ---------------------------------------------------------------------------
 
-' Write an audit row for question (or exam) itemId, by the signed-in person.
+' Write an audit row for question (or exam) itemId, by the signed-in person
+' now; personId and actionOn record someone else's act, at its own time.
 Public Sub AddAudit(ByVal itemType As String, ByVal itemId As Long, ByVal ver As Variant, ByVal action As String, _
-        Optional ByVal stepRoleID As Long = 0, Optional ByVal comments As String = "")
+        Optional ByVal stepRoleID As Long = 0, Optional ByVal comments As String = "", Optional ByVal personId As Long = 0, _
+        Optional ByVal actionOn As Variant = Null)
+    If personId = 0 Then personId = SignedInPersonID()
     KitExecute "INSERT INTO tblAuditTrail (ItemType, ItemID, VersionNo, ActionType, StepRoleID, PersonID, ActionOn, Comments) " & _
         "VALUES (" & Q(itemType) & ", " & itemId & ", " & IIf(IsNull(ver), "Null", CLng(Nz(ver, 0))) & ", " & Q(action) & ", " & _
-        IIf(stepRoleID = 0, "Null", stepRoleID) & ", " & SignedInPersonID() & ", Now(), " & _
+        IIf(stepRoleID = 0, "Null", stepRoleID) & ", " & personId & ", " & _
+        IIf(IsDate(actionOn), "#" & Format$(Nz(actionOn, Now()), "yyyy-mm-dd hh\:nn\:ss") & "#", "Now()") & ", " & _
         IIf(Len(comments) > 0, Q(comments), "Null") & ")"
 End Sub
 

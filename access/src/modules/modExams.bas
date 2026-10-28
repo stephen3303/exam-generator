@@ -16,10 +16,12 @@ Option Explicit
 ' ones), whatever their template or recipient; that is "given lately". The
 ' order is ExamID's (the autonumber goes up), not CreatedOn, which each
 ' copy takes from its own PC's clock. A question counts by its QuestionKey,
-' so a new version of a question given lately counts as given. The draw takes questions not given
-' lately first, at random, and fills the rest from the ones given lately; a
-' topic that can only be filled by going over the limit is drawn that way
-' only when the DH says so (repeatTopics).
+' so a new version of a question given lately counts as given. The draw
+' takes questions not given lately first, at random, and fills the rest
+' from the ones given lately; a topic that can only be filled by going over
+' the limit is drawn that way only when the DH says so (repeatTopics).
+' Generates and swaps take turns (LockOverlapWindow), since each changes
+' what the other's overlap check reads.
 '
 ' Review: an SME with an open task checks the questions drawn for the
 ' topic, swaps any for another approved question of the topic (a swap may
@@ -129,6 +131,15 @@ End Function
 
 ' A count from sql ("SELECT Count(*) ..."), read through CurrentDb so that,
 ' inside a transaction, it sees the transaction's own writes.
+' Lock the overlap window's settings row until the transaction commits, so
+' Generates and swaps, which change what each other's overlap check reads,
+' run one at a time. A missing row would lock nothing, so it is logged.
+Private Sub LockOverlapWindow()
+    If KitExecute("UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey=" & Q(SET_OVERLAP_WINDOW)) = 0 Then
+        LogError "modExams.LockOverlapWindow", "No " & SET_OVERLAP_WINDOW & " row in tblSettings: Generates and swaps aren't serialised."
+    End If
+End Sub
+
 Private Function CountOf(ByVal sql As String) As Long
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset(sql, dbOpenSnapshot)
@@ -284,9 +295,9 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
-    ' Lock the overlap window's settings row until commit: another DH's
-    ' Generate waits here, then draws with this exam in its window.
-    KitExecute "UPDATE tblSettings SET SettingValue=SettingValue WHERE SettingKey=" & Q(SET_OVERLAP_WINDOW)
+    ' Another DH's Generate, or an SME's swap, waits here, then reads this
+    ' exam in its window.
+    LockOverlapWindow
     Set plan = DrawPlan(tplId, RecentKeysList(), repeatTopics, problem)
     If Len(problem) > 0 Then
         ws.Rollback: inTrans = False
@@ -479,11 +490,11 @@ End Function
 
 ' The questions on exam topic etId, in the exam's order, for the review
 ' table: id (ExamQuestionID), QuestionID, ref, QuestionText, LevelName, pts
-' and note: Replaced (no longer the approved version in use: a newer version
-' was approved since the draw, or it was retired), Swapped, given lately,
-' Swapped, Given lately (its key is in keys, the RecentKeysList for the
-' exam) or "". A swapped question given lately says both, so the SME can
-' see every question that counts against the overlap rule.
+' and note, one of: "Replaced" (no longer the approved version in use: a
+' newer version was approved since the draw, or it was retired); "Swapped,
+' given lately"; "Given lately" (its key is in keys, the RecentKeysList for
+' the exam); "Swapped"; or "". A swapped question given lately says both,
+' so the SME can see every question that counts against the overlap rule.
 ' Builds the SQL only (it reads the approved status's id).
 ' Errors: none of its own; a data error passes up.
 Public Function ExamTopicQsSql(ByVal etId As Long, ByVal keys As String) As String
@@ -715,9 +726,13 @@ Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByVal sta
     oldRef = RefOf(oldQid)
     newRef = RefOf(newQid)
     topic = Nz(DLookup("TopicName", "tblTopics", "TopicID=" & Nz(DLookup("TopicID", "tblExamTopics", "ExamTopicID=" & etId), 0)), "")
+    DBEngine.Idle dbRefreshCache            ' the checks below read other copies' latest commits
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
+    ' Swaps and Generates change what was given lately across exams, so they
+    ' take turns: a swap on another exam, or a Generate, waits here.
+    LockOverlapWindow
     ' Claim the topic: only while nobody has swapped or signed it off since the
     ' SME's list was loaded. A second swap or a sign-off at the same moment
     ' changes no row here and is told to look again.
@@ -826,18 +841,31 @@ Fail:
 End Function
 
 ' Send exam examId to the DH for approval (In Review, at the DH's step) when
-' every topic is signed off and it is still in SME review or sent back (SmeReviewStatusIDs).
-' Safe to call twice: only the call that moves it writes the audit row
-' (Submitted). Call it inside a transaction, so the move and its audit row
-' are written together.
+' every topic is signed off and it is still in SME review or sent back
+' (SmeReviewStatusIDs). Safe to call twice: only the call that moves it
+' writes the audit row (Submitted), in the name of whoever signed off the
+' last topic, at that time, whoever's copy made the move. Call it inside a
+' transaction, so the move and its audit row are written together.
 ' Errors: a data error passes up (the caller rolls back).
 Private Sub SendWhenSignedOff(ByVal examId As Long)
-    Dim n As Long
+    Dim n As Long, sme As String, rs As DAO.Recordset, who As Long, whenOn As Variant
+    sme = SmeReviewStatusIDs()
+    ' Take the exam's row first. A send-back writes the same row first, so it
+    ' runs wholly before this (the count then sees its reopened topics) or
+    ' wholly after. In SignOffTopic the row is held already.
+    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ")") = 0 Then Exit Sub
     If CountOf("SELECT Count(*) FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Null") > 0 Then Exit Sub
+    ' The condition again in the move itself, so the count and the move can't disagree.
     n = KitExecute("UPDATE tblExams SET StatusID=" & ExamStatusID(ES_REVIEW) & ", CurrentStepRoleID=" & RoleID("DH") & _
-        " WHERE ExamID=" & examId & " AND StatusID IN (" & SmeReviewStatusIDs() & ")")
-    If n > 0 Then AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_SUBMITTED, RoleID("DH"), _
-        "Every topic signed off"
+        " WHERE ExamID=" & examId & " AND StatusID IN (" & sme & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS et " & _
+        "WHERE et.ExamID=" & examId & " AND et.SignedOffByPersonID Is Null)")
+    If n = 0 Then Exit Sub
+    Set rs = CurrentDb.OpenRecordset("SELECT TOP 1 SignedOffByPersonID, SignedOffOn FROM tblExamTopics WHERE ExamID=" & examId & _
+        " ORDER BY SignedOffOn DESC, ExamTopicID DESC", dbOpenSnapshot)
+    If Not rs.EOF Then who = Nz(rs!SignedOffByPersonID, 0): whenOn = rs!SignedOffOn
+    rs.Close
+    AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_SUBMITTED, RoleID("DH"), _
+        "Every topic signed off", who, whenOn
 End Sub
 
 ' After a sign-off of exam examId has committed: read past Jet's cache, so

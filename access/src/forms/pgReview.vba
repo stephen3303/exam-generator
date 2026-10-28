@@ -185,7 +185,7 @@ Private Sub SwapClicked()
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_task: Exit Sub
     If RunDialog("dlgSwap", "eq=" & eq & ";stamp=" & m_stamp) Then KitToast Nz(TempVars("SwapDone"), "Swapped."), "success"
     ShowTask m_task                         ' the topic as it stands now, the same row picked
-    If GridSelect(Me.sfQs, eq) Then ShowPicked
+    If GridSelect(Me.sfQs, eq) Then ShowPicked Else SelectFirstRow Me.sfQs: ShowPicked
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -233,7 +233,8 @@ End Sub
 
 ' Show task taskId on the right (0: the hint instead).
 Private Sub ShowTask(ByVal taskId As Long)
-    Dim rs As DAO.Recordset, isOpen As Boolean, c As Control, problem As String, s As String, n As Long, given As Long, replaced As Long, rj As String
+    Dim rs As DAO.Recordset, isOpen As Boolean, c As Control, problem As String, s As String, n As Long, given As Long, replaced As Long
+    Dim rj As String, cnt As String
     m_task = taskId: m_et = 0
     isOpen = (taskId <> 0)
     If isOpen Then
@@ -260,13 +261,20 @@ Private Sub ShowTask(ByVal taskId As Long)
                 given = GivenLatelyCount(m_et, m_keys)
                 replaced = ReplacedCount(m_et)
                 s = "Check each question and swap any that aren't right, then sign off. One sign-off completes the topic for all its SMEs."
-                If replaced > 0 Then s = s & " " & replaced & " of them " & IIf(replaced = 1, "was", "were") & " replaced by a newer " & _
-                    "version since the exam was drawn; Swap lists the new version."
+                If replaced > 0 Then s = s & " " & replaced & " of them " & IIf(replaced = 1, "was", "were") & " replaced or retired " & _
+                    "since the exam was drawn; swap " & IIf(replaced = 1, "it", "them") & " out (Swap lists the newer version when there is one)."
                 If given > 0 Then s = s & " " & given & " of them " & IIf(given = 1, "was", "were") & " on an exam generated before this one; the " & _
                     "overlap rule allows " & RepeatsAllowed(n) & "."
-                rj = ExamRejectionText(rs!ExamID)    ' sent back by an approver: why, first
-                If Len(rj) > 220 Then rj = Left$(rj, 210) & "... (the whole reason is in its History on the Exams page)"
-                If Len(rj) > 0 Then ShowAlert Me, "alReview", rj, "warning", "Sent back" Else ShowAlert Me, "alReview", s, "info"
+                rj = ExamRejectionText(rs!ExamID)    ' sent back by an approver: why, first, then the counts
+                If Len(rj) > 0 Then
+                    cnt = ""
+                    If replaced > 0 Then cnt = replaced & " replaced since the draw."
+                    If given > 0 Then cnt = cnt & IIf(Len(cnt) > 0, " ", "") & given & " given lately; the rule allows " & RepeatsAllowed(n) & "."
+                    If Len(rj) + Len(cnt) > 220 Then rj = Left$(rj, 165 - Len(cnt)) & "... (the rest is in its History on the Exams page)"
+                    ShowAlert Me, "alReview", rj & IIf(Len(cnt) > 0, " " & cnt, ""), "warning", "Sent back"
+                Else
+                    ShowAlert Me, "alReview", s, "info"
+                End If
             ElseIf rs!TaskStatus = TS_OPEN Then
                 ShowAlert Me, "alReview", problem, "warning"
             Else

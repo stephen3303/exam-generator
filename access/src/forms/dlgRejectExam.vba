@@ -22,8 +22,8 @@ End Property
 Private Sub Form_Load()
     Dim ref As String
     On Error GoTo Err_Handler
-    m_id = ArgLong("id")
-    m_step = ArgLong("step")
+    m_id = OpenArgLong(Me, "id")
+    m_step = OpenArgLong(Me, "step")
     ref = ExamRef(m_id, DLookup("VersionNo", "tblExams", "ExamID=" & m_id))
     Me.Caption = "Send back " & ref
     Me.lblHead.Caption = "Send " & ref & " back to its SMEs?"
@@ -86,12 +86,3 @@ Private Sub ShowWho()
     Me.txtTo = ExamReturnsToText(m_id, Nz(Me.cboTopic, 0))
     SetEnabled Me.btnReject, Len(ExamTopicsWithoutSme(m_id, Nz(Me.cboTopic, 0))) = 0
 End Sub
-
-' The number after name= in OpenArgs ("id=3"), or 0.
-Private Function ArgLong(ByVal name As String) As Long
-    Dim part As Variant, v As String
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then v = Mid$(part, Len(name) + 2)
-    Next
-    If IsNumeric(v) Then ArgLong = CLng(v)
-End Function

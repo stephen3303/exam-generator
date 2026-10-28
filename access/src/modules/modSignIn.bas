@@ -106,7 +106,10 @@ Public Function DataLinked() As Boolean
 End Function
 
 ' Why this copy can't use its data file (KitVersionProblem), or "". A data
-' file of an older version is brought up to date first (UpgradeData).
+' file of an older version is brought up to date first (UpgradeData), and
+' the links are checked on every copy: the build links to the data file as
+' it was then, so a copy that didn't run the upgrade still has the old
+' columns until its link is refreshed.
 Public Function DataVersionProblem() As String
     Dim v As Long
     v = DataVersion()
@@ -116,7 +119,42 @@ Public Function DataVersionProblem() As String
         UpgradeData v
         v = DataVersion()
     End If
+    If v < DATA_VERSION Then
+        ' Most likely the app is open on another computer, holding a table.
+        DataVersionProblem = "The shared data file needs an update that this copy of " & APP_NAME & " couldn't make, most " & _
+            "likely because " & APP_NAME & " is open on another computer." & vbCrLf & vbCrLf & _
+            "Close " & APP_NAME & " on every other computer, then open it here again."
+        Exit Function
+    End If
+    If v >= 2 Then EnsureLinkHas "tblExamTopics", "ChangeNo"
     DataVersionProblem = KitVersionProblem(v, DATA_VERSION, "", "")
+End Function
+
+' Refresh linked table tbl when its link doesn't show column col yet (a
+' column the data file gained after this copy was linked). A failed refresh
+' is logged; the first use of the column then reports it.
+Private Sub EnsureLinkHas(ByVal tbl As String, ByVal col As String)
+    Dim td As DAO.TableDef, fld As DAO.Field
+    On Error GoTo Fail
+    Set td = CurrentDb.TableDefs(tbl)
+    If Len(td.Connect) = 0 Then Exit Sub                 ' a local table: nothing to refresh
+    For Each fld In td.Fields
+        If StrComp(fld.Name, col, vbTextCompare) = 0 Then Exit Sub
+    Next
+    td.RefreshLink
+    Exit Sub
+Fail:
+    LogError "modSignIn.EnsureLinkHas", tbl & "." & col
+End Sub
+
+' The link's options after its type and path (";PWD=..."), so the data
+' file is opened as the links open it (as modKitBackend's ConnectRest).
+Private Function LinkOptions(ByVal cn As String) As String
+    Dim parts() As String, i As Long
+    parts = Split(cn, ";")
+    For i = 1 To UBound(parts)
+        If Len(parts(i)) > 0 And UCase$(Left$(parts(i), 9)) <> "DATABASE=" Then LinkOptions = LinkOptions & ";" & parts(i)
+    Next
 End Function
 
 ' The data file's version (tblSettings SchemaVersion), 0 when none is recorded.
@@ -132,15 +170,22 @@ End Function
 ' updated.
 '   2: tblExamTopics.ChangeNo (0 for the topics already there).
 Private Sub UpgradeData(ByVal v As Long)
-    Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean
+    Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean, n As Long, d As String
     On Error GoTo Fail
-    Set db = DBEngine.OpenDatabase(KitBackendPath(PROBE_TABLE))
+    Set db = DBEngine.OpenDatabase(KitBackendPath(PROBE_TABLE), False, False, LinkOptions(CurrentDb.TableDefs(PROBE_TABLE).Connect))
     If v < 2 Then
         Set td = db.TableDefs("tblExamTopics")
         For Each fld In td.Fields
             If fld.Name = "ChangeNo" Then has = True
         Next
-        If Not has Then db.Execute "ALTER TABLE tblExamTopics ADD COLUMN ChangeNo LONG", dbFailOnError
+        If Not has Then
+            ' Another copy upgrading at the same moment may add it first (3380).
+            On Error Resume Next
+            db.Execute "ALTER TABLE tblExamTopics ADD COLUMN ChangeNo LONG", dbFailOnError
+            n = Err.Number: d = Err.Description
+            On Error GoTo Fail
+            If n <> 0 And n <> 3380 Then Err.Raise n, "modSignIn.UpgradeData", d
+        End If
         db.Execute "UPDATE tblExamTopics SET ChangeNo=0 WHERE ChangeNo Is Null", dbFailOnError
         CurrentDb.TableDefs("tblExamTopics").RefreshLink        ' the link shows the new column
     End If
