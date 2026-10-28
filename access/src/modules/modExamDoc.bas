@@ -25,9 +25,10 @@ Option Explicit
 ' out first and finds the pages each portion falls on. The header's and
 ' footer's marking line is then one IF field per page ({ IF { PAGE } = 3
 ' "SECRET" "" }), so Word shows each page its own marking. That changes
-' nothing in the body, so the layout doesn't move. If the pages can't be
-' read, or the page count changed, every page carries the overall marking
-' instead: never lower than its content.
+' nothing in the body, so the layout doesn't move. If a page can't be read,
+' Word fails while the fields go in, or the fields moved a portion to
+' another page, every page carries the overall marking instead: never lower
+' than its content.
 '
 ' Word is driven by late binding (no reference to set), hidden, and quit
 ' when done, also on an error.
@@ -44,7 +45,7 @@ Private Const wdCollapseStart As Long = 1
 Private Const wdHeaderFooterPrimary As Long = 1
 Private Const wdFieldEmpty As Long = -1
 Private Const wdFieldPage As Long = 33
-Private Const wdFieldIf As Long = 35
+Private Const wdFieldIf As Long = 7
 Private Const wdFieldNumPages As Long = 26
 Private Const wdFormatXMLDocument As Long = 12
 Private Const wdDoNotSaveChanges As Long = 0
@@ -480,6 +481,7 @@ Stamped:
     End If
     Exit Sub
 NoPages:
+    LogError "modExamDoc.StampMarkings"                   ' so a Word that always fails here shows up
     ok = False
     Resume Stamped
 End Sub
@@ -537,7 +539,7 @@ Private Sub PageMarkings(hf As Object, pgRk() As Long, ByVal overall As Long)
     Next
     hf.Range.Fields.Update
     first = True
-    For Each f In hf.Range.Fields
+    For Each f In hf.Range.Paragraphs(1).Range.Fields     ' the marking line's only
         If f.Type = wdFieldIf Then
             If first Then f.Result.Text = RankMarking(overall): first = False Else f.Result.Text = ""
         End If
