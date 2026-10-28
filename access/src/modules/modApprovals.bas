@@ -22,6 +22,10 @@ Option Explicit
 ' did not write the question. Every approval, rejection and retirement
 ' writes an audit row (modQuestions.AddAudit); the reason for a rejection is
 ' its Comments.
+'
+' Owner: question approvals (build phase 6). Depends on: modAdmin,
+' modErrors, modGlobals, modQuestions, modSignIn; the kit's modKitLocks,
+' modPersonnel.
 
 Public Const AU_APPROVED As String = "Approved"
 Public Const AU_REJECTED As String = "Rejected"

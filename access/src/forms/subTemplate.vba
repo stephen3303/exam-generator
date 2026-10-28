@@ -6,6 +6,9 @@ Option Explicit
 ' every save checks the name (filled in, unique) in Form_BeforeUpdate and
 ' is refused until it is right. Save and the Active switch save at once and
 ' show the change in the page's list.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modSignIn; the kit's modKitLocks, modKitUI.
 
 Private Const REQUIRED As String = "txtName=Template"
 

@@ -16,6 +16,11 @@ Option Explicit
 '
 ' Someone else's save while the editor is open shows as a newer audit row
 ' than the one the editor loaded (m_stamp); Save asks before overwriting it.
+'
+' Owner: the question bank (build phase 5). Depends on: modAdmin,
+' modApprovals, modErrors, modGlobals, modQuestions, modSignIn, modUI; the
+' kit's modKitKeys, modKitLocks, modKitPalette, modKitPurge, modKitUI,
+' modKitUtil, modMenu, modUIKit.
 
 Private Const MSG_TITLE As String = "Question editor"
 

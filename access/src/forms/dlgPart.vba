@@ -9,6 +9,9 @@ Option Explicit
 ' checks the part's text, points and marking, writes the working copy
 ' (wq_part) and hands back the part in TempVars("PartID"); RunDialog sees
 ' DialogResult "ok". Nothing reaches the data file until the editor's Save.
+'
+' Owner: the question bank (build phase 5). Depends on: modAdmin, modErrors,
+' modQuestions, modUI; the kit's modKitUI, modKitUtil.
 
 Private Const MSG_TITLE As String = "Part"
 

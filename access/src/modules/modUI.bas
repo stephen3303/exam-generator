@@ -17,6 +17,9 @@ Option Explicit
 '
 ' At the end, the helpers every page shares: GridSelect (select a table's
 ' row by id), OpenArgText and OpenArgLong (a dialog's OpenArgs).
+'
+' Owner: the app core (build phase 1). Depends on: modErrors, modGlobals;
+' the kit's modDarkMode.
 
 ' Click on a "?" help mark (TitleTip): show its full explanation.
 Public Function ShowTip(frm As Form, ByVal nm As String)

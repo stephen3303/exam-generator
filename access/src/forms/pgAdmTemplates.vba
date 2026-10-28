@@ -11,6 +11,10 @@ Option Explicit
 ' Remove takes it off (the topic itself stays). More, or a right-click on a
 ' row, copies the template with its topics, or deletes it while no exam
 ' was made from it.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitKeys, modKitLocks,
+' modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Templates"
 

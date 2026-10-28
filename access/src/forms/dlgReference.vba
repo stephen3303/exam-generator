@@ -12,6 +12,10 @@ Option Explicit
 ' A new reference goes into the shared list (tblSourceRefs) at once, so the
 ' other SMEs can cite it too, even if the question isn't saved. RunDialog
 ' sees DialogResult "ok".
+'
+' Owner: the question bank (build phase 5). Depends on: modErrors,
+' modGlobals, modQuestions, modUI; the kit's modKitLocks, modKitUI,
+' modKitUtil, modMenu, modUIKit.
 
 Private Const MSG_TITLE As String = "Reference"
 

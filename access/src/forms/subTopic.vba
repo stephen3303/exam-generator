@@ -6,6 +6,9 @@ Option Explicit
 ' the name (filled in, unique) and the questions per exam (MIN_ to MAX_QUESTIONS_PER_TOPIC) in
 ' Form_BeforeUpdate and is refused until they are right. Save and the
 ' Active switch save at once and show the change in the page's list.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modSignIn; the kit's modKitLocks, modKitUI.
 
 Private Const REQUIRED As String = "txtName=Topic;txtCount=Questions per exam"
 

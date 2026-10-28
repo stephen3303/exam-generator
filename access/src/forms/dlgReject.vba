@@ -6,6 +6,9 @@ Option Explicit
 ' required. Reject sends it back (modApprovals.RejectQuestion: Rejected, at
 ' no step, the reason in the audit row); RunDialog sees DialogResult "ok".
 ' Cancel, or Esc, changes nothing.
+'
+' Owner: question approvals (build phase 6). Depends on: modApprovals,
+' modErrors, modQuestions, modUI; the kit's modKitUI, modKitUtil.
 
 Private Const MSG_TITLE As String = "Reject"
 

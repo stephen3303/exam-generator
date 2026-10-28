@@ -11,6 +11,10 @@ Option Explicit
 ' TempVars("TemplateTopicID"); RunDialog sees DialogResult "ok".
 '
 ' A pick in the picker fires no event, so a timer watches for it.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitLocks, modKitUI, modKitUtil,
+' modMenu.
 
 Private Const MSG_TITLE As String = "Templates"
 

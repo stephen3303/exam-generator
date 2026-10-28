@@ -14,6 +14,10 @@ Option Explicit
 ' Both are checked again in the data file when clicked (RequireApprover).
 '
 ' Exams: a placeholder until build phase 8.
+'
+' Owner: question approvals (build phase 6). Depends on: modApprovals,
+' modErrors, modGlobals, modQuestions, modSignIn, modUI; the kit's
+' modGridFilter, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Approvals"
 

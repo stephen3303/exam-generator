@@ -6,6 +6,9 @@ Option Explicit
 ' changed, submitted, approved, rejected and retired it, and when. The
 ' circle is the first version's author. Copy puts it on the clipboard as
 ' text.
+'
+' Owner: the question bank (build phase 5). Depends on: modAdmin, modErrors,
+' modQuestions, modUI; the kit's modKitUI, modKitUtil, modPersonnel.
 
 Private m_key As Long
 

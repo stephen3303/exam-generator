@@ -8,6 +8,9 @@ Option Explicit
 ' The names the kit calls on the app (README, "What the app must provide")
 ' are here and in modUI; MeasureText comes from the kit's modTextMeasure
 ' adapter (kit\adapters), which build.ps1 loads with the kit.
+'
+' Owner: the app core (build phase 1). Depends on: modErrors; the kit's
+' modDarkMode, modKitShell, modKitUI, modKitUtil.
 
 Public Const APP_NAME As String = "Exam Generator"
 Public Const APP_CODE As String = "EXAMGEN"      ' this app's code in the shared Personnel file (kit_person_app)

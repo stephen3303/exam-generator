@@ -9,6 +9,9 @@ Option Explicit
 '
 ' The list pages follow the plan's pattern: the list card on the left and a
 ' 360px detail card on the right, both from y 124px under the search box.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modBuild;
+' the kit's modMenu, modPersonnelUI, modUIKit.
 
 Private Const DETAIL_W As Long = 5400            ' the detail card, 360 px
 Private Const LIST_Y As Long = 1860              ' the list and detail cards' top, 124 px

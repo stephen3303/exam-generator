@@ -11,6 +11,10 @@ Option Explicit
 ' app always keeps one active admin. Taking SME away from someone who is
 ' an SME of topics takes them off those topics too, once the admin agrees.
 ' A change to the signed-in person's own roles shows in the sidebar at once.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitLocks, modKitUI, modKitUtil,
+' modMenu, modPersonnel, modPersonnelUI.
 
 Private Const MSG_TITLE As String = "People and routing"
 

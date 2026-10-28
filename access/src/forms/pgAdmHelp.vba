@@ -12,6 +12,9 @@ Option Explicit
 ' that hides the topic, or leaving the page (CanLeave). A topic's key is set
 ' when it is made and can't change after, because the pages and dialogs find
 ' their help by it.
+'
+' Owner: the help (build phase 3). Depends on: modErrors, modGlobals,
+' modSignIn, modUI; the kit's modKitHelp, modKitKeys, modKitUI, modKitUtil.
 
 Private Const MSG_TITLE As String = "Help topics"
 

@@ -38,6 +38,10 @@ Option Explicit
 ' taken away since sign-in counts at once, and a way in that skips the page
 ' is still checked. They raise ERR_NOT_ALLOWED, which HandleError shows as
 ' the plain reason, not as a fault.
+'
+' Owner: start-up and sign-in (build phase 2). Depends on: modAdmin,
+' modErrors, modGlobals; the kit's modKitBackend, modKitHelp, modKitLocks,
+' modKitShell, modKitUI, modPersonnel, modPersonnelUI.
 
 Public Const DATA_VERSION As Long = 1            ' the tblSettings SchemaVersion this copy reads
 

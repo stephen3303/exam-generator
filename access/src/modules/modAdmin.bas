@@ -15,6 +15,10 @@ Option Explicit
 '     (OverlapWindowExams + 1) * (n - Int(n * pct / 100))
 ' approved questions, where n is the most questions any active template
 ' gives it (QuestionsNeeded). A topic with fewer is short.
+'
+' Owner: the admin pages (build phase 4). Depends on: modErrors, modGlobals,
+' modQuestions, modSignIn; the kit's modKitLocks, modPersonnel; and
+' tblSettings keys (the SET_ constants).
 
 Public Const SET_OVERLAP_PCT As String = "OverlapMaxPct"
 Public Const SET_OVERLAP_WINDOW As String = "OverlapWindowExams"

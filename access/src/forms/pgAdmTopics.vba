@@ -13,6 +13,10 @@ Option Explicit
 ' person the SME role (and Exam Generator access) if they lack it; removing
 ' one leaves their role alone. More, or a right-click on a row, turns the
 ' topic off or on, or deletes it while nothing uses it.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitKeys, modKitLocks,
+' modKitPurge, modKitUI, modKitUtil, modMenu, modPersonnel.
 
 Private Const MSG_TITLE As String = "Topics"
 

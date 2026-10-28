@@ -39,6 +39,9 @@ Option Explicit
 ' can't do (CanWriteQuestion), but the check at the write is the one that
 ' counts. References are shared by every question: any active SME, or the
 ' admin, may add or correct them (RequireReferenceWriter).
+'
+' Owner: the question bank (build phase 5). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn; the kit's modKitLocks, modKitUI, modPersonnel.
 
 Public Const QS_DRAFT As String = "Draft"
 Public Const QS_REVIEW As String = "In Review"

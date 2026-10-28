@@ -18,6 +18,12 @@ Option Explicit
 ' Phase 1 builds every page as a placeholder (its header and an empty state
 ' naming the build phase that fills it), so the shell can be clicked
 ' through. Each phase replaces its pages' placeholders with Build_<page>.
+'
+' Owner: the shell and the build (build phase 1). Depends on: modBuildAdmin,
+' modBuildAppearance, modBuildQuestions, modErrors, modGlobals,
+' modQuestions; the kit's modDarkMode, modGridCols, modGridFilter,
+' modKitBackend, modKitHelp, modKitKeys, modKitPalette, modKitShell,
+' modMenu, modPersonnelUI, modTrust, modUIKit.
 
 Public Const APP_VERSION As String = "0.1.0"
 

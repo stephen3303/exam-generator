@@ -12,6 +12,10 @@ Option Explicit
 ' turns a difficulty level off or on, or deletes an entry nothing uses yet
 ' (one in use can be turned off or renamed instead). Classification levels
 ' are listed lowest first: their rank decides an exam's overall marking.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitKeys, modKitLocks,
+' modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Rules and lists"
 

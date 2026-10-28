@@ -15,6 +15,10 @@ Option Explicit
 ' cite each. SMEs and the admin change a reference's title, number and
 ' revision, turn it off (it can't be cited again; citations stay) or delete
 ' one nothing cites. New reference adds one.
+'
+' Owner: the question bank (build phase 5). Depends on: modErrors,
+' modGlobals, modQuestions, modSignIn, modUI; the kit's modGridFilter,
+' modKitFiles, modKitKeys, modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Question bank"
 
