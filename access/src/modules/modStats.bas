@@ -19,9 +19,15 @@ Option Explicit
 '              given), nx (exams), nref (references cited), top_ref and top_n
 '              (the reference cited most and how many questions cite it)
 '   ws_ref     one row per topic and reference: TopicID, RefID, n
+'
+' Depends on: modExams (ExamStatusID), modGlobals (TableExists), modUI
+' (ClipText).
 
 Public Const WEAK_SHARE As Double = 0.8          ' one reference this share of a topic's questions or more: weak coverage
 Public Const WEAK_MIN_QS As Long = 5            ' fewer questions given than this says too little to flag
+
+Private Const ALERT_TOPIC_LEN As Long = 24      ' a weak coverage line's topic name and reference are cut to
+Private Const ALERT_REF_LEN As Long = 28        ' these lengths (ClipText), so two lines fit the alert's one line
 
 ' Make the local tables when this front end lacks them: BuildAll's "local
 ' tables" step, and the page before it runs.
@@ -63,7 +69,7 @@ Public Sub RunStats(ByVal fromDay As Date, ByVal toDay As Date, ByVal tplId As L
         "INNER JOIN tblQuestionRefs AS qr ON g.QuestionID=qr.QuestionID GROUP BY g.TopicID, qr.RefID", dbFailOnError
     ' The exams and references per topic, and its reference cited most (Jet
     ' can't update from a grouped query, so row by row).
-    Set rs = db.OpenRecordset("SELECT id FROM ws_topic", dbOpenDynaset)
+    Set rs = db.OpenRecordset("SELECT id, nx, nref, top_ref, top_n FROM ws_topic", dbOpenDynaset)
     Do While Not rs.EOF
         Set top = db.OpenRecordset("SELECT TOP 1 RefID, n FROM ws_ref WHERE TopicID=" & rs!id & " ORDER BY n DESC, RefID", dbOpenSnapshot)
         rs.Edit
@@ -93,11 +99,12 @@ End Function
 
 ' The topics table: id (TopicID), TopicName, nq, nx, nref, top_ref_txt (the
 ' reference cited most), top_pct (its share, 0 to 1) and top_txt ("86%"),
-' by topic name.
+' by topic name. A topic whose questions cite no reference has no top
+' reference: top_pct is Null and top_txt a dash.
 ' Builds the SQL only. Errors: none.
 Public Function StatTopicsSql() As String
     StatTopicsSql = "SELECT t.id, t.TopicName, t.nq, t.nx, t.nref, " & RefTextSql("s") & " AS top_ref_txt, " & _
-        "IIf(t.nq=0,0,t.top_n/t.nq) AS top_pct, Format(IIf(t.nq=0,0,t.top_n/t.nq),'0%') AS top_txt " & _
+        "IIf(t.nq=0 Or t.top_n=0,Null,t.top_n/t.nq) AS top_pct, IIf(t.nq=0 Or t.top_n=0,'-',Format(t.top_n/t.nq,'0%')) AS top_txt " & _
         "FROM ws_topic AS t LEFT JOIN tblSourceRefs AS s ON t.top_ref=s.RefID ORDER BY t.TopicName"
 End Function
 
@@ -113,7 +120,8 @@ End Function
 
 ' The topics whose questions came WEAK_SHARE or more from one reference
 ' (with WEAK_MIN_QS questions given or more), one line each ("Damage
-' Control: 86% cite NSTM 555"), then "and 3 more"; "" when none.
+' Control: 86% cite NSTM 555", long names cut short), then "and 3 more";
+' "" when none.
 '   nWeak   returns how many topics are weak
 ' Errors: the engine's.
 Public Function WeakTopicsText(Optional ByRef nWeak As Long, Optional ByVal maxLines As Long = 3) As String
@@ -125,7 +133,8 @@ Public Function WeakTopicsText(Optional ByRef nWeak As Long, Optional ByVal maxL
     Do While Not rs.EOF
         nWeak = nWeak + 1
         If nWeak <= maxLines Then
-            s = s & IIf(Len(s) > 0, vbCrLf, "") & Nz(rs!TopicName, "A topic") & ": " & Format$(rs!share, "0%") & " cite " & Nz(rs!rt, "one reference")
+            s = s & IIf(Len(s) > 0, vbCrLf, "") & ClipText(Nz(rs!TopicName, "A topic"), ALERT_TOPIC_LEN) & ": " & _
+                Format$(rs!share, "0%") & " cite " & ClipText(Nz(rs!rt, "one reference"), ALERT_REF_LEN)
         End If
         rs.MoveNext
     Loop

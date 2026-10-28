@@ -9,13 +9,16 @@ Option Explicit
 ' questions in the alert, each topic with its most cited reference, and the
 ' picked topic's references on the right. Any change to the period or the
 ' template works the figures out again. Print and Export take the topics
-' table.
+' table, labelled with the period and template it was worked out for. While
+' the dates are missing or the wrong way round, no figures show and Print
+' and Export are off.
 '
 ' Depends on: modSignIn, modStats, modUI; the kit's modGridOut,
 ' modKitFiles, modKitUI.
 
-Private m_from As Date          ' the period shown, whole days, both included
+Private m_from As Date          ' the period shown, whole days, both included (as RunStats last ran)
 Private m_to As Date
+Private m_tplName As String     ' the template it ran for ("": every template)
 Private m_topic As Long         ' the topic whose references show (0: none)
 
 Public Property Get HelpTopic() As String
@@ -35,6 +38,7 @@ Private Sub Form_Load()
         For Each c In Array("cboTemplate", "dtFrom", "dtTo", "cal_dtFrom", "cal_dtTo", "btnPrint", "btnExport")
             SetEnabled Me.Controls(CStr(c)), False
         Next
+        Me.segPeriod_val.Locked = True      ' SegmentClick ignores a locked value, so no period can run RunStats
         ShowEmpty Me, "emptyTopics", True, "No data file linked", "There are no exams to count."
         SetVisible Me.sfTopics, False
         SetVisible Me.sfRefs, False
@@ -128,26 +132,29 @@ End Sub
 ' The figures
 ' ---------------------------------------------------------------------------
 
-' Work the figures out for the period and template shown, or say why not.
+' Work the figures out for the period and template shown, or say why not
+' and show none.
 Private Sub RefreshStats()
-    Dim n As Long, s As String, nq As Long
+    Dim n As Long, s As String, nq As Long, d1 As Date, d2 As Date
     If Not IsDate(Me.dtFrom) Or Not IsDate(Me.dtTo) Then
-        ShowAlert Me, "alWeak", "Enter both dates to see the figures.", "info"
+        ClearFigures "Enter both dates to see the figures.", "info"
         Exit Sub
     End If
-    m_from = DateValue(Me.dtFrom): m_to = DateValue(Me.dtTo)
-    If m_from > m_to Then
-        ShowAlert Me, "alWeak", "The first date is after the second. Swap them to see the figures.", "warning"
+    d1 = DateValue(Me.dtFrom): d2 = DateValue(Me.dtTo)
+    If d1 > d2 Then
+        ClearFigures "The first date is after the second. Swap them to see the figures.", "warning"
         Exit Sub
     End If
-    RunStats m_from, m_to, Nz(Me.cboTemplate, 0)
+    RunStats d1, d2, Nz(Me.cboTemplate, 0)
+    m_from = d1: m_to = d2                  ' what the figures are for, for the tile, Print and Export
+    m_tplName = IIf(Nz(Me.cboTemplate, 0) = 0, "", Nz(Me.cboTemplate.Column(1), "one template"))
     SetTile "tileExams", StatExams(), PeriodText()
     nq = StatQuestions()
     SetTile "tileGiven", nq, "a question on three exams counts three times"
     SetTile "tileRefs", StatReferences(), "different references the questions cite"
-    s = WeakTopicsText(n, 3)
+    s = WeakTopicsText(n, 2)                ' two lines, long names cut short, fit the titled alert's one line
     If nq = 0 Then
-        ShowAlert Me, "alWeak", "No exam had final approval in this period" & IIf(Nz(Me.cboTemplate, 0) <> 0, " from this template", "") & ".", "info"
+        ShowAlert Me, "alWeak", "No exam had final approval in this period" & IIf(Len(m_tplName) > 0, " from this template", "") & ".", "info"
     ElseIf n = 0 Then
         ShowAlert Me, "alWeak", "No topic takes " & Format$(WEAK_SHARE, "0%") & " or more of its questions from one reference.", "success"
     Else
@@ -155,7 +162,8 @@ Private Sub RefreshStats()
     End If
     Me.sfTopics.Form.RecordSource = StatTopicsSql()
     n = Me.sfTopics.Form.RecordsetClone.RecordCount
-    ShowEmpty Me, "emptyTopics", n = 0
+    ShowEmpty Me, "emptyTopics", n = 0, "No approved exams in this period", _
+        "Pick a longer period or every template. Only exams the SM gave final approval to count."   ' ClearFigures may have changed them
     SetVisible Me.sfTopics, n > 0
     SetEnabled Me.btnPrint, n > 0
     SetEnabled Me.btnExport, n > 0
@@ -166,15 +174,34 @@ Private Sub RefreshStats()
     End If
 End Sub
 
+' No figures, with msg in the alert: the tiles empty, both tables hidden
+' behind their empty states, and Print and Export off, so nothing from an
+' earlier period shows or prints under the new dates.
+Private Sub ClearFigures(ByVal msg As String, ByVal vrnt As String)
+    Dim c As Variant
+    ShowAlert Me, "alWeak", msg, vrnt
+    For Each c In Array("tileExams", "tileGiven", "tileRefs")
+        SetTile CStr(c), Null, ""
+    Next
+    ShowEmpty Me, "emptyTopics", True, "No figures", "Enter the period's dates, the earlier one first."
+    SetVisible Me.sfTopics, False
+    SetEnabled Me.btnPrint, False
+    SetEnabled Me.btnExport, False
+    Me.lblRefsHdr.Caption = "References"
+    ShowEmpty Me, "emptyRefs", True, "No references", "Pick a topic to see which references its questions cite."
+    SetVisible Me.sfRefs, False
+End Sub
+
 Private Sub SetTile(ByVal nm As String, ByVal v As Variant, ByVal cap As String)
     Me.Controls(nm).Value = v
     Me.Controls(nm & "_cap").Caption = Replace(cap, "&", "&&")
 End Sub
 
-' "1 May 2026 to 28 Oct 2026, every template" (or the template's name).
+' "1 May 2026 to 28 Oct 2026, every template" (or the template's name), as
+' RunStats last ran: the combo may have moved on since.
 Private Function PeriodText() As String
     PeriodText = Format$(m_from, "d mmm yyyy") & " to " & Format$(m_to, "d mmm yyyy") & ", " & _
-        IIf(Nz(Me.cboTemplate, 0) = 0, "every template", Nz(Me.cboTemplate.Column(1), "one template"))
+        IIf(Len(m_tplName) = 0, "every template", m_tplName)
 End Function
 
 ' The references of topic topicId on the right (0: none).

@@ -172,7 +172,7 @@ Public Function ApproveQuestion(ByVal qid As Long, ByRef doneText As String, Opt
     End If
     ws.CommitTrans: inTrans = False
     If nextId <> 0 Then
-        NoticeQuestionAtStep qid            ' the next step's emails; never raises
+        NoticeQuestionAtStep qid            ' queues the next step's emails; never raises
         doneText = "Approved. " & QuestionRef(key, ver) & " goes to the " & RoleCodeOf(nextId) & " next."
     ElseIf Len(oldVers) > 0 Then
         doneText = "Approved. " & QuestionRef(key, ver) & " is in use now; " & oldVers & " is retired."
@@ -216,7 +216,7 @@ Public Function RejectQuestion(ByVal qid As Long, ByVal reason As Variant, Optio
     End If
     AddAudit ITEM_QUESTION, qid, ver, AU_REJECTED, stepId, r
     ws.CommitTrans: inTrans = False
-    NoticeQuestionReturned qid              ' the author's email; never raises
+    NoticeQuestionReturned qid              ' queues the author's email; never raises
     Exit Function
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source

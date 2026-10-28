@@ -11,7 +11,9 @@ Option Explicit
 ' the picked question in full. Swap opens dlgSwap; Sign off completes the
 ' topic for every SME on it. Both are checked again in the data file when
 ' clicked (RequireReviewer). The Dashboard can ask for a task to be shown
-' first through TempVars("ReviewTaskID").
+' first through TempVars("ReviewTaskID"). The emails a sign-off or the
+' opening sweep queues are sent once the click or the loading is over
+' (modNotify.SendQueuedNotices).
 
 Private Const MSG_TITLE As String = "My reviews"
 
@@ -38,12 +40,26 @@ Private Sub Form_Load()
         Exit Sub
     End If
     SendSignedOffExams                      ' an exam whose topics are all signed off goes on to the DH
+    Me.TimerInterval = 1                    ' its emails go once the page has loaded (Form_Timer)
     openId = Nz(TempVars("ReviewTaskID"), 0)
     TempVars("ReviewTaskID") = Null
     RefreshList openId
     Exit Sub
 Err_Handler:
     HandleError "pgReview.Form_Load"
+End Sub
+
+' Once, after Form_Load: send the emails the opening sweep queued. Their
+' note is dropped (a failed email is logged): the person who opened the
+' page didn't take the step, and it mustn't land on their next toast.
+Private Sub Form_Timer()
+    On Error GoTo Err_Handler
+    Me.TimerInterval = 0
+    SendQueuedNotices
+    TakeNoticeNote
+    Exit Sub
+Err_Handler:
+    HandleError "pgReview.Form_Timer"
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -170,8 +186,10 @@ Private Sub SignOffClicked()
     If KitMsgBox("Sign off " & ExamTopicName(m_et) & "? Its " & n & IIf(n = 1, " question is", " questions are") & _
             " then settled for this exam, and the topic's other SMEs' reviews close. It can't be undone.", _
             vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
+    StartNotices                            ' the toast reports this sign-off's emails only
     problem = SignOffTopic(m_et, m_stamp, done)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_task: Exit Sub
+    SendQueuedNotices                       ' the DHs' emails, when it was the exam's last topic
     KitToast WithNoticeNote(done), "success"
     RefreshList 0                           ' it moves to Done
 End Sub

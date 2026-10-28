@@ -267,19 +267,24 @@ Private Sub ApproveClicked()
                     vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
         End If
     End If
+    StartNotices                            ' the toast reports this approval's emails only
     problem = ApproveQuestion(m_qid, done, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
+    SendQueuedNotices                       ' the next step's emails
     KitToast WithNoticeNote(done), "success"
     RefreshList m_qid                       ' still listed when the next step is also theirs
 End Sub
 
 ' Send the shown question back to its author, with the reason dlgReject asks for.
 Private Sub RejectClicked()
-    Dim problem As String
+    Dim problem As String, ok As Boolean
     If m_qid = 0 Then Exit Sub
     problem = ApproveProblem(m_qid, m_qstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_qid: Exit Sub
-    If RunDialog("dlgReject", "id=" & m_qid & ";step=" & m_qstep) Then
+    StartNotices                            ' the toast reports this rejection's emails only
+    ok = RunDialog("dlgReject", "id=" & m_qid & ";step=" & m_qstep)
+    SendQueuedNotices                       ' the author's email, now the dialog has closed
+    If ok Then
         KitToast WithNoticeNote("Sent back to its author with your reason."), "info"
     End If
     RefreshList m_qid                       ' gone from the list, or as it stands now
@@ -305,8 +310,10 @@ Private Sub XApproveClicked()
                 "Its Word document is made now, and anyone can download a copy from the Exams page.", _
                 vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
     End If
+    StartNotices                            ' the toast reports this approval's emails only
     problem = ApproveExam(m_xid, done, isFinal, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
+    SendQueuedNotices                       ' the next step's emails (a final approval sends none)
     If isFinal Then
         problem = MakeExamDocumentNow(m_xid, note)
         If Len(problem) > 0 Then
@@ -323,11 +330,14 @@ End Sub
 ' Send the shown exam back to its SMEs, with the topics and the reason
 ' dlgReject asks for.
 Private Sub XRejectClicked()
-    Dim problem As String
+    Dim problem As String, ok As Boolean
     If m_xid = 0 Then Exit Sub
     problem = ExamApproveProblem(m_xid, m_xstep)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshXList m_xid: Exit Sub
-    If RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep) Then
+    StartNotices                            ' the toast reports this send-back's emails only
+    ok = RunDialog("dlgRejectExam", "id=" & m_xid & ";step=" & m_xstep)
+    SendQueuedNotices                       ' the SMEs' emails, now the dialog has closed
+    If ok Then
         KitToast WithNoticeNote("Sent back to its SMEs with your reason. They find it under My reviews."), "info"
     End If
     RefreshXList m_xid

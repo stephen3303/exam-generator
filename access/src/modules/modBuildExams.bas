@@ -70,7 +70,7 @@ End Function
 Public Sub Build_pgReview()
     Dim c As Control, x As Long, y As Long, h As Long, fx As Long, fw As Long, btnY As Long, lw As Long
     NewForm "", 0, PAGE_W, PAGE_H
-    Ev F, "OnLoad"
+    Ev F, "OnLoad", "OnTimer"             ' OnTimer: the opening sweep's emails, sent once loaded
     PageHeader "My reviews", "Each exam topic you review: check the questions drawn for it, swap any out and sign off. " & _
         "One SME's sign-off completes the topic.", PAGE_PAD
     SearchBox "txtSearch", PAGE_PAD, px(84), px(260), "SearchFor", "Search...", px(28)
@@ -117,7 +117,7 @@ End Sub
 Public Sub Build_pgExams()
     Dim c As Control, x As Long, y As Long, h As Long, fx As Long, fw As Long, btnY As Long, lw As Long
     NewForm "", 0, PAGE_W, PAGE_H
-    Ev F, "OnLoad"
+    Ev F, "OnLoad", "OnTimer"             ' OnTimer: the opening sweep's emails, sent once loaded
     PageHeader "Exams", "Every exam and where it stands in review and approval. The department head starts a new exam here; " & _
         "once the SM approves one, anyone can download its Word document.", PAGE_PAD
     Set c = Btn("btnNew", "New exam", PAGE_W - PAGE_PAD - px(120), px(24), px(120), px(32), "outline")

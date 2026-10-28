@@ -954,7 +954,7 @@ Public Function SubmitQuestion(ByVal qid As Long) As String
     End If
     AddAudit ITEM_QUESTION, qid, ver, AU_SUBMITTED, dh
     ws.CommitTrans: inTrans = False
-    NoticeQuestionAtStep qid                ' the DHs' emails; never raises
+    NoticeQuestionAtStep qid                ' queues the DHs' emails; never raises
     Exit Function
 Fail:
     If inTrans Then RollbackKeepingError ws
