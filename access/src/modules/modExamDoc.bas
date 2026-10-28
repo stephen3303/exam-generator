@@ -8,7 +8,8 @@ Option Explicit
 ' modExamApprovals.DownloadExam). tblExams.OutputFile holds the file's
 ' name only, found in ExamDocFolder, since each PC may reach the shared
 ' folder by its own path; a missing file is made again from the exam
-' (EnsureExamDocument). Every document made writes an audit row.
+' (EnsureExamDocument), as is one made before the admin last reordered the
+' classification levels. Every document made writes an audit row.
 '
 ' The document holds a cover page, then the questions in the exam's order,
 ' numbered, each part and answer option indented under its question, with
@@ -124,16 +125,17 @@ Public Function EnsureExamDocument(ByVal examId As Long, ByRef docPath As String
 End Function
 
 ' True when exam examId's stored document was made before the admin last
-' reordered the classification levels (setting ClassOrderChangedAt, written
-' by Admin: Rules), going by its newest "Document made" audit row (none:
-' made before that row was kept, so True). Both times come from the PCs'
-' clocks.
+' reordered the classification levels: its newest "Document made" audit
+' row is no newer than the audit row that was newest then (setting
+' ClassOrderChangedAt, written by Admin: Rules). Audit ids, not times, so
+' no PC's clock comes into it. No such row: made before that row was kept,
+' so True.
 Private Function MadeBeforeReorder(ByVal examId As Long) As Boolean
     Dim stamp As String, made As Variant
     stamp = SettingText(SET_CLASS_ORDER_AT)
-    If Not IsDate(stamp) Then Exit Function
-    made = DMax("ActionOn", "tblAuditTrail", "ItemType=" & Q(ITEM_EXAM) & " AND ItemID=" & examId & " AND ActionType=" & Q(AU_DOC_MADE))
-    If IsNull(made) Then MadeBeforeReorder = True Else MadeBeforeReorder = (made < CDate(stamp))
+    If Not IsNumeric(stamp) Then Exit Function              ' never reordered
+    made = DMax("AuditID", "tblAuditTrail", "ItemType=" & Q(ITEM_EXAM) & " AND ItemID=" & examId & " AND ActionType=" & Q(AU_DOC_MADE))
+    If IsNull(made) Then MadeBeforeReorder = True Else MadeBeforeReorder = (made <= CLng(stamp))
 End Function
 
 ' Make exam examId's document now, under the busy veil: after its final
