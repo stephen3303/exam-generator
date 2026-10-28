@@ -29,6 +29,7 @@ cd access
 .\build.ps1 -BackEnd .\build\ExamGen_BE.accdb   # front end linked to that data file
 .\build.ps1                                  # front end with no data linked, for UI work
 .\build.ps1 -UiOnly                          # rebuild code and forms, keep the links
+.\build.ps1 -BackEnd <data file> -Release     # also make the locked copy for users (build\ExamGenerator.accde)
 ```
 
 The data file holds the question bank, exams, each person's Exam Generator roles and switches (keyed on the shared Personnel file's `person_id`; names and accounts stay in the Personnel file), the editable help topics and the error log. `new-backend.ps1 -Path <file>` makes it somewhere else; `BuildBackEnd` in `modBuildBackEnd.bas` still works by hand from any Access database.
@@ -36,6 +37,12 @@ The data file holds the question bank, exams, each person's Exam Generator roles
 Then open `access\build\ExamGenerator.accdb`. The build stops and prints any Visual Basic or Access dialog it meets (a compile error, an error message) instead of hanging. The code loaded into the front end has line numbers so the error log names the failing line (`-NoLineNumbers` leaves them out).
 
 The palettes are generated: after changing one, run `python tools\make_themes.py src` in `access\`.
+
+## Release
+
+Users get `ExamGenerator.accde`, never the `.accdb`. `-Release` makes it after the build: compiled, with no code or form design left to change, and locked (`tools\ReleaseLock.ps1`), so holding Shift while it opens doesn't skip the start-up and sign-in, and F11 and Ctrl+G don't reach the tables or the code. The `.accdb` stays the developer's copy and opens unlocked as before.
+
+Each user gets their own copy of the `.accde` on their own PC (or their own folder), linked to the one shared data file. Two people must never open the same copy: the question editor keeps its working copy in local tables of the front end, and two users of one copy would edit each other's.
 
 ## Build phases
 

@@ -236,15 +236,17 @@ End Sub
 ' Startup
 ' ---------------------------------------------------------------------------
 
+' Set database property name, adding it when the front end hasn't got it
+' yet (error 3270). Any other failure, and a failed add, stops the build.
 Private Sub SetProp(ByVal name As String, ByVal kind As Integer, ByVal value As Variant)
     Dim db As DAO.Database
     Set db = CurrentDb
-    On Error Resume Next
+    On Error GoTo Missing
     db.Properties(name) = value
-    If Err.Number = 3270 Then
-        Err.Clear
-        db.Properties.Append db.CreateProperty(name, kind, value)
-    End If
+    Exit Sub
+Missing:
+    If Err.Number <> 3270 Then RaiseAgain "modBuild.SetProp", name
+    db.Properties.Append db.CreateProperty(name, kind, value)   ' an error here goes up to BuildAll
 End Sub
 
 ' Open on the splash screen, which opens frmMain, without Access's own
@@ -252,6 +254,9 @@ End Sub
 ' end was built (error-log entries and the splash show it). BuildTrustCheck
 ' opens the splash at startup (in place of StartUpForm) and shows the kit's
 ' trust page when Access would ask to enable content.
+' Shift at opening (AllowBypassKey) and F11 (AllowSpecialKeys) stay on in
+' this .accdb, the developer's copy; build.ps1 -Release turns them off in
+' the locked .accde users get.
 Private Sub SetStartupOptions()
     SetProp "AppTitle", dbText, APP_NAME
     SetProp "StartUpShowDBWindow", dbBoolean, False

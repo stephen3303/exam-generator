@@ -13,7 +13,9 @@ Option Explicit
 ' writes the question, its parts, options and references in one transaction
 ' (SaveQuestion). So no one else ever sees a half-entered question, and a
 ' multipart question is never saved with parts that don't add up or a
-' portion marking missing.
+' portion marking missing. The working copy is safe only because each user
+' runs their own copy of the front end (README, Release): two people sharing
+' one copy on a share would edit each other's working copy.
 '
 ' Versions: a question is changed in place while it is a draft or rejected.
 ' An approved question is changed by saving a new version: VersionNo + 1,
