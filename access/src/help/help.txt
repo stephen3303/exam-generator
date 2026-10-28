@@ -11,7 +11,7 @@ Format:
   **text**             bold
   Other lines are paragraph text; a blank line ends a paragraph.
 
-These topics are stubs: each phase writes the full help for the pages it builds.
+Each page and dialog has its topic; a key with a dot is a dialog or a part of its page.
 
 === start | Getting started
 The Exam Generator keeps an approved question bank and builds inspection exams from it. Each page in the sidebar is one part of that work.
@@ -344,7 +344,23 @@ Click **New topic** (or press **Ctrl+N**). The key ties the topic to what it exp
 Each new copy of the app brings its own wording for the topics, but only for topics the data file doesn't have yet. Once a topic is in the data file, your wording stays, even when a newer copy is installed.
 
 === logs | Admin: Logs
-The audit trail and the error log. This page comes in build phase 10.
+The audit trail and the error log, for the admin. Both tabs share the search box and the dates, which start at the last 30 days.
+
+# Audit trail
+Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference. **As** is the role the step was taken as. Nobody can change or delete the audit trail from the app.
+
+# Errors
+Every error anyone's copy of the app has hit, newest first, with the page, the procedure and the error. Click an entry to see all of it: the call trail, the form and control, and the computer and build. **Copy** puts the whole entry on the clipboard, to paste into an email to whoever maintains the app.
+
+**Clear log** deletes every entry for every user, after asking. **Export** first to keep a copy.
+
+# Finding entries
+- Type in the search box to find names, actions, items, comments or error text.
+- Change the dates, or clear them to see every date.
+- Use a column's funnel to filter by its values.
+- A list shows the newest 1,000 entries that fit; the line under the title says when there are more.
+
+**Export** saves the list you see as an Excel or CSV file.
 
 === settings | My settings
 Your notices and your colors. Each switch saves as soon as you click it, and changes only your own settings.

@@ -13,6 +13,6 @@ Run on the Windows review VMs:
    Open `access\build\ExamGenerator.accdb` and test it with `review/qa-visual-review-prompt.md`.
    Save the result as `review/reports/qa-YYYY-MM-DD.md`, with screenshots in `review/reports/screenshots/`.
 
-Note: only some of the 10 build phases are done, so unbuilt pages show placeholders naming their phase. List those as coverage gaps, not failures.
+Note: all 10 build phases are built, so no page should show a placeholder; one that does is a failure.
 
 When both reports are in, commit them on a branch named `review/YYYY-MM-DD` and tell Stephen the verdicts.

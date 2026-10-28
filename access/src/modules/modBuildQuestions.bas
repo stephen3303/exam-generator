@@ -204,30 +204,6 @@ Private Function PairCaption(ByVal k As String) As String
     End Select
 End Function
 
-' The names of the form's controls now.
-Private Function NamesNow() As Object
-    Dim c As Control, d As Object
-    Set d = CreateObject("Scripting.Dictionary")
-    For Each c In F.Controls
-        d(c.Name) = True
-    Next
-    Set NamesNow = d
-End Function
-
-' List the controls built since before that show (Visible) in a hidden
-' label nm, "a;b;c", for the page to show and hide as a group.
-Private Sub GroupSince(before As Object, ByVal nm As String)
-    Dim c As Control, s As String
-    For Each c In F.Controls
-        If Not before.Exists(c.Name) Then
-            If c.Visible Then s = s & ";" & c.Name
-        End If
-    Next
-    If Len(s) > 2048 Then Err.Raise 5, , "Group " & nm & " lists too many controls for a label caption"
-    Set c = Lbl(nm, Mid$(s, 2), 0, 0, px(8), px(8))
-    c.Visible = False
-End Sub
-
 ' ---------------------------------------------------------------------------
 ' Question editor (page 6)
 ' ---------------------------------------------------------------------------

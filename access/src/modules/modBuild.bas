@@ -16,12 +16,12 @@ Option Explicit
 ' help, startup. A failed build returns
 ' "ERROR during <step>: <number> <description> [<last form traced>]".
 '
-' Phase 1 builds every page as a placeholder (its header and an empty state
-' naming the build phase that fills it), so the shell can be clicked
-' through. Each phase replaces its pages' placeholders with Build_<page>.
+' Each page has its Build_<page>, here or in a modBuild<area> module. (Up to
+' phase 9, a page not built yet was a placeholder naming its phase; phase 10
+' built the last one.)
 '
 ' Owner: the shell and the build (build phase 1). Depends on: modBuildAdmin,
-' modBuildAppearance, modBuildDash, modBuildExams, modBuildQuestions, modErrors, modGlobals,
+' modBuildAppearance, modBuildDash, modBuildExams, modBuildLogs, modBuildQuestions, modErrors, modGlobals,
 ' modQuestions, modStats; the kit's modDarkMode, modGridCols, modGridFilter,
 ' modKitBackend, modKitHelp, modKitKeys, modKitPalette, modKitShell,
 ' modMenu, modPersonnelUI, modTrust, modUIKit.
@@ -120,18 +120,18 @@ Private Sub BuildUserInterface()
     Build_frmMain
 End Sub
 
-' The pages, in sidebar order. Each phase swaps its placeholders for the
-' real Build_<page>.
+' The pages, in sidebar order, after the tables they host.
 Private Sub BuildPages()
     BuildGrid "subGridHelp", HelpCols(), HELP_LIST_W - px(32)
     BuildAdminGrids                ' the admin pages' tables and detail forms (modBuildAdmin)
     BuildQuestionGrids             ' the question pages' and dialogs' tables (modBuildQuestions)
     BuildExamGrids                 ' the exam pages' and dialogs' tables (modBuildExams)
     BuildDashGrids                 ' the Dashboard's and Statistics' tables (modBuildDash)
+    BuildLogGrids                  ' Admin: Logs' tables (modBuildLogs)
     Build_pgDash
     Build_pgReview                 ' an SME's exam topic reviews (modBuildExams)
     Build_pgApprovals              ' question approvals (modBuildQuestions)
-    Build_pgExams                  ' the DH's New exam; the list comes in phase 8
+    Build_pgExams                  ' every exam, and the DH's New exam (modBuildExams)
     Build_pgQuestions
     Build_pgQuestionEdit
     Build_pgStats
@@ -140,7 +140,7 @@ Private Sub BuildPages()
     Build_pgAdmPeople
     Build_pgAdmRules
     Build_pgAdmHelp
-    Build_Stub "pgAdmLogs", "Admin: Logs", "The audit trail and the error log.", 10
+    Build_pgAdmLogs
     Build_pgMySettings             ' a sidebar link, not a page in the list (modBuildDash)
 End Sub
 
@@ -199,19 +199,36 @@ Private Function HelpCols() As Variant
     HelpCols = Array("topic|Topic|190|bs", "topic_key|Key|118|ms")
 End Function
 
+' Grouping the controls a page shows and hides together (one tab's): call
+' NamesNow before building them and GroupSince after.
+
+' The names of the form's controls now.
+Public Function NamesNow() As Object
+    Dim c As Control, d As Object
+    Set d = CreateObject("Scripting.Dictionary")
+    For Each c In F.Controls
+        d(c.Name) = True
+    Next
+    Set NamesNow = d
+End Function
+
+' List the controls built since before that show (Visible) in a hidden
+' label nm, "a;b;c", for the page to show and hide as a group.
+Public Sub GroupSince(before As Object, ByVal nm As String)
+    Dim c As Control, s As String
+    For Each c In F.Controls
+        If Not before.Exists(c.Name) Then
+            If c.Visible Then s = s & ";" & c.Name
+        End If
+    Next
+    If Len(s) > 2048 Then Err.Raise 5, , "Group " & nm & " lists too many controls for a label caption"
+    Set c = Lbl(nm, Mid$(s, 2), 0, 0, px(8), px(8))
+    c.Visible = False
+End Sub
+
 ' 8pt bold muted uppercase caption above a field.
 Public Sub FieldLbl(ByVal nm As String, ByVal cap As String, ByVal x As Long, ByVal y As Long, ByVal w As Long)
     Lbl nm, cap, x, y, w, px(16), 8, True, CLR_MUTED_FG
-End Sub
-
-' A placeholder page: the page's header and an empty state naming the build
-' phase that fills it in.
-Private Sub Build_Stub(ByVal formName As String, ByVal title As String, ByVal tip As String, ByVal phase As Long)
-    NewForm "", 0, PAGE_W, PAGE_H
-    PageHeader title, tip, PAGE_PAD
-    EmptyState "emptyStub", PAGE_PAD, px(140), ContentW(), "E946", "This page comes in build phase " & phase, _
-        "It is a placeholder so the sidebar can be clicked through. " & tip, shown:=True
-    SaveForm formName
 End Sub
 
 ' The shell: the sidebar of pages and the page host sfPage. At sign-in the
