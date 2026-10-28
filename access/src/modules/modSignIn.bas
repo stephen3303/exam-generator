@@ -47,8 +47,13 @@ Public Const ERR_NOT_ALLOWED As Long = vbObjectError + 70
 
 Private Const PROBE_TABLE As String = "tblSettings"
 
-' Who may open which page: the sidebar keys and the two keys only PageForm
-' knows (settings, qedit). Admin pages for the admin; the rest by role.
+' Whether the signed-in person may open a page, from the roles read at
+' sign-in (TempVars): admin pages for the admin, the rest by role. It only
+' decides what the sidebar shows and where Ctrl+K may go; every write checks
+' the right again in the data file.
+'   key   a sidebar key, or settings or qedit (keys only PageForm knows)
+' Returns True for every page in a UI-only build (no data file).
+' Errors: none.
 Public Function PageAllowed(ByVal key As String) As Boolean
     If Not DataLinked() Then PageAllowed = True: Exit Function
     Select Case key
@@ -59,8 +64,15 @@ Public Function PageAllowed(ByVal key As String) As Boolean
     End Select
 End Function
 
-' Start-up (frmMain.Form_Load): True when the app may open, False when it
-' should close (the user cancelled, or can't use it and was told why).
+' Start-up, run by frmMain.Form_Load under the splash: the data file and its
+' version, sign-in, the person's roles and the help (see the top of the
+' module).
+' Returns True when the app may open, False when it should close (the user
+' cancelled, or can't use it and was told why).
+' Errors: the kit's and the engine's pass up to frmMain's handler.
+' Side effects: may relink the data file (KitEnsureBackend), sign the user in
+'   (TempVars), make the first admin of a new data file (LoadRoles) and
+'   update the help table (KitHelpSync).
 Public Function AppStartUp() As Boolean
     Dim problem As String
     If Not DataLinked() Then AppStartUp = True: Exit Function
@@ -100,7 +112,9 @@ Fail:
     LogError "modSignIn.SyncHelp"
 End Sub
 
-' Hide the sidebar pages the signed-in person can't use.
+' Hide the sidebar pages the signed-in person can't use (PageAllowed).
+'   frm   the shell, frmMain
+' Errors: the kit's (ShellShowItem).
 Public Sub ShowPagesForRoles(frm As Form)
     Dim k As Variant
     For Each k In Array("review", "approvals", "topics", "templates", "people", "rules", "helptopics", "logs")
@@ -125,7 +139,10 @@ Private Function BuiltWithDataFile() As Boolean
     BuiltWithDataFile = CurrentDb.Properties("HasDataFile")
 End Function
 
-' Why this copy can't use its data file (KitVersionProblem), or "".
+' Why this copy can't use its data file, or "": the data file's SchemaVersion
+' against DATA_VERSION (KitVersionProblem). A data file with no version
+' recorded passes; the per-feature checks say what is missing.
+' Errors: the engine's, when tblSettings can't be read.
 Public Function DataVersionProblem() As String
     Dim v As Long
     v = CLng(Nz(DLookup("SettingValue", PROBE_TABLE, "SettingKey='SchemaVersion'"), "0"))
@@ -133,8 +150,14 @@ Public Function DataVersionProblem() As String
     DataVersionProblem = KitVersionProblem(v, DATA_VERSION, "", "")
 End Function
 
-' Read the signed-in person's Exam Generator roles into TempVars. Returns ""
-' when they may use the app, else what to tell them.
+' Read the signed-in person's Exam Generator access into TempVars: EGRoles
+' (",SME,DH,"), EGIsAdmin, EGNotifyDash and EGNotifyEmail (all cleared
+' first).
+' Returns "" when they may use the app, else what to tell them (no role,
+' access turned off, nobody signed in).
+' Errors: the engine's, and MakeFirstAdmin's other than 3022.
+' Side effects: on a new data file (tblPeople empty, no AdminBootstrapped),
+'   a Personnel admin is made its first admin (MakeFirstAdmin), once.
 Public Function LoadRoles() As String
     Dim pid As Long, rs As DAO.Recordset, roles As String
     pid = SignedInPersonID()
@@ -168,7 +191,10 @@ Public Function LoadRoles() As String
     TempVars("EGRoles") = "," & roles & IIf(Len(roles) > 0, ",", "")
 End Function
 
-' True when the signed-in person holds role code (SME, DH, XO, SM).
+' True when the signed-in person held a role at sign-in (TempVars EGRoles).
+' For what the pages show; a write checks the role again in the data file.
+'   code   role code: SME, DH, XO or SM
+' Errors: none (False when the TempVars aren't set).
 Public Function HasRole(ByVal code As String) As Boolean
     On Error Resume Next                    ' TempVars may be unset
     HasRole = (InStr(Nz(TempVars("EGRoles"), ""), "," & code & ",") > 0)
@@ -180,11 +206,11 @@ End Function
 ' TempVars set at sign-in, so admin rights taken away since then count at
 ' once. Every admin write goes through this, as the kit's changes to people
 ' go through PersonnelRequireAdmin: the modAdmin writers call it, and so does
-' each admin page before its own writes.
+' each admin page before its own writes. A front end with no data file has
+' nothing to protect and passes.
 ' Errors: ERR_NOT_ALLOWED with the reason for the user.
 ' Side effects: sets TempVars EGIsAdmin to the answer, so the sidebar
 '   follows on the next page change.
-' A front end with no data file has nothing to protect and passes.
 Public Sub RequireExamAdmin()
     Dim pid As Long, ok As Boolean
     If Not DataLinked() Then Exit Sub
@@ -198,7 +224,10 @@ Public Sub RequireExamAdmin()
         "Only an active Exam Generator admin can make this change. Your admin rights may have been taken away since you signed in."
 End Sub
 
-' True when the signed-in person is the Exam Generator admin.
+' True when the signed-in person was an admin when last checked (TempVars
+' EGIsAdmin, set at sign-in and by RequireExamAdmin). For what the pages
+' show; a write calls RequireExamAdmin instead.
+' Errors: none (False when the TempVar isn't set).
 Public Function IsExamAdmin() As Boolean
     On Error Resume Next
     IsExamAdmin = Nz(TempVars("EGIsAdmin"), False)

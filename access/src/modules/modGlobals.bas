@@ -28,7 +28,10 @@ Public Function Notify(ByVal msg As String, Optional ByVal style As VbMsgBoxStyl
     End If
 End Function
 
-' Text as a quoted SQL string literal.
+' Text as a quoted SQL string literal, its single quotes doubled: Q("O'Neil")
+' gives 'O''Neil'. Use it for every value put into SQL as text.
+'   s   any value; Null gives '' (an empty string, not the SQL Null)
+' Errors: none.
 Public Function Q(ByVal s As Variant) As String
     Q = "'" & Replace(Nz(s, ""), "'", "''") & "'"
 End Function

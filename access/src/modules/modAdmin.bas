@@ -39,8 +39,9 @@ Public Const MAX_TEMPLATE_NAME As Long = 100    ' tblTemplates.TemplateName TEXT
 Public Const MAX_LEVEL_NAME As Long = 30        ' tblDifficultyLevels.LevelName and tblClassLevels.Marking TEXT(30)
 Public Const MAX_PORTION_MARK As Long = 10      ' tblClassLevels.PortionMark TEXT(10)
 
-' The person's name as the pickers show it: "Smith, John (LT)". p is the
-' alias of the Personnel table (kit_person) in the query.
+' SQL for a person's name as the pickers show it: "Smith, John (LT)".
+'   p   the alias of the Personnel table (kit_person) in the query
+' Returns an SQL expression to put in a SELECT. Errors: none.
 Public Function PersonNameSql(Optional ByVal p As String = "p") As String
     PersonNameSql = p & ".last_name & ', ' & " & p & ".first_name & IIf(Nz(" & p & ".rank,'')='','',' (' & " & p & ".rank & ')')"
 End Function
@@ -49,19 +50,30 @@ End Function
 ' Settings
 ' ---------------------------------------------------------------------------
 
+' A tblSettings value as text.
+'   key    SettingKey (SET_ constants)
+'   dflt   what to return when there is no row or its value is Null
+' Errors: the engine's, when tblSettings can't be read.
 Public Function SettingText(ByVal key As String, Optional ByVal dflt As String = "") As String
     SettingText = Nz(DLookup("SettingValue", "tblSettings", "SettingKey=" & Q(key)), dflt)
 End Function
 
+' A tblSettings value as a whole number.
+'   key    SettingKey (SET_ constants)
+'   dflt   what to return when there is no row or the value isn't a number
+' Errors: the engine's, when tblSettings can't be read.
 Public Function SettingLong(ByVal key As String, ByVal dflt As Long) As Long
     Dim s As String
     s = SettingText(key)
     If IsNumeric(s) Then SettingLong = CLng(s) Else SettingLong = dflt
 End Function
 
-' Save setting key as value (adds the row when it isn't there yet).
+' Save setting key as value, adding the row when it isn't there yet.
+'   key     SettingKey (SET_ constants)
+'   value   the text to store
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now
 '   (RequireExamAdmin); KitExecute's lock and write errors pass up.
+' Side effects: writes tblSettings in the data file.
 Public Sub SetSetting(ByVal key As String, ByVal value As String)
     RequireExamAdmin
     If DCount("*", "tblSettings", "SettingKey=" & Q(key)) = 0 Then
@@ -71,19 +83,23 @@ Public Sub SetSetting(ByVal key As String, ByVal value As String)
     End If
 End Sub
 
-' Questions per topic for a new topic or template topic.
+' Questions per topic a new topic or template topic starts with (setting
+' DefaultQuestionCount, DEFAULT_QUESTION_COUNT when it isn't set).
+' Errors: the engine's, when tblSettings can't be read.
 Public Function DefaultQuestionCount() As Long
     DefaultQuestionCount = SettingLong(SET_DEFAULT_COUNT, DEFAULT_QUESTION_COUNT)
 End Function
 
 ' The overlap rule's most percent of an exam's questions that may repeat
 ' (setting OverlapMaxPct, DEFAULT_OVERLAP_PCT when it isn't set).
+' Errors: the engine's, when tblSettings can't be read.
 Public Function OverlapPct() As Long
     OverlapPct = SettingLong(SET_OVERLAP_PCT, DEFAULT_OVERLAP_PCT)
 End Function
 
 ' The overlap rule's look-back, in exams (setting OverlapWindowExams,
 ' DEFAULT_OVERLAP_WINDOW when it isn't set).
+' Errors: the engine's, when tblSettings can't be read.
 Public Function OverlapWindow() As Long
     OverlapWindow = SettingLong(SET_OVERLAP_WINDOW, DEFAULT_OVERLAP_WINDOW)
 End Function
@@ -92,26 +108,37 @@ End Function
 ' The overlap rule
 ' ---------------------------------------------------------------------------
 
-' Approved questions a topic that gets n questions an exam needs to meet the
-' rule (see the top of the module). 0 for a topic in no template.
+' Approved questions a topic needs to meet the overlap rule exam after exam
+' (see the top of the module).
+'   n        questions the topic gets on one exam
+'   pct      OverlapPct
+'   window   OverlapWindow
+' Returns the count; 0 when n is 0 or less (a topic in no template).
+' Errors: none.
 Public Function QuestionsNeeded(ByVal n As Long, ByVal pct As Long, ByVal window As Long) As Long
     If n <= 0 Then Exit Function
     QuestionsNeeded = (window + 1) * (n - Int(n * pct / 100))
 End Function
 
-' Approved current questions on hand in topicId (TopicSupplySql's on_hand
-' for one topic).
+' Approved current questions in a topic (TopicSupplySql's on_hand for one
+' topic).
+'   topicId   tblTopics.TopicID
+' Errors: the engine's.
 Public Function ApprovedOnHand(ByVal topicId As Long) As Long
     ApprovedOnHand = DCount("*", "tblQuestions", "TopicID=" & topicId & " AND IsCurrent AND StatusID=" & ApprovedStatusID())
 End Function
 
-' The id of the question status Approved.
+' The id of the question status Approved (QStatusID(QS_APPROVED)), 0 when
+' the data file has none.
+' Errors: the engine's, the first time the statuses are read.
 Public Function ApprovedStatusID() As Long
     ApprovedStatusID = QStatusID(QS_APPROVED)
 End Function
 
-' Approved questions on hand in each topic, and the most questions any active
-' template gives it: TopicID, TopicName, IsActive, on_hand, per_exam.
+' SQL for every topic's supply: TopicID, TopicName, IsActive, on_hand
+' (approved current questions) and per_exam (the most questions any active
+' template gives it, 0 for none). Use it as a subquery.
+' Errors: the engine's, when the status ids can't be read.
 Public Function TopicSupplySql() As String
     TopicSupplySql = "SELECT t.TopicID, t.TopicName, t.IsActive, " & _
         "(SELECT Count(*) FROM tblQuestions AS q WHERE q.TopicID=t.TopicID AND q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & ") AS on_hand, " & _
@@ -119,9 +146,12 @@ Public Function TopicSupplySql() As String
         "WHERE tt.TopicID=t.TopicID AND tm.IsActive), 0) AS per_exam FROM tblTopics AS t"
 End Function
 
-' The active topics short of approved questions under pct and window, one
-' line each, "Damage Control: 12 approved, needs 28", at most maxLines then
-' "and 3 more". "" when none is short. nShort returns how many are.
+' The active topics short of approved questions under the overlap rule, one
+' line each ("Damage Control: 12 approved, needs 28"), then "and 3 more".
+'   pct, window   OverlapPct and OverlapWindow (or values being tried)
+'   nShort        returns how many topics are short
+'   maxLines      the most topic lines before "and N more"
+' Returns "" when none is short. Errors: the engine's.
 Public Function TopicsShortText(ByVal pct As Long, ByVal window As Long, Optional ByRef nShort As Long, _
         Optional ByVal maxLines As Long = 4) As String
     Dim rs As DAO.Recordset, need As Long, s As String
@@ -146,19 +176,28 @@ End Function
 ' People and roles
 ' ---------------------------------------------------------------------------
 
+' A role's id.
+'   code   tblRoles.RoleCode: SME, DH, XO or SM
+' Returns 0 when the data file has no such role. Errors: the engine's.
 Public Function RoleID(ByVal code As String) As Long
     RoleID = Nz(DLookup("RoleID", "tblRoles", "RoleCode=" & Q(code)), 0)
 End Function
 
+' True when a person holds a role in this data file.
+'   pid    the person's person_id in the Personnel file
+'   code   role code: SME, DH, XO or SM
+' Errors: the engine's.
 Public Function PersonHasRole(ByVal pid As Long, ByVal code As String) As Boolean
     PersonHasRole = DCount("*", "tblPersonRoles", "PersonID=" & pid & " AND RoleID=" & RoleID(code)) > 0
 End Function
 
-' Give pid a row in tblPeople if they have none (active, dashboard notices
-' on), and access to the Exam Generator in the Personnel file, so a role
-' given to them lets them sign in. The two writes (the data file and the
-' Personnel file) are one transaction: both are made, or neither.
-' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now.
+' Make sure a person can sign in to the Exam Generator: a tblPeople row
+' (active, dashboard notices on) when they have none, and access to the app
+' in the Personnel file when they lack it. Both writes are one transaction.
+'   pid   the person's person_id in the Personnel file
+' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now;
+'   KitExecute's and SetPersonApp's errors pass up after the rollback.
+' Side effects: may write tblPeople and the Personnel file's kit_person_app.
 Public Sub EnsurePerson(ByVal pid As Long)
     Dim ws As DAO.Workspace, inTrans As Boolean
     RequireExamAdmin
@@ -177,9 +216,17 @@ Fail:
     RaiseAgain "modAdmin.EnsurePerson", pid
 End Sub
 
-' Give pid role code, or take it away.
+' Give a person an Exam Generator role, or take it away.
+'   pid    the person's person_id in the Personnel file
+'   code   role code: SME, DH, XO or SM (tblRoles.RoleCode)
+'   hasIt  True to give the role, False to take it away
 ' Errors: ERR_NOT_ALLOWED unless the signed-in person is an admin now; 5
-'   when the data file has no role code.
+'   when the data file has no role code; KitExecute's lock and write errors
+'   pass up (after the rollback when giving).
+' Side effects: giving a role also runs EnsurePerson, in one transaction
+'   with the role row. Taking SME away leaves their topics (the People page
+'   removes those first).
+' Example: SetPersonRole 1042, "DH", True
 Public Sub SetPersonRole(ByVal pid As Long, ByVal code As String, ByVal hasIt As Boolean)
     Dim rid As Long, ws As DAO.Workspace, inTrans As Boolean
     RequireExamAdmin
@@ -201,8 +248,9 @@ Fail:
     RaiseAgain "modAdmin.SetPersonRole", code & " " & pid
 End Sub
 
-' The people who hold role code and are active, "Smith, John (LT); Jones,
-' Ann", or "".
+' The active people who hold a role, "Smith, John (LT); Jones, Ann", or "".
+'   code   role code: SME, DH, XO or SM
+' Errors: the engine's.
 Public Function RoleHolders(ByVal code As String) As String
     Dim rs As DAO.Recordset, s As String
     Set rs = CurrentDb.OpenRecordset("SELECT " & PersonNameSql() & " AS nm FROM (tblPersonRoles AS pr INNER JOIN tblPeople AS e " & _
@@ -220,6 +268,7 @@ End Function
 ' active in the Personnel file, with access to the app there. An admin turned
 ' off in the Personnel file doesn't count, so the last-admin checks keep one
 ' who can actually use the app.
+' Errors: the engine's.
 Public Function AdminCount() As Long
     Dim rs As DAO.Recordset
     Set rs = CurrentDb.OpenRecordset("SELECT Count(*) FROM (tblPeople AS e INNER JOIN " & PERSON_TABLE & " AS p " & _
@@ -229,8 +278,10 @@ Public Function AdminCount() As Long
     rs.Close
 End Function
 
-' The role codes pid holds, in chain order, "SME,DH", or "" for none. The
-' admin flag is not a role code (tblPeople.IsAdmin).
+' The role codes a person holds, in chain order, "SME,DH", or "" for none.
+' The admin flag is not a role code (tblPeople.IsAdmin).
+'   pid   the person's person_id in the Personnel file
+' Errors: the engine's.
 Public Function PersonRoleCodes(ByVal pid As Long) As String
     Dim rs As DAO.Recordset, s As String
     Set rs = CurrentDb.OpenRecordset("SELECT r.RoleCode FROM tblPersonRoles AS pr INNER JOIN tblRoles AS r " & _
@@ -243,8 +294,9 @@ Public Function PersonRoleCodes(ByVal pid As Long) As String
     PersonRoleCodes = s
 End Function
 
-' The roles pid holds, for the people list: "Admin, SME, DH", or "No role
-' yet".
+' A person's roles for the people list: "Admin, SME, DH", or "No role yet".
+'   pid   the person's person_id in the Personnel file
+' Errors: the engine's. Called once per row by the list's SQL.
 Public Function PersonRolesText(ByVal pid As Long) As String
     Dim s As String, codes As String
     If Nz(DLookup("IsAdmin", "tblPeople", "PersonID=" & pid), False) Then s = "Admin"
@@ -254,7 +306,9 @@ Public Function PersonRolesText(ByVal pid As Long) As String
     PersonRolesText = s
 End Function
 
-' The topics pid is an SME for, "Damage Control, Firefighting", or "".
+' The topics a person is an SME for, "Damage Control, Firefighting", or "".
+'   pid   the person's person_id in the Personnel file
+' Errors: the engine's.
 Public Function PersonTopicsText(ByVal pid As Long) As String
     Dim rs As DAO.Recordset, s As String
     Set rs = CurrentDb.OpenRecordset("SELECT t.TopicName FROM tblTopicSMEs AS ts INNER JOIN tblTopics AS t " & _
@@ -267,8 +321,10 @@ Public Function PersonTopicsText(ByVal pid As Long) As String
     PersonTopicsText = s
 End Function
 
-' A topic's SMEs for the topics list: "Smith, Jones", "Smith and 2 more", or
-' "None yet".
+' A topic's SMEs for the topics list: "Smith, Jones", "Smith and 2 more",
+' or "None yet".
+'   topicId   tblTopics.TopicID
+' Errors: the engine's. Called once per row by the list's SQL.
 Public Function TopicSMEsText(ByVal topicId As Long) As String
     Dim rs As DAO.Recordset, s As String, n As Long
     Set rs = CurrentDb.OpenRecordset("SELECT p.last_name FROM tblTopicSMEs AS ts INNER JOIN " & PERSON_TABLE & _
@@ -291,15 +347,19 @@ End Function
 ' Ordered lists
 ' ---------------------------------------------------------------------------
 
-' Move row id of tbl (key field idField, order field orderField) up (delta
-' -1) or down (1) a place among the rows matching where ("" for all). The
-' rows are numbered 1, 2, 3... in their present order first, so ties and
-' gaps sort themselves out. False when the row is already at that end.
-' The renumbering is one transaction, so a failure part-way leaves the old
-' order, not half of the new one.
-' tbl, idField and orderField must be plain names and where one simple test
-' (CheckSqlParts); they go into SQL as they are.
-' Errors: 5 when a name or where isn't of that shape.
+' Move a row up or down one place in an ordered list. The rows are numbered
+' 1, 2, 3... in their present order first, so ties and gaps sort themselves
+' out, and the renumbering is one transaction.
+'   tbl, idField, orderField   the table, its key field and its order field
+'                              (plain names: they go into SQL as they are)
+'   id      the row's key
+'   delta   -1 for up, 1 for down
+'   where   the list's rows when the table holds several lists: "" for all,
+'           "field=<whole number>" or "field Is Null"
+' Returns False when the row is already at that end (nothing changes).
+' Errors: 5 when a name or where isn't of that shape; KitExecute's errors
+'   pass up after the rollback.
+' Side effects: rewrites orderField for every row of the list.
 Public Function MoveRow(ByVal tbl As String, ByVal idField As String, ByVal orderField As String, ByVal id As Long, _
         ByVal delta As Long, Optional ByVal where As String = "") As Boolean
     Dim rs As DAO.Recordset, ids() As Long, n As Long, i As Long, at As Long
@@ -333,8 +393,11 @@ Fail:
     RaiseAgain "modAdmin.MoveRow", tbl & " " & id
 End Function
 
-' The next order number for a row added at the end of tbl's rows matching
-' where. The names and where are checked as for MoveRow (error 5).
+' The order number for a row added at the end of a list.
+'   tbl, orderField   the table and its order field (plain names)
+'   where             as for MoveRow: "", "field=<n>" or "field Is Null"
+' Returns the highest order number in the list plus 1 (1 for an empty list).
+' Errors: 5 when a name or where isn't of that shape.
 Public Function NextOrder(ByVal tbl As String, ByVal orderField As String, Optional ByVal where As String = "") As Long
     CheckSqlParts "modAdmin.NextOrder", where, tbl, orderField
     If Len(where) > 0 Then
@@ -344,10 +407,14 @@ Public Function NextOrder(ByVal tbl As String, ByVal orderField As String, Optio
     End If
 End Function
 
-' What is wrong with name for a list entry of at most maxLen characters,
-' which must be unique in field of tbl (other than the row exceptWhere
-' picks, "" for none), or "". what names the thing: "topic". tbl, fld and
-' exceptWhere are checked as for MoveRow (error 5); nm may be any text.
+' What is wrong with a name for a list entry, or "" when it is fine: it must
+' be filled in, at most maxLen characters, and unique in the table.
+'   nm            the name as typed (any text; it goes through Q)
+'   maxLen        the column's size (MAX_ constants)
+'   tbl, fld      the table and its name field (plain names)
+'   what          the thing, for the message: "topic"
+'   exceptWhere   the row being renamed, "field=<n>", or "" for a new one
+' Errors: 5 when a name or exceptWhere isn't of the shape MoveRow takes.
 Public Function NameProblem(ByVal nm As String, ByVal maxLen As Long, ByVal tbl As String, ByVal fld As String, _
         ByVal what As String, Optional ByVal exceptWhere As String = "") As String
     CheckSqlParts "modAdmin.NameProblem", exceptWhere, tbl, fld
