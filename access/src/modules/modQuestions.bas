@@ -72,18 +72,47 @@ Private Const POINT_EPS As Double = 0.001       ' points compared to a thousandt
 Private Const NEW_VERSION_RACE As String = "Someone else started a new version of this question at the same moment. " & _
     "Go back to the question bank and open theirs."
 
+' tblStatuses, read once on first use (it doesn't change while the app runs):
+' question status ids by name, and every status's name by "#" & id.
+Private m_statusIds As Collection
+Private m_statusNames As Collection
+
 ' ---------------------------------------------------------------------------
 ' Lookups
 ' ---------------------------------------------------------------------------
 
 ' A question status's id (tblStatuses, AppliesTo Question), 0 when missing.
+' Read from the cache LoadStatuses fills once.
 Public Function QStatusID(ByVal nm As String) As Long
-    QStatusID = Nz(DLookup("StatusID", "tblStatuses", "StatusName=" & Q(nm) & " AND AppliesTo='Question'"), 0)
+    LoadStatuses
+    On Error Resume Next                    ' a name that isn't there: 0
+    QStatusID = m_statusIds(nm)
 End Function
 
+' A status's name (any AppliesTo), "" when there is no such id.
 Public Function QStatusName(ByVal id As Long) As String
-    QStatusName = Nz(DLookup("StatusName", "tblStatuses", "StatusID=" & id), "")
+    LoadStatuses
+    On Error Resume Next                    ' an id that isn't there: ""
+    QStatusName = m_statusNames("#" & id)
 End Function
+
+' Fill the status cache from tblStatuses the first time it is needed. A
+' failure leaves it empty, so the next call tries again.
+Private Sub LoadStatuses()
+    Dim rs As DAO.Recordset, ids As Collection, names As Collection
+    If Not m_statusIds Is Nothing Then Exit Sub
+    Set ids = New Collection
+    Set names = New Collection
+    Set rs = CurrentDb.OpenRecordset("SELECT StatusID, StatusName, AppliesTo FROM tblStatuses", dbOpenSnapshot)
+    Do While Not rs.EOF
+        If rs!AppliesTo = "Question" Then ids.Add CLng(rs!StatusID), CStr(rs!StatusName)
+        names.Add CStr(rs!StatusName), "#" & rs!StatusID
+        rs.MoveNext
+    Loop
+    rs.Close
+    Set m_statusNames = names
+    Set m_statusIds = ids
+End Sub
 
 Public Function QTypeID(ByVal nm As String) As Long
     QTypeID = Nz(DLookup("QuestionTypeID", "tblQuestionTypes", "TypeName=" & Q(nm)), 0)

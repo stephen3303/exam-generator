@@ -107,7 +107,7 @@ End Function
 
 ' The id of the question status Approved.
 Public Function ApprovedStatusID() As Long
-    ApprovedStatusID = Nz(DLookup("StatusID", "tblStatuses", "StatusName='Approved' AND AppliesTo='Question'"), 0)
+    ApprovedStatusID = QStatusID(QS_APPROVED)
 End Function
 
 ' Approved questions on hand in each topic, and the most questions any active
