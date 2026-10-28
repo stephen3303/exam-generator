@@ -30,8 +30,8 @@ Private Sub Form_Load()
     Dim qid As Long, ref As String
     On Error GoTo Err_Handler
     TempVars("SwapDone") = Null
-    m_eq = ArgLong("eq")
-    m_stamp = ArgLong("stamp")
+    m_eq = OpenArgLong(Me, "eq")
+    m_stamp = OpenArgLong(Me, "stamp")
     m_et = Nz(DLookup("ExamTopicID", "tblExamQuestions", "ExamQuestionID=" & m_eq), 0)
     qid = Nz(DLookup("QuestionID", "tblExamQuestions", "ExamQuestionID=" & m_eq), 0)
     ref = QuestionRef(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid))
@@ -156,12 +156,3 @@ Private Sub ShowPick()
     End If
     SetEnabled Me.btnSwap, Len(problem) = 0
 End Sub
-
-' The number after name= in OpenArgs ("eq=3"), or 0.
-Private Function ArgLong(ByVal name As String) As Long
-    Dim part As Variant, v As String
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then v = Mid$(part, Len(name) + 2)
-    Next
-    If IsNumeric(v) Then ArgLong = CLng(v)
-End Function

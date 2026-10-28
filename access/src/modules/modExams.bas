@@ -542,8 +542,9 @@ Public Function TopicChangeNo(ByVal etId As Long) As Long
     TopicChangeNo = Nz(DLookup("ChangeNo", "tblExamTopics", "ExamTopicID=" & etId), 0)
 End Function
 
-' "Lt A. Smith", or "someone no longer listed".
-Private Function SignerName(ByVal pid As Variant) As String
+' Person pid's name ("Lt A. Smith"), or "someone no longer listed" when the
+' Personnel file has no such person: who signed off or generated an exam.
+Public Function SignerName(ByVal pid As Variant) As String
     SignerName = PersonName(pid)
     If Len(SignerName) = 0 Then SignerName = "someone no longer listed"
 End Function
