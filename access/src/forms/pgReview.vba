@@ -18,6 +18,7 @@ Private m_search As String
 Private m_task As Long          ' the task shown on the right (0: none)
 Private m_et As Long            ' its exam topic
 Private m_keys As String        ' RecentKeysList for its exam
+Private m_stamp As Long         ' its change number when its questions were loaded (TopicChangeNo)
 
 Public Property Get HelpTopic() As String
     HelpTopic = "review"
@@ -180,7 +181,7 @@ Private Sub SwapClicked()
     End If
     problem = ReviewProblem(m_et)
     If Len(problem) > 0 Then KitMsgBox problem, vbInformation, MSG_TITLE: RefreshList m_task: Exit Sub
-    If RunDialog("dlgSwap", "eq=" & eq) Then KitToast Nz(TempVars("SwapDone"), "Swapped."), "success"
+    If RunDialog("dlgSwap", "eq=" & eq & ";stamp=" & m_stamp) Then KitToast Nz(TempVars("SwapDone"), "Swapped."), "success"
     ShowTask m_task                         ' the topic as it stands now, the same row picked
     If MarkRow(Me.sfQs, eq) Then ShowPicked
 End Sub
@@ -244,6 +245,7 @@ Private Sub ShowTask(ByVal taskId As Long)
             isOpen = False: m_task = 0
         Else
             m_et = rs!ExamTopicID
+            m_stamp = TopicChangeNo(m_et)   ' before the questions: a change after this one is caught
             m_keys = RecentKeysList(rs!ExamID)
             n = rs!QuestionCount
             Me.lblExam.Caption = rs!TopicName & " for " & rs!RecipientName

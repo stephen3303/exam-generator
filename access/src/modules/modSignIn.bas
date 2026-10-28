@@ -33,7 +33,7 @@ Option Explicit
 ' is still checked. They raise ERR_NOT_ALLOWED, which HandleError shows as
 ' the plain reason, not as a fault.
 
-Public Const DATA_VERSION As Long = 1            ' the tblSettings SchemaVersion this copy reads
+Public Const DATA_VERSION As Long = 2            ' the tblSettings SchemaVersion this copy reads
 
 ' Raised by the checks made at the point of a write when the signed-in person
 ' may not make it. Err.Description is the reason, written for the user.
@@ -105,13 +105,52 @@ Public Function DataLinked() As Boolean
     Next
 End Function
 
-' Why this copy can't use its data file (KitVersionProblem), or "".
+' Why this copy can't use its data file (KitVersionProblem), or "". A data
+' file of an older version is brought up to date first (UpgradeData).
 Public Function DataVersionProblem() As String
     Dim v As Long
-    v = CLng(Nz(DLookup("SettingValue", PROBE_TABLE, "SettingKey='SchemaVersion'"), "0"))
+    v = DataVersion()
     If v = 0 Then Exit Function             ' no version recorded: the per-feature checks say what is missing
+    If v < DATA_VERSION Then
+        SplashStatus "Updating the data file" & ChrW(8230)
+        UpgradeData v
+        v = DataVersion()
+    End If
     DataVersionProblem = KitVersionProblem(v, DATA_VERSION, "", "")
 End Function
+
+' The data file's version (tblSettings SchemaVersion), 0 when none is recorded.
+Private Function DataVersion() As Long
+    DataVersion = CLng(Nz(DLookup("SettingValue", PROBE_TABLE, "SettingKey='SchemaVersion'"), "0"))
+End Function
+
+' Bring a data file of version v up to DATA_VERSION, one step per version, in
+' the data file itself (modBuildBackEnd builds a new one at DATA_VERSION). The
+' first copy of a newer build to open it does this. Each step only adds and
+' can run again. When it can't (a table is open in another copy), the error is
+' logged and the version stays, so DataVersionProblem says it couldn't be
+' updated.
+'   2: tblExamTopics.ChangeNo (0 for the topics already there).
+Private Sub UpgradeData(ByVal v As Long)
+    Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field, has As Boolean
+    On Error GoTo Fail
+    Set db = DBEngine.OpenDatabase(KitBackendPath(PROBE_TABLE))
+    If v < 2 Then
+        Set td = db.TableDefs("tblExamTopics")
+        For Each fld In td.Fields
+            If fld.Name = "ChangeNo" Then has = True
+        Next
+        If Not has Then db.Execute "ALTER TABLE tblExamTopics ADD COLUMN ChangeNo LONG", dbFailOnError
+        db.Execute "UPDATE tblExamTopics SET ChangeNo=0 WHERE ChangeNo Is Null", dbFailOnError
+        CurrentDb.TableDefs("tblExamTopics").RefreshLink        ' the link shows the new column
+    End If
+    db.Execute "UPDATE tblSettings SET SettingValue='" & DATA_VERSION & "' WHERE SettingKey='SchemaVersion'", dbFailOnError
+    db.Close
+    Exit Sub
+Fail:
+    LogError "modSignIn.UpgradeData", "from version " & v
+    If Not db Is Nothing Then db.Close
+End Sub
 
 ' Read the signed-in person's Exam Generator roles into TempVars. Returns ""
 ' when they may use the app, else what to tell them.

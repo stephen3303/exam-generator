@@ -2,19 +2,23 @@ Option Compare Database
 Option Explicit
 
 ' Swap a question on an exam topic (Build_dlgSwap), from My reviews.
-' OpenArgs "eq=<ExamQuestionID>", the question to swap out. Lists the
+' OpenArgs "eq=<ExamQuestionID>;stamp=<the topic's ChangeNo as My reviews
+' showed it>", the question to swap out. Lists the
 ' approved questions of the topic in use with no version on the exam
 ' (modExams.SwapCandidatesSql), those given lately last, filtered by the
 ' search box. The picked one shows in full, and the alert says whether the
 ' overlap rule allows it (SwapProblem). Swap puts it on the exam
 ' (SwapQuestion), hands the toast's text back in TempVars("SwapDone"), and
-' RunDialog sees DialogResult "ok". Cancel, or Esc, changes nothing.
+' RunDialog sees DialogResult "ok". Cancel, or Esc, changes nothing. When
+' another SME changed the topic since My reviews showed it, the swap is
+' refused and the window closes, so My reviews shows the topic as it is.
 
 Private Const MSG_TITLE As String = "Swap a question"
 
 Private m_eq As Long            ' the exam question being swapped out
 Private m_et As Long            ' its exam topic
 Private m_keys As String        ' RecentKeysList for its exam
+Private m_stamp As Long         ' the topic's change number My reviews showed
 Private m_search As String
 Private m_pick As Long          ' the question picked to swap in (0: none)
 
@@ -27,6 +31,7 @@ Private Sub Form_Load()
     On Error GoTo Err_Handler
     TempVars("SwapDone") = Null
     m_eq = ArgLong("eq")
+    m_stamp = ArgLong("stamp")
     m_et = Nz(DLookup("ExamTopicID", "tblExamQuestions", "ExamQuestionID=" & m_eq), 0)
     qid = Nz(DLookup("QuestionID", "tblExamQuestions", "ExamQuestionID=" & m_eq), 0)
     ref = QuestionRef(DLookup("QuestionKey", "tblQuestions", "QuestionID=" & qid), DLookup("VersionNo", "tblQuestions", "QuestionID=" & qid))
@@ -80,10 +85,14 @@ Private Sub btnSwap_Click()
         KitMsgBox "Pick the question to put in its place.", vbInformation, MSG_TITLE
         Exit Sub
     End If
-    problem = SwapQuestion(m_eq, m_pick, done)
+    problem = SwapQuestion(m_eq, m_pick, m_stamp, done)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbInformation, MSG_TITLE
-        RefreshList                         ' the list as it stands now
+        If TopicChangeNo(m_et) <> m_stamp Then
+            DoCmd.Close acForm, Me.Name, acSaveNo   ' My reviews reloads the topic as it is now
+        Else
+            RefreshList                     ' the list as it stands now
+        End If
         Exit Sub
     End If
     TempVars("SwapDone") = done

@@ -29,7 +29,11 @@ Option Explicit
 ' Every write checks the person's right in the data file at the moment of
 ' the write (RequireExamMaker, RequireReviewer) and raises ERR_NOT_ALLOWED
 ' when they have none. Two people acting at once can't both win: each
-' update is guarded by the state it expects, and the loser is told.
+' update is guarded by the state it expects, and the loser is told. An exam
+' topic's ChangeNo goes up with every swap and its sign-off; My reviews keeps
+' the number it showed (TopicChangeNo), and a swap or sign-off goes through
+' only while the topic still has it, so nobody signs off or swaps on a list
+' another SME has changed since.
 
 Public Const ITEM_EXAM As String = "Exam"
 
@@ -246,6 +250,7 @@ Public Function GenerateExam(ByVal tplId As Long, ByVal recipient As Variant, By
         rs!ExamID = examId
         rs!TopicID = p(0)
         rs!QuestionCount = p(2)
+        rs!ChangeNo = 0
         rs.Update
         rs.Bookmark = rs.LastModified
         etId = rs!ExamTopicID
@@ -466,6 +471,14 @@ Public Function ReviewProblem(ByVal etId As Long) As String
     ReviewProblem = s
 End Function
 
+' Exam topic etId's change number (ChangeNo), read past Jet's cache so another
+' copy's swap or sign-off of a moment ago counts. Read it before the topic's
+' questions, keep it, and pass it to SwapQuestion and SignOffTopic.
+Public Function TopicChangeNo(ByVal etId As Long) As Long
+    DBEngine.Idle dbRefreshCache
+    TopicChangeNo = Nz(DLookup("ChangeNo", "tblExamTopics", "ExamTopicID=" & etId), 0)
+End Function
+
 ' "Lt A. Smith", or "someone no longer listed".
 Private Function SignerName(ByVal pid As Variant) As String
     SignerName = PersonName(pid)
@@ -530,11 +543,15 @@ Public Function SwapProblem(ByVal eqId As Long, ByVal newQid As Long) As String
 End Function
 
 ' Put question newQid on the exam in place of exam question eqId, as the
-' signed-in SME. Returns "" with doneText for the toast, or why it wasn't
-' swapped (SwapProblem, or someone changed the topic a moment ago).
+' signed-in SME, while the topic still has change number stamp (the
+' TopicChangeNo the page showed). Returns "" with doneText for the toast, or
+' why it wasn't swapped (SwapProblem, or someone changed the topic since).
+' Claiming the topic (ChangeNo + 1) is the transaction's first write, so two
+' swaps of one topic run one after the other and the rule is checked again
+' with nothing else changing it.
 ' Errors: ERR_NOT_ALLOWED when the person may not change the topic now
 '   (RequireReviewer); a data error rolls back and passes up.
-Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByRef doneText As String) As String
+Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByVal stamp As Long, ByRef doneText As String) As String
     Dim ws As DAO.Workspace, inTrans As Boolean, etId As Long, examId As Long, oldQid As Long, n As Long
     Dim oldRef As String, newRef As String, topic As String, num As Long, desc As String, src As String
     doneText = ""
@@ -551,10 +568,22 @@ Public Function SwapQuestion(ByVal eqId As Long, ByVal newQid As Long, ByRef don
     Set ws = DBEngine.Workspaces(0)
     On Error GoTo Fail
     ws.BeginTrans: inTrans = True
-    ' Only while it still holds the question shown and the topic isn't signed off.
+    ' Claim the topic: only while nobody has swapped or signed it off since the
+    ' SME's list was loaded. A second swap or a sign-off at the same moment
+    ' changes no row here and is told to look again.
+    n = KitExecute("UPDATE tblExamTopics SET ChangeNo=Nz(ChangeNo,0)+1 WHERE ExamTopicID=" & etId & _
+        " AND SignedOffByPersonID Is Null AND Nz(ChangeNo,0)=" & stamp)
+    If n = 0 Then
+        ws.Rollback: inTrans = False
+        SwapQuestion = "Another SME swapped a question on this topic or signed it off a moment ago. The list now shows where it stands."
+        Exit Function
+    End If
+    ' With the topic claimed nothing else can change it: check the rule again.
+    SwapQuestion = SwapProblem(eqId, newQid)
+    If Len(SwapQuestion) > 0 Then ws.Rollback: inTrans = False: Exit Function
+    ' Only while it still holds the question shown.
     n = KitExecute("UPDATE tblExamQuestions SET QuestionID=" & newQid & ", WasSwapped=True WHERE ExamQuestionID=" & eqId & _
-        " AND QuestionID=" & oldQid & " AND ExamTopicID IN (SELECT ExamTopicID FROM tblExamTopics WHERE ExamTopicID=" & etId & _
-        " AND SignedOffByPersonID Is Null)")
+        " AND QuestionID=" & oldQid)
     If n = 0 Then
         ws.Rollback: inTrans = False
         SwapQuestion = "Another SME swapped this question or signed off the topic a moment ago. The list now shows where it stands."
