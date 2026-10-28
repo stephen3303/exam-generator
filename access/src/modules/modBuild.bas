@@ -91,6 +91,8 @@ Private Sub BuildUserInterface()
     Build_dlgReference             ' cite or add a reference
     Build_dlgHistory               ' a question's history
     Build_dlgReject                ' send a question back to its author
+    Build_dlgNewExam               ' generate an exam (modBuildExams)
+    Build_dlgSwap                  ' swap a question on an exam topic
     BuildMessageDialog             ' the kit's dlgMessage, for KitMsgBox
     BuildInputDialog               ' dlgInput, for KitInputBox
     BuildConfirmDialog             ' dlgConfirm, for KitConfirmTyped
@@ -115,10 +117,11 @@ Private Sub BuildPages()
     BuildGrid "subGridHelp", HelpCols(), HELP_LIST_W - px(32)
     BuildAdminGrids                ' the admin pages' tables and detail forms (modBuildAdmin)
     BuildQuestionGrids             ' the question pages' and dialogs' tables (modBuildQuestions)
+    BuildExamGrids                 ' the exam pages' and dialogs' tables (modBuildExams)
     Build_Stub "pgDash", "Dashboard", "Your open reviews, approvals waiting and topics short of questions.", 9
-    Build_Stub "pgReview", "My reviews", "Each exam topic you review: check the drawn questions, swap any out and sign off.", 7
+    Build_pgReview                 ' an SME's exam topic reviews (modBuildExams)
     Build_pgApprovals              ' question approvals (modBuildQuestions)
-    Build_Stub "pgExams", "Exams", "Every exam and where it stands in review and approval.", 8
+    Build_pgExams                  ' the DH's New exam; the list comes in phase 8
     Build_pgQuestions
     Build_pgQuestionEdit
     Build_Stub "pgStats", "Statistics", "Questions given per topic and per reference over a period or series.", 9
