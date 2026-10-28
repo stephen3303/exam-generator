@@ -20,8 +20,11 @@ Option Explicit
 ' Then ShowPagesForRoles hides the sidebar pages they can't use, and
 ' frmMain.RoutePage sends any other way in (Ctrl+K) to the dashboard.
 '
-' The first Personnel admin to open the app while it has no Exam Generator
-' admin becomes its admin, so a new data file can be set up from the app.
+' The first Personnel admin to open a new data file (tblPeople still empty)
+' becomes its Exam Generator admin, so it can be set up from the app. That
+' happens once: tblSettings AdminBootstrapped records it, and a data file
+' that later has no admin is not handed to whichever Personnel admin opens
+' it next (an admin is then restored in the data file itself).
 '
 ' A front end built with no data file (build.ps1 with no -BackEnd, for UI work)
 ' has no tblSettings: it skips all of this and shows every page. The build
@@ -137,8 +140,8 @@ Public Function LoadRoles() As String
     pid = SignedInPersonID()
     ClearRoles
     If pid = 0 Then LoadRoles = "Nobody is signed in.": Exit Function
-    ' A new data file has no admin yet: the first Personnel admin to open the app becomes it.
-    If DCount("*", "tblPeople", "IsAdmin AND IsActive") = 0 Then
+    ' A new data file has nobody yet: the first Personnel admin to open the app becomes its admin, once.
+    If DCount("*", "tblPeople") = 0 And SettingText(SET_ADMIN_BOOTSTRAPPED) <> "1" Then
         If PersonnelIsAdminNow() Then MakeFirstAdmin pid
     End If
     Set rs = CurrentDb.OpenRecordset("SELECT IsAdmin, IsActive, NotifyDashboard, NotifyEmail FROM tblPeople WHERE PersonID=" & pid, dbOpenSnapshot)
@@ -156,19 +159,13 @@ Public Function LoadRoles() As String
     TempVars("EGNotifyDash") = CBool(Nz(rs!NotifyDashboard, False))
     TempVars("EGNotifyEmail") = CBool(Nz(rs!NotifyEmail, False))
     rs.Close
-    Set rs = CurrentDb.OpenRecordset("SELECT r.RoleCode FROM tblPersonRoles AS pr INNER JOIN tblRoles AS r " & _
-        "ON pr.RoleID=r.RoleID WHERE pr.PersonID=" & pid & " ORDER BY r.ChainOrder", dbOpenSnapshot)
-    Do While Not rs.EOF
-        roles = roles & "," & rs!RoleCode
-        rs.MoveNext
-    Loop
-    rs.Close
+    roles = PersonRoleCodes(pid)
     If Len(roles) = 0 And Not TempVars("EGIsAdmin") Then
         ClearRoles
         LoadRoles = NoAccessText("you don't have an Exam Generator role yet")
         Exit Function
     End If
-    TempVars("EGRoles") = roles & ","
+    TempVars("EGRoles") = "," & roles & IIf(Len(roles) > 0, ",", "")
 End Function
 
 ' True when the signed-in person holds role code (SME, DH, XO, SM).
@@ -215,14 +212,30 @@ Private Sub ClearRoles()
     Next
 End Sub
 
-' Add pid as the Exam Generator admin (a row for them, or their row made admin).
+' Add pid as the data file's first Exam Generator admin and record that the
+' first admin was made (tblSettings AdminBootstrapped = 1), in one
+' transaction. When another Personnel admin did it at the same moment (error
+' 3022 on either row) this one is left out and the app opens as for anyone
+' else.
 Private Sub MakeFirstAdmin(ByVal pid As Long)
-    If DCount("*", "tblPeople", "PersonID=" & pid) = 0 Then
-        CurrentDb.Execute "INSERT INTO tblPeople (PersonID, IsAdmin, IsActive, NotifyDashboard, NotifyEmail) " & _
-            "VALUES (" & pid & ", True, True, True, False)", dbFailOnError
+    Dim ws As DAO.Workspace, inTrans As Boolean
+    On Error GoTo Fail
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    KitExecute "INSERT INTO tblPeople (PersonID, IsAdmin, IsActive, NotifyDashboard, NotifyEmail) " & _
+        "VALUES (" & pid & ", True, True, True, False)"
+    If DCount("*", "tblSettings", "SettingKey=" & Q(SET_ADMIN_BOOTSTRAPPED)) = 0 Then
+        KitExecute "INSERT INTO tblSettings (SettingKey, SettingValue, Description) VALUES (" & Q(SET_ADMIN_BOOTSTRAPPED) & _
+            ", '1', 'Set once the first admin was made from the Personnel admins')"
     Else
-        CurrentDb.Execute "UPDATE tblPeople SET IsAdmin=True, IsActive=True WHERE PersonID=" & pid, dbFailOnError
+        KitExecute "UPDATE tblSettings SET SettingValue='1' WHERE SettingKey=" & Q(SET_ADMIN_BOOTSTRAPPED)
     End If
+    ws.CommitTrans: inTrans = False
+    Exit Sub
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    If Err.Number = 3022 Then Exit Sub
+    RaiseAgain "modSignIn.MakeFirstAdmin", pid
 End Sub
 
 ' "Signed in as <name>, but <why>, so ..." with who to ask.

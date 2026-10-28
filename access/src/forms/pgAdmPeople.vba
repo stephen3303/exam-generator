@@ -101,15 +101,11 @@ Public Sub ActiveChanged()
             Refuse "tgActive", "You can't turn off your own access. Another admin can."
             Exit Sub
         End If
-        If IsAdminPerson(m_pid) And AdminCount() <= 1 Then
-            Refuse "tgActive", "They're the only admin, so their access stays on. Make someone else an admin first."
-            Exit Sub
-        End If
     End If
-    KitExecute "UPDATE tblPeople SET IsActive=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
-    ' Access to the Exam Generator in the Personnel file goes with it on, so
-    ' they can sign in; it is left as it is when turned off here.
-    If v Then EnsurePerson m_pid
+    If Not SavePersonFlag("IsActive", v) Then
+        Refuse "tgActive", "They're the only admin who can sign in, so their access stays on. Make someone else an admin first."
+        Exit Sub
+    End If
     Changed
     Exit Sub
 Err_Handler:
@@ -128,18 +124,46 @@ Public Sub AdminChanged()
             Refuse "tgAdmin", "You can't take away your own admin. Another admin can."
             Exit Sub
         End If
-        If AdminCount() <= 1 And IsActivePerson(m_pid) Then
-            Refuse "tgAdmin", "They're the only admin. Make someone else an admin first."
-            Exit Sub
-        End If
     End If
-    KitExecute "UPDATE tblPeople SET IsAdmin=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
+    If Not SavePersonFlag("IsAdmin", v) Then
+        Refuse "tgAdmin", "They're the only admin who can sign in. Make someone else an admin first."
+        Exit Sub
+    End If
     Changed
     Exit Sub
 Err_Handler:
     HandleError "pgAdmPeople.AdminChanged", m_pid
     ShowSaved
 End Sub
+
+' Save m_pid's tblPeople flag fld (IsActive or IsAdmin) as v. Turning one off
+' is checked inside the same transaction, after the write: when it leaves
+' the app with no admin who can sign in (AdminCount) it is rolled back and
+' False returned, so two admins turning each other off at once can't both
+' succeed. Turning access on also gives them access in the Personnel file
+' (EnsurePerson), in the same transaction; turning it off here leaves that
+' as it is.
+Private Function SavePersonFlag(ByVal fld As String, ByVal v As Boolean) As Boolean
+    Dim ws As DAO.Workspace, inTrans As Boolean, before As Long
+    On Error GoTo Fail
+    before = AdminCount()
+    Set ws = DBEngine.Workspaces(0)
+    ws.BeginTrans: inTrans = True
+    KitExecute "UPDATE tblPeople SET " & fld & "=" & IIf(v, "True", "False") & " WHERE PersonID=" & m_pid
+    If Not v And before > 0 Then
+        If AdminCount() = 0 Then
+            ws.Rollback: inTrans = False
+            Exit Function
+        End If
+    End If
+    If v And fld = "IsActive" Then EnsurePerson m_pid
+    ws.CommitTrans: inTrans = False
+    SavePersonFlag = True
+    Exit Function
+Fail:
+    If inTrans Then RollbackKeepingError ws
+    RaiseAgain "pgAdmPeople.SavePersonFlag", fld & " " & m_pid
+End Function
 
 Public Sub SMEChanged()
     RoleChanged "SME", "tgSME"
@@ -226,14 +250,6 @@ Private Sub SetSwitch(ByVal nm As String, ByVal v As Boolean)
     Me.Controls(nm & "_val").Value = v
     Me.Controls(nm & "_bg").Requery
 End Sub
-
-Private Function IsAdminPerson(ByVal pid As Long) As Boolean
-    IsAdminPerson = DCount("*", "tblPeople", "PersonID=" & pid & " AND IsAdmin AND IsActive") > 0
-End Function
-
-Private Function IsActivePerson(ByVal pid As Long) As Boolean
-    IsActivePerson = DCount("*", "tblPeople", "PersonID=" & pid & " AND IsActive") > 0
-End Function
 
 ' The route cards: who holds DH, XO and SM.
 Private Sub ShowRoute()

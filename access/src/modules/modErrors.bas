@@ -250,7 +250,7 @@ End Function
 Public Function ClearErrorLog() As Long
     RequireExamAdmin
     ClearErrorLog = DCount("*", "error_log")
-    CurrentDb.Execute "DELETE FROM error_log", dbFailOnError
+    KitExecute "DELETE FROM error_log"
 End Function
 
 Private Function NzStr(ByVal v As Variant) As String

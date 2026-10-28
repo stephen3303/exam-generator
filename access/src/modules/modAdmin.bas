@@ -19,6 +19,7 @@ Option Explicit
 Public Const SET_OVERLAP_PCT As String = "OverlapMaxPct"
 Public Const SET_OVERLAP_WINDOW As String = "OverlapWindowExams"
 Public Const SET_DEFAULT_COUNT As String = "DefaultQuestionCount"
+Public Const SET_ADMIN_BOOTSTRAPPED As String = "AdminBootstrapped"   ' "1" once the first admin was made (modSignIn)
 
 ' The settings' values when tblSettings has no row for them. The back end's
 ' seed rows (backend\modBuildBackEnd.bas, SeedData) start with the same values.
@@ -96,6 +97,12 @@ End Function
 Public Function QuestionsNeeded(ByVal n As Long, ByVal pct As Long, ByVal window As Long) As Long
     If n <= 0 Then Exit Function
     QuestionsNeeded = (window + 1) * (n - Int(n * pct / 100))
+End Function
+
+' Approved current questions on hand in topicId (TopicSupplySql's on_hand
+' for one topic).
+Public Function ApprovedOnHand(ByVal topicId As Long) As Long
+    ApprovedOnHand = DCount("*", "tblQuestions", "TopicID=" & topicId & " AND IsCurrent AND StatusID=" & ApprovedStatusID())
 End Function
 
 ' The id of the question status Approved.
@@ -209,23 +216,40 @@ Public Function RoleHolders(ByVal code As String) As String
     RoleHolders = s
 End Function
 
-' Active Exam Generator admins.
+' Exam Generator admins who can sign in now: admin and active in tblPeople,
+' active in the Personnel file, with access to the app there. An admin turned
+' off in the Personnel file doesn't count, so the last-admin checks keep one
+' who can actually use the app.
 Public Function AdminCount() As Long
-    AdminCount = DCount("*", "tblPeople", "IsAdmin AND IsActive")
+    Dim rs As DAO.Recordset
+    Set rs = CurrentDb.OpenRecordset("SELECT Count(*) FROM (tblPeople AS e INNER JOIN " & PERSON_TABLE & " AS p " & _
+        "ON e.PersonID=p.person_id) INNER JOIN " & PERSON_APP_TABLE & " AS a ON e.PersonID=a.person_id " & _
+        "WHERE e.IsAdmin AND e.IsActive AND p.is_active AND a.is_active AND a.app_code=" & Q(APP_CODE), dbOpenSnapshot)
+    AdminCount = Nz(rs.Fields(0).Value, 0)
+    rs.Close
+End Function
+
+' The role codes pid holds, in chain order, "SME,DH", or "" for none. The
+' admin flag is not a role code (tblPeople.IsAdmin).
+Public Function PersonRoleCodes(ByVal pid As Long) As String
+    Dim rs As DAO.Recordset, s As String
+    Set rs = CurrentDb.OpenRecordset("SELECT r.RoleCode FROM tblPersonRoles AS pr INNER JOIN tblRoles AS r " & _
+        "ON pr.RoleID=r.RoleID WHERE pr.PersonID=" & pid & " ORDER BY r.ChainOrder", dbOpenSnapshot)
+    Do While Not rs.EOF
+        s = s & IIf(Len(s) > 0, ",", "") & rs!RoleCode
+        rs.MoveNext
+    Loop
+    rs.Close
+    PersonRoleCodes = s
 End Function
 
 ' The roles pid holds, for the people list: "Admin, SME, DH", or "No role
 ' yet".
 Public Function PersonRolesText(ByVal pid As Long) As String
-    Dim rs As DAO.Recordset, s As String
+    Dim s As String, codes As String
     If Nz(DLookup("IsAdmin", "tblPeople", "PersonID=" & pid), False) Then s = "Admin"
-    Set rs = CurrentDb.OpenRecordset("SELECT r.RoleCode FROM tblPersonRoles AS pr INNER JOIN tblRoles AS r " & _
-        "ON pr.RoleID=r.RoleID WHERE pr.PersonID=" & pid & " ORDER BY r.ChainOrder", dbOpenSnapshot)
-    Do While Not rs.EOF
-        s = s & IIf(Len(s) > 0, ", ", "") & rs!RoleCode
-        rs.MoveNext
-    Loop
-    rs.Close
+    codes = Replace(PersonRoleCodes(pid), ",", ", ")
+    If Len(codes) > 0 Then s = s & IIf(Len(s) > 0, ", ", "") & codes
     If Len(s) = 0 Then s = "No role yet"
     PersonRolesText = s
 End Function
