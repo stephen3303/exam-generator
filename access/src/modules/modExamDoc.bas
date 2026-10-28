@@ -22,12 +22,14 @@ Option Explicit
 ' page's header and footer carry the highest marking on that page, and the
 ' cover the exam's overall marking (the highest on the exam). Page breaks
 ' are only known once Word has laid the document out, so the code lays it
-' out first and finds the pages each portion falls on. The header's and
-' footer's marking line is then one IF field per page ({ IF { PAGE } = 3
-' "SECRET" "" }), so Word shows each page its own marking. That changes
-' nothing in the body, so the layout doesn't move. If the pages can't be
-' read, or the page count changed, every page carries the overall marking
-' instead: never lower than its content.
+' out first, finds the pages each portion falls on, and then makes each page
+' a section of its own by putting a continuous section break in place of
+' the paragraph mark that ends the page (Word puts the break in front of
+' the mark, so the mark is then deleted): the break ends that paragraph
+' instead and takes no room, so the layout doesn't move. Paragraphs are
+' kept whole on a page so every page starts a new paragraph. If a page
+' can't be split that way, or the layout moved, every page carries the
+' overall marking instead: never lower than its content.
 '
 ' Word is driven by late binding (no reference to set), hidden, and quit
 ' when done, also on an error.
@@ -39,10 +41,10 @@ Private Const wdAlignParagraphLeft As Long = 0
 Private Const wdAlignParagraphCenter As Long = 1
 Private Const wdActiveEndPageNumber As Long = 3
 Private Const wdStatisticPages As Long = 2
-Private Const wdPrintView As Long = 3
-Private Const wdCollapseStart As Long = 1
+Private Const wdGoToPage As Long = 1
+Private Const wdGoToAbsolute As Long = 1
+Private Const wdSectionBreakContinuous As Long = 3
 Private Const wdHeaderFooterPrimary As Long = 1
-Private Const wdFieldEmpty As Long = -1
 Private Const wdFieldPage As Long = 33
 Private Const wdFieldNumPages As Long = 26
 Private Const wdFormatXMLDocument As Long = 12
@@ -54,12 +56,14 @@ Private m_doc As Object             ' the document being made
 Private m_used As Boolean           ' its first (empty) paragraph has been used
 ' The marked portions. While the document is written each is kept as its
 ' paragraph's first and last character positions, numbers that later
-' paragraphs, added after them, can't change; the body isn't changed after
-' that, so StampMarkings reads their pages from them.
+' paragraphs, added after them, can't change. StampMarkings makes them into
+' Word ranges (which move with the text) only once every paragraph is in,
+' so no range can grow to take in a paragraph added after it.
 Private m_pS() As Long              ' each portion's paragraph: its Start
 Private m_pE() As Long              '   its End
 Private m_pRank() As Long           '   and its LevelRank
 Private m_pN As Long
+Private m_pRng() As Object          ' StampMarkings: each portion as a Word range
 
 ' ---------------------------------------------------------------------------
 ' Where documents are kept
@@ -218,6 +222,7 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
     Set m_doc = Nothing
     wd.Quit wdDoNotSaveChanges
     Set wd = Nothing
+    Erase m_pRng
     ' Only the file's name: each PC may reach the shared folder by another path.
     KitExecute "UPDATE tblExams SET OutputFile=" & Q(Mid$(path, InStrRev(path, "\") + 1)) & " WHERE ExamID=" & examId
     AddAudit ITEM_EXAM, examId, DLookup("VersionNo", "tblExams", "ExamID=" & examId), AU_DOC_MADE, 0, _
@@ -226,6 +231,7 @@ Public Function MakeExamDocument(ByVal examId As Long, Optional ByRef note As St
 Fail:
     num = Err.Number: desc = Err.Description: src = Err.Source
     On Error Resume Next
+    Erase m_pRng
     If Not m_doc Is Nothing Then m_doc.Close wdDoNotSaveChanges
     Set m_doc = Nothing
     If Not wd Is Nothing Then wd.Quit wdDoNotSaveChanges
@@ -441,75 +447,107 @@ End Function
 ' Page markings
 ' ---------------------------------------------------------------------------
 
-' Lay the document out, find the page each portion is on, and make the
-' header's and footer's marking line show each page the highest marking of
-' the portions on it (the cover: the overall one). Falls back to the overall
-' marking on every page when a page can't be read, the page count changed
-' after the fields went in, or sameOrder is False (the classification order
-' changed since the exam was approved); note then says why.
+' Lay the document out, make each page its own section, and stamp each
+' section's banner with the highest marking of the portions in it (the
+' cover: the overall one). The portions are Word ranges, which move with the
+' text, so the ranks are read from the final layout, after the breaks went
+' in. Falls back to the overall marking on every page when a page can't be
+' split cleanly, the split didn't leave exactly one section per page, or
+' sameOrder is False (the classification order changed since the exam was
+' approved); note then says why.
 Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
-    Dim nPages As Long, pgRk() As Long, i As Long, p As Long, p0 As Long, p1 As Long, ok As Boolean
-    Dim sec As Object
-    Set sec = m_doc.Sections(1)
-    On Error Resume Next
-    m_doc.ActiveWindow.View.Type = wdPrintView      ' page numbers as printed
-    On Error GoTo 0
+    Dim nPages As Long, secRk() As Long, starts() As Long, i As Long, p As Long, ok As Boolean, pos As Long
+    Dim sec As Object, r As Object, s0 As Long, s1 As Long, rr As Object, fmt As Object
+    ' The portions as ranges, now that nothing more is added after them: the
+    ' text before a position never changed while later paragraphs were
+    ' added, so each range is exactly its paragraph. From here they move
+    ' with the section breaks put in below.
+    ReDim m_pRng(0 To m_pN)
+    For i = 0 To m_pN - 1
+        Set m_pRng(i) = m_doc.Range(m_pS(i), m_pE(i))
+    Next
     m_doc.Repaginate
     nPages = m_doc.ComputeStatistics(wdStatisticPages)
     ok = sameOrder And nPages >= 1
     If ok Then
-        ReDim pgRk(1 To nPages)
-        pgRk(1) = overall
-        ' Every page a portion touches: a paragraph is kept whole on its
-        ' page, but one longer than a page still runs on.
-        For i = 0 To m_pN - 1
-            p0 = PageOf(m_pS(i)): p1 = PageOf(m_pE(i) - 1)
-            If p0 < 1 Or p1 < p0 Or p1 > nPages Then ok = False: Exit For
-            For p = p0 To p1
-                If m_pRank(i) > pgRk(p) Then pgRk(p) = m_pRank(i)
-            Next
+        ReDim starts(1 To nPages)
+        For p = 2 To nPages
+            pos = m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start
+            starts(p) = pos
+            If pos < 1 Then
+                ok = False
+            ElseIf m_doc.Range(pos - 1, pos).Text <> vbCr Then
+                ok = False                                 ' the page starts inside a paragraph
+            End If
         Next
     End If
     If ok Then
-        For p = 2 To nPages
-            If pgRk(p) = 0 Then pgRk(p) = overall          ' a page with no marked portion found
+        ' From the last page back, so the earlier positions stay put. Word
+        ' puts the break in front of the range, leaving the page's last
+        ' paragraph mark after it, where it would be an empty line at the top
+        ' of the next page: delete it, so the break ends that paragraph.
+        ' Deleting a paragraph mark can give the merged paragraph the deleted
+        ' one's format (Word 2013 on), so page p's first paragraph gets its
+        ' own back (its page break and indent).
+        For p = nPages To 2 Step -1
+            Set fmt = m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format.Duplicate
+            m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
+            Set rr = m_doc.Range(starts(p), starts(p) + 1)
+            If rr.Text = vbCr Then
+                rr.Delete
+                m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format = fmt
+            End If
         Next
-        PageMarkings sec.Headers(wdHeaderFooterPrimary), pgRk
-        PageMarkings sec.Footers(wdHeaderFooterPrimary), pgRk
         m_doc.Repaginate
-        ok = (m_doc.ComputeStatistics(wdStatisticPages) = nPages)
+        ok = SectionsArePages(nPages)
     End If
-    If Not ok Then SetMarking sec, RankMarking(overall)
+    If ok Then
+        ReDim secRk(1 To nPages)
+        secRk(1) = overall
+        For p = 2 To nPages
+            Set sec = m_doc.Sections(p)
+            s0 = sec.Range.Start: s1 = sec.Range.End
+            ' By where each portion starts: a paragraph is kept whole on its
+            ' page, and its end can take in the break that follows it.
+            For i = 0 To m_pN - 1
+                Set r = m_pRng(i)
+                If r.Start >= s0 And r.Start < s1 And m_pRank(i) > secRk(p) Then secRk(p) = m_pRank(i)
+            Next
+            If secRk(p) = 0 Then secRk(p) = overall          ' a page with no marked portion found
+        Next
+    End If
+    For p = 1 To m_doc.Sections.Count
+        Set sec = m_doc.Sections(p)
+        If p > 1 Then
+            sec.Headers(wdHeaderFooterPrimary).LinkToPrevious = False
+            sec.Footers(wdHeaderFooterPrimary).LinkToPrevious = False
+        End If
+        If ok Then SetMarking sec, RankMarking(secRk(p)) Else SetMarking sec, RankMarking(overall)
+    Next
     If Not sameOrder Then
         note = "The classification order was changed after the SM approved this exam, so every page carries the higher of " & _
             "the overall marking approved then and the exam's highest marking now."
     ElseIf Not ok Then
-        note = "Word couldn't work out which page each question is on, so every page carries the exam's overall marking."
+        note = "Word couldn't split the pages cleanly, so every page carries the exam's overall marking."
     End If
 End Sub
 
-' Make the marking line (the first paragraph) of header or footer hf show,
-' on each page p, the marking of rank pgRk(p): one { IF { PAGE } = p
-' "marking" "" } field per page, of which only that page's shows anything.
-Private Sub PageMarkings(hf As Object, pgRk() As Long)
-    Dim r As Object, f As Object, c As Object, p As Long, k As Long, mk As String
-    Set r = hf.Range.Paragraphs(1).Range
-    r.MoveEnd 1, -1                         ' wdCharacter: keep the paragraph mark
-    r.Text = ""
-    For p = UBound(pgRk) To 1 Step -1       ' each at the line's start, so they end up in page order
-        mk = Replace(Replace(RankMarking(pgRk(p)), "\", "\\"), """", "\""")
-        Set r = hf.Range.Paragraphs(1).Range
-        r.Collapse wdCollapseStart
-        Set f = hf.Range.Fields.Add(r, wdFieldEmpty, "IF PAGENO = " & p & " """ & mk & """ """""", False)
-        ' The page number goes in as a field of its own, inside the IF.
-        Set c = f.Code
-        k = InStr(c.Text, "PAGENO")
-        c.SetRange c.Start + k - 1, c.Start + k + 5
-        hf.Range.Fields.Add c, wdFieldPage
+' True when the document has exactly nPages pages and nPages sections, and
+' each section starts at the top of its page and ends on it.
+Private Function SectionsArePages(ByVal nPages As Long) As Boolean
+    Dim p As Long, sec As Object, s0 As Long, s1 As Long
+    If m_doc.Sections.Count <> nPages Or m_doc.ComputeStatistics(wdStatisticPages) <> nPages Then Exit Function
+    For p = 1 To nPages
+        Set sec = m_doc.Sections(p)
+        s0 = sec.Range.Start: s1 = sec.Range.End - 1
+        If s1 < s0 Then Exit Function                      ' an empty section
+        If PageOf(s0) <> p Or PageOf(s1) <> p Then Exit Function
+        If p > 1 Then
+            If m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start <> s0 Then Exit Function
+        End If
     Next
-    hf.Range.Fields.Update
-    BannerFormat hf.Range.Paragraphs(1).Range
-End Sub
+    SectionsArePages = True
+End Function
 
 ' The page character position pos is on.
 Private Function PageOf(ByVal pos As Long) As Long
