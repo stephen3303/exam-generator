@@ -46,9 +46,9 @@ if ($BackEnd) {
 
 # SaveForm attaches <srcRoot>\forms\<name>.vba, so stage the app's forms and
 # the kit's forms (subGrid, dlgAppearance, dlgDatePick and the rest) in one
-# folder, with the help topics (LoadHelpTopics).
-$stage = Join-Path $env:TEMP 'ExamGenerator_src'
-Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+# folder, with the help topics (LoadHelpTopics). The folder is this build's
+# own, so two builds at once don't overwrite each other's files.
+$stage = Join-Path $env:TEMP ('ExamGenerator_src_' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force (Join-Path $stage 'forms') | Out-Null
 Copy-Item (Join-Path $here 'kit\forms\*.vba') (Join-Path $stage 'forms')
 Copy-Item (Join-Path $here 'src\forms\*.vba') (Join-Path $stage 'forms')
@@ -80,9 +80,11 @@ try {
              @(Get-Item (Join-Path $here 'src\themes\light\modTheme.bas'))
     foreach ($f in $files) {
         try { $acc.DoCmd.DeleteObject(5, $f.BaseName) } catch {}
-        # LoadFromText expects Windows line endings.
-        $tmp = Join-Path $env:TEMP ("examgen_" + $f.Name)
+        # LoadFromText expects Windows line endings. The code is written out as
+        # ASCII, so a character outside it would quietly become "?": stop instead.
+        $tmp = Join-Path $stage ("examgen_" + $f.Name)
         $text = [IO.File]::ReadAllText($f.FullName) -replace "`r?`n", "`r`n"
+        if ($text -match '[^\x00-\x7F]') { throw "$($f.Name) has a character outside ASCII; write it with ChrW() instead." }
         if (-not $NoLineNumbers) { $text = Add-VbaLineNumbers $text }
         [IO.File]::WriteAllText($tmp, $text, [Text.Encoding]::ASCII)
         $acc.LoadFromText(5, $f.BaseName, $tmp)
@@ -112,6 +114,7 @@ try {
 catch { $failed = $true; if (-not $watch.Killed) { throw } }
 finally {
     $dialogs = Stop-AccessWatch $watch $acc
+    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
 if ($dialogs) { Write-Host "Build stopped: Access showed the dialog(s) above."; exit 1 }
 if ($failed) { exit 1 }
