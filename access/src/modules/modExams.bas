@@ -841,8 +841,8 @@ Public Function SignOffTopic(ByVal etId As Long, ByVal stamp As Long, ByRef done
     If reopened Then NoticeReviews examId   ' queues the SMEs' emails; never raises
     nLeft = SendAfterSignOff(examId)        ' and a last topic signed off at the same moment as this one; never raises
     If reopened Then
-        doneText = "Signed off. A question on another topic was replaced since the draw, so that topic went back to its " & _
-            "SMEs to swap it before the exam goes to the DH."
+        doneText = "Signed off. Another topic had a question replaced or retired since the draw, so it went back to its " & _
+            "SMEs to swap before the exam goes to the DH."
     ElseIf nLeft < 0 Then
         doneText = "Signed off."
     ElseIf nLeft = 0 Then
@@ -900,33 +900,84 @@ End Function
 ' since the draw, sent back to their SMEs while the exam is in SME review:
 ' the sign-off is cleared, the change number moves on (a page showing the
 ' old questions can't sign it off), its active SMEs get new open review
-' tasks, and the exam gets an audit row (Reopened, the topic's name).
+' tasks, and the exam gets an audit row (Reopened, the topic's name). A topic
+' with no active SME gets no task now; the audit row says so, and the sweep
+' (ReissueReviews) gives it tasks once the topic has an SME again.
 ' Returns how many topics went back. Call it inside a transaction.
 ' Errors: a data error passes up (the caller rolls back).
 Private Function ReopenReplacedTopics(ByVal examId As Long) As Long
-    Dim rs As DAO.Recordset, v As Variant, ver As Variant, n As Long
+    Dim rs As DAO.Recordset, v As Variant, ver As Variant, n As Long, smes As String, note As String
     If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
             SmeReviewStatusIDs() & ")") = 0 Then Exit Function
     Set rs = CurrentDb.OpenRecordset("SELECT et.ExamTopicID, et.TopicID, tp.TopicName FROM tblExamTopics AS et " & _
-        "INNER JOIN tblTopics AS tp ON et.TopicID=tp.TopicID WHERE et.ExamID=" & examId & _
+        "LEFT JOIN tblTopics AS tp ON et.TopicID=tp.TopicID WHERE et.ExamID=" & examId & _
         " AND Not et.SignedOffByPersonID Is Null AND EXISTS (SELECT * FROM tblExamQuestions AS eq INNER JOIN tblQuestions AS q " & _
         "ON eq.QuestionID=q.QuestionID WHERE eq.ExamTopicID=et.ExamTopicID AND NOT (q.IsCurrent AND q.StatusID=" & _
         ApprovedStatusID() & "))", dbOpenSnapshot)
     ver = DLookup("VersionNo", "tblExams", "ExamID=" & examId)
     Do While Not rs.EOF
-        KitExecute "UPDATE tblExamTopics SET SignedOffByPersonID=Null, SignedOffOn=Null, ChangeNo=Nz(ChangeNo,0)+1 " & _
-            "WHERE ExamTopicID=" & rs!ExamTopicID
-        For Each v In Split(TopicReviewers(rs!TopicID), ",")
-            KitExecute "INSERT INTO tblTasks (TaskType, ItemType, ItemID, ExamTopicID, AssignedPersonID, TaskStatus, CreatedOn) " & _
-                "VALUES (" & Q(TASK_SME_REVIEW) & ", " & Q(ITEM_EXAM) & ", " & examId & ", " & rs!ExamTopicID & ", " & CLng(v) & _
-                ", " & Q(TS_OPEN) & ", Now())"
-        Next
-        AddAudit ITEM_EXAM, examId, ver, AU_REOPENED, RoleID("SME"), rs!TopicName & ": a question was replaced since the draw"
-        n = n + 1
+        ' Only while it is still signed off, so it is reopened (and its tasks made) once.
+        If KitExecute("UPDATE tblExamTopics SET SignedOffByPersonID=Null, SignedOffOn=Null, ChangeNo=Nz(ChangeNo,0)+1 " & _
+                "WHERE ExamTopicID=" & rs!ExamTopicID & " AND Not SignedOffByPersonID Is Null") > 0 Then
+            smes = TopicReviewers(rs!TopicID)
+            AddReviewTasks examId, rs!ExamTopicID, smes
+            note = Nz(rs!TopicName, "(topic deleted)") & ": a question was replaced or retired since the draw"
+            If Len(smes) = 0 Then note = note & ". It has no active SME, so add one on the Topics page to review it"
+            AddAudit ITEM_EXAM, examId, ver, AU_REOPENED, RoleID("SME"), note
+            n = n + 1
+        End If
         rs.MoveNext
     Loop
     rs.Close
     ReopenReplacedTopics = n
+End Function
+
+' Open SME review tasks on exam topic etId of exam examId, one for each
+' person in smes (ids joined with commas; "" makes none).
+' Errors: a data error passes up.
+Private Sub AddReviewTasks(ByVal examId As Long, ByVal etId As Long, ByVal smes As String)
+    Dim v As Variant
+    For Each v In Split(smes, ",")
+        KitExecute "INSERT INTO tblTasks (TaskType, ItemType, ItemID, ExamTopicID, AssignedPersonID, TaskStatus, CreatedOn) " & _
+            "VALUES (" & Q(TASK_SME_REVIEW) & ", " & Q(ITEM_EXAM) & ", " & examId & ", " & etId & ", " & CLng(v) & ", " & _
+            Q(TS_OPEN) & ", Now())"
+    Next
+End Sub
+
+' Exam examId's topics that wait on a sign-off but have no open review task
+' (reopened when the topic had no active SME, or its SMEs have all left
+' since), given tasks for the topic's active SMEs now, while the exam is in
+' SME review. Returns how many tasks were made. Runs in its own transaction.
+' Errors: a data error rolls back and passes up.
+Private Function ReissueReviews(ByVal examId As Long) As Long
+    Dim ws As DAO.Workspace, inTrans As Boolean, rs As DAO.Recordset, smes As String, n As Long
+    Dim num As Long, desc As String, src As String
+    Set ws = DBEngine.Workspaces(0)
+    On Error GoTo Fail
+    ws.BeginTrans: inTrans = True
+    If KitExecute("UPDATE tblExams SET VersionNo=VersionNo WHERE ExamID=" & examId & " AND StatusID IN (" & _
+            SmeReviewStatusIDs() & ")") > 0 Then
+        Set rs = CurrentDb.OpenRecordset("SELECT et.ExamTopicID, et.TopicID FROM tblExamTopics AS et WHERE et.ExamID=" & examId & _
+            " AND et.SignedOffByPersonID Is Null AND NOT EXISTS (SELECT * FROM tblTasks AS tk WHERE tk.ExamTopicID=et.ExamTopicID " & _
+            "AND tk.TaskStatus=" & Q(TS_OPEN) & ")", dbOpenSnapshot)
+        Do While Not rs.EOF
+            smes = TopicReviewers(rs!TopicID)
+            If Len(smes) > 0 Then
+                AddReviewTasks examId, rs!ExamTopicID, smes
+                n = n + UBound(Split(smes, ",")) + 1
+            End If
+            rs.MoveNext
+        Loop
+        rs.Close
+    End If
+    ws.CommitTrans: inTrans = False
+    ReissueReviews = n
+    Exit Function
+Fail:
+    num = Err.Number: desc = Err.Description: src = Err.Source
+    If inTrans Then ws.Rollback
+    Err.Number = num: Err.Description = desc: Err.Source = src
+    RaiseAgain "modExams.ReissueReviews", examId
 End Function
 
 ' After a sign-off of exam examId has committed: read past Jet's cache, so
@@ -958,8 +1009,11 @@ End Function
 ' (My reviews does when it opens; the Exams list should too): it moves on an
 ' exam that two last sign-offs at the same moment, or a failed step after a
 ' sign-off, left behind. The audit row names whoever signed off the last
-' topic, at the time of that sign-off (SendWhenSignedOff). It only queues the
-' DHs' emails: the page sends them once it has loaded (SendQueuedNotices).
+' topic, at the time of that sign-off (SendWhenSignedOff). Then it gives
+' review tasks to topics that wait on a sign-off with none open, once the
+' topic has an active SME (ReissueReviews). It only queues the emails (the
+' DHs', and the SMEs' for reopened or reissued topics): the page sends them
+' once it has loaded (SendQueuedNotices).
 ' Never raises: a failure is logged.
 Public Sub SendSignedOffExams()
     Dim ids As String, v As Variant
@@ -969,9 +1023,16 @@ Public Sub SendSignedOffExams()
     ids = ColumnList("SELECT e.ExamID FROM tblExams AS e WHERE e.StatusID IN (" & SmeReviewStatusIDs() & ") " & _
         "AND EXISTS (SELECT * FROM tblExamTopics AS et WHERE et.ExamID=e.ExamID) " & _
         "AND NOT EXISTS (SELECT * FROM tblExamTopics AS et WHERE et.ExamID=e.ExamID AND et.SignedOffByPersonID Is Null)")
-    If Len(ids) = 0 Then Exit Sub
     For Each v In Split(ids, ",")
         SendAfterSignOff CLng(v)
+    Next
+    ' Topics that wait on a sign-off with no one to give it get tasks once
+    ' they have an active SME again.
+    ids = ColumnList("SELECT DISTINCT et.ExamID FROM tblExamTopics AS et INNER JOIN tblExams AS e ON et.ExamID=e.ExamID " & _
+        "WHERE e.StatusID IN (" & SmeReviewStatusIDs() & ") AND et.SignedOffByPersonID Is Null AND NOT EXISTS " & _
+        "(SELECT * FROM tblTasks AS tk WHERE tk.ExamTopicID=et.ExamTopicID AND tk.TaskStatus=" & Q(TS_OPEN) & ")")
+    For Each v In Split(ids, ",")
+        If ReissueReviews(CLng(v)) > 0 Then NoticeReviews CLng(v)  ' queues the SMEs' emails; never raises
     Next
     Exit Sub
 Fail:
