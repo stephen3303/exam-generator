@@ -4,7 +4,7 @@ Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail pr
 
 1. **Upgrade.** Build a data file from the `main` branch's `backend\new-backend.ps1` (data version 1), then open it with this build. It should upgrade to version 4 without errors.
 2. **Upgrade while another copy is open.** Open the data file in a second copy of the app as an admin, then start the upgrade from the first copy. The upgrade should wait and say why, not fail with a raw error.
-3. **Word page markings.** Approve an exam long enough to fill three pages, with questions of different classification levels. Download it. Each page should carry its own highest marking, and the cover and body should keep their formatting.
+3. **Word page markings.** Approve an exam long enough to fill three pages, with questions of different classification levels. Download it. Each page should carry its own highest marking, and the cover and body should keep their formatting. Known gap: a multi-page exam may carry the overall marking on every page instead (see the README); that is accepted for now, but a page marked lower than its content is a failure.
 4. **Outlook.**
    - When Outlook asks to allow the send, try it once allowing the send and once refusing it. Each time the app should say what happened.
    - With Outlook closed, take a step that sends notices. The emails should leave the Outbox.
