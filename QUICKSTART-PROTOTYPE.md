@@ -2,7 +2,7 @@
 
 Build the prototype from `main` (all ten phases and Sign out), open it, and walk one question and one exam from start to the Word document. Setup takes about 10 minutes and the smoke path about 10 more.
 
-A review VM ran the four-person demo in Access and Word on the build fixes' own branch. This merge of those fixes with `main` has had code review only. If anything stops you, paste the PowerShell output or the message's exact text into the thread and it gets fixed on the branch.
+A review VM ran a demo in Access and Word on the build fixes' own branch. This merge of those fixes with `main` has had code review only. If anything stops you, paste the PowerShell output or the message's exact text into the thread and it gets fixed on the branch.
 
 ## 1. Before you start (one time)
 
@@ -61,18 +61,13 @@ Start-Process .\build\ExamGenerator.accdb
 ```
 
 1. **Personnel.** The first open finds no Personnel file and offers to make one. Press **Create**, keep the folder it shows (`access\Personnel`, which git ignores) and the key, type your name and an app password, and create it. You become the Personnel admin, linked to your Windows account.
-2. **Three more people.** Add person opens next, and stays open after each Save. Add each of these with no Windows account, a password of 8 or more characters, and **Can open Exam Generator** ticked, then Close. The app opens with you as its admin.
-   - `Test SME`, sign-in name `testsme`
-   - `Test XO`, sign-in name `testxo`
-   - `Test SM`, sign-in name `testsm`
+2. **A second person.** Add person opens next. Add `Test SME` with the sign-in name `testsme`, no Windows account, a password of 8 or more characters, and **Can open Exam Generator** ticked. Save, then Close. The app opens with you as its admin.
 3. **People and routing.**
    - **Add person**, pick Test SME, and turn on **SME**.
-   - Open yourself and turn on **DH**.
-   - Add Test XO with **XO**, and Test SM with **SM**.
-   - Each approval step needs a different person, so one person holding DH, XO and SM can approve only one step of each question or exam.
+   - Open yourself and turn on **DH**, **XO** and **SM**.
 4. **Topics.** **New topic** and name it `Smoke test`. Set questions per exam to **1** and **Save**. Under SMEs, pick Test SME and **Add**.
 5. **Templates.** **New template** and name it `Smoke`. **Add topic**, pick Smoke test, set the slider to **1**, and **Add**.
-6. **Switching people.** **My settings**, then **Sign out**, brings up the sign-in screen, where you sign in as `testsme`, `testxo`, `testsm` or yourself.
+6. **Switching people.** **My settings**, then **Sign out**, brings up the sign-in screen, where you sign in as `testsme` or as yourself.
    - Closing Access and opening it again signs you straight back in by your Windows account, so use Sign out to switch.
 
 ## 5. Smoke path
@@ -82,14 +77,10 @@ Switch people with **My settings**, then **Sign out**.
 | As | Page | Do |
 |---|---|---|
 | testsme | Question bank | **New question**: topic Smoke test, Short Answer, Easy, 1 point, marking (U), any text. **Cite a reference**, add a new one with a paragraph. **Save**, then **Submit for approval**. |
-| you | Approvals, Questions tab | **Approve** at the DH step. |
-| testxo | Approvals, Questions tab | **Approve** at the XO step. |
-| testsm | Approvals, Questions tab | **Approve** at the SM step. The question is approved. |
+| you | Approvals, Questions tab | **Approve** at the DH step, then the XO step, then the SM step. The question is approved. |
 | you | Exams | **New exam**: template Smoke, type who it's for, **Generate**. |
 | testsme | My reviews | Open the topic and **Sign off**. The exam goes to the DH. |
-| you | Approvals, Exams tab | **Approve** at the DH step. |
-| testxo | Approvals, Exams tab | **Approve** at the XO step. |
-| testsm | Approvals, Exams tab | **Approve** at the SM step. This makes the Word document. Expect a busy pop-up while Word works. |
+| you | Approvals, Exams tab | **Approve** three times (DH, XO, SM). The SM's approval makes the Word document. Expect a busy pop-up while Word works. |
 | you | Exams | Pick the exam, then **Download a copy**. Open the .docx: a cover page, then the question with no answer, marked (U). |
 
 The documents are kept in `access\build\Exam documents\`.
@@ -105,7 +96,6 @@ Emails are off for everyone by default, so this path never touches Outlook. To t
 | The build can't delete or open `ExamGenerator.accdb` | An Access window is still open, or a stuck `MSACCESS.EXE` from a failed build. Close it in Task Manager. |
 | The app opens with a yellow security bar, or nothing happens | Step 3 didn't take. Press **Enable Content**, or check the path in the trusted location. |
 | "You don't have an Exam Generator role yet" | That person needs a role in People and routing. |
-| "You already approved it at an earlier step" | Each step needs a different person. Sign out and sign in as the next step's approver. |
 | The busy pop-up never ends at the SM's approval | Word is stuck on a prompt. End `WINWORD.EXE` in Task Manager, open Word by hand to clear the prompt, then use **Download a copy**, which makes the document if it's missing. |
 | Anything else | Copy the message's exact text, or the newest rows on **Logs**, Error log tab, into the thread. |
 

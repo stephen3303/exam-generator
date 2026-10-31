@@ -76,7 +76,7 @@ Public Sub NoticeQuestionAtStep(ByVal qid As Long)
     If stepId = 0 Then Exit Sub
     stp = RoleCodeOf(stepId)
     SendToEach "SELECT pr.PersonID FROM tblPersonRoles AS pr WHERE pr.RoleID=" & stepId & " AND pr.PersonID<>" & author & _
-        " AND " & NotBarredSql(ITEM_QUESTION, CStr(qid), "pr.PersonID"), _
+        " AND " & NotEditorSql(CStr(qid), "pr.PersonID"), _
         what & " waits for your approval", _
         what & " waits for your approval as " & stp & " in the Exam Generator." & vbCrLf & vbCrLf & _
         "Open the Exam Generator and go to Approvals to approve it or send it back."
@@ -154,8 +154,7 @@ Public Sub NoticeExamAtStep(ByVal examId As Long)
     what = ExamWhat(examId)
     stp = RoleCodeOf(stepId)
     SendToEach "SELECT pr.PersonID FROM tblPersonRoles AS pr WHERE pr.RoleID=" & stepId & " AND pr.PersonID NOT IN " & _
-        "(SELECT SignedOffByPersonID FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Not Null)" & _
-        " AND " & NotBarredSql(ITEM_EXAM, CStr(examId), "pr.PersonID"), _
+        "(SELECT SignedOffByPersonID FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Not Null)", _
         what & " waits for your approval", _
         what & " waits for your approval as " & stp & " in the Exam Generator." & vbCrLf & vbCrLf & _
         "Open the Exam Generator and go to Approvals, Exams, to approve it or send it back to its SMEs."
@@ -496,7 +495,7 @@ Private Function QuestionWaitWhere() As String
     pid = SignedInPersonID()
     QuestionWaitWhere = "q.StatusID=" & QStatusID(QS_REVIEW) & " AND q.AuthorPersonID<>" & pid & _
         " AND q.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles WHERE PersonID=" & pid & ")" & _
-        " AND " & NotBarredSql(ITEM_QUESTION, "q.QuestionID", CStr(pid))
+        " AND " & NotEditorSql("q.QuestionID", CStr(pid))
 End Function
 
 ' The time of the last audit row on an item (its id is idExpr), as a

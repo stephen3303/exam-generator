@@ -20,10 +20,8 @@ Option Explicit
 ' Who may approve or reject is read from the data file at the moment of the
 ' write (RequireExamApprover): an active person who holds the step's role
 ' now and may still use the app, and who signed off none of the exam's
-' topics (no one approves their own work), and who has not approved it at
-' another step since it was last submitted (modApprovals.ApprovedThisRound:
-' one person may hold several chain roles but approves one step only). The
-' DH who generated the exam may approve it: the draw is random and the SMEs
+' topics (no one approves their own work). One person may hold the DH, XO
+' and SM roles and approve every step. The DH who generated the exam may approve it: the draw is random and the SMEs
 ' check it. Every write is guarded by the state it expects, so two approvers
 ' acting at once can't both win, and writes an audit row (modQuestions.AddAudit).
 
@@ -127,9 +125,6 @@ Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectSt
     End If
     If DCount("*", "tblExamTopics", "ExamID=" & examId & " AND SignedOffByPersonID=" & pid) > 0 Then
         ExamApproveProblem = "You signed off a topic of this exam, so another " & code & " has to approve or reject it."
-    ElseIf ApprovedThisRound(ITEM_EXAM, examId, pid) Then
-        ExamApproveProblem = "You already approved it at an earlier step, so another " & code & " has to approve or reject it. " & _
-            "Each step needs a different person."
     End If
 End Function
 
@@ -440,8 +435,7 @@ Public Function ExamApprovalCount() As Long
 End Function
 
 ' The exams (as e) the signed-in person can act on: in review at a step
-' whose role they hold, none of whose topics they signed off, and that they
-' have not approved at another step since it was last submitted (another
+' whose role they hold, and none of whose topics they signed off (another
 ' holder of the role approves those; ExamApproveProblem). The Dashboard's
 ' list uses it too (modNotify.WaitingSql).
 ' Builds the SQL only (it reads the signed-in person's id and a status id).
@@ -450,7 +444,7 @@ Public Function ExamQueueWhere() As String
     pid = SignedInPersonID()
     ExamQueueWhere = "e.StatusID=" & ExamStatusID(ES_REVIEW) & " AND e.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles " & _
         "WHERE PersonID=" & pid & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS so WHERE so.ExamID=e.ExamID AND " & _
-        "so.SignedOffByPersonID=" & pid & ") AND " & NotBarredSql(ITEM_EXAM, "e.ExamID", CStr(pid))
+        "so.SignedOffByPersonID=" & pid & ")"
 End Function
 
 ' The status a chip of the Exams page keeps (EXAM_CHIPS; 0, All: "").

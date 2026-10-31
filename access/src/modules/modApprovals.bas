@@ -19,10 +19,9 @@ Option Explicit
 ' Who may approve or reject is checked in the data file at the moment of the
 ' write (RequireApprover), not from the roles read at sign-in: an active
 ' person who holds the step's role now and may still use the app, and who
-' did not write or change this version of the question, and who has not
-' approved it at another step since it was last submitted (one person may
-' hold the DH, XO and SM roles, but approves one step only). Every approval, rejection and retirement
-' writes an audit row (modQuestions.AddAudit); the reason for a rejection is
+' did not write or change this version of the question. One person may hold
+' the DH, XO and SM roles and approve every step. Every approval, rejection
+' and retirement writes an audit row (modQuestions.AddAudit); the reason for a rejection is
 ' its Comments.
 '
 ' Owner: question approvals (build phase 6). Depends on: modAdmin,
@@ -103,25 +102,7 @@ Public Function ApproveProblem(ByVal qid As Long, Optional ByVal expectStep As L
         ApproveProblem = "You wrote this question, so another " & code & " has to approve or reject it."
     ElseIf EditedVersion(qid, pid) Then
         ApproveProblem = "You changed this version of the question, so another " & code & " has to approve or reject it."
-    ElseIf ApprovedThisRound(ITEM_QUESTION, qid, pid) Then
-        ApproveProblem = "You already approved it at an earlier step, so another " & code & " has to approve or reject it. " & _
-            "Each step needs a different person."
     End If
-End Function
-
-' Separation of duties: True when person pid already approved item itemId
-' (ITEM_QUESTION: the version's QuestionID; ITEM_EXAM: the ExamID) at any step since
-' it was last submitted. One person may hold several chain roles (DH, XO,
-' SM), but may approve only one step of each round, so the chain always
-' needs as many people as it has steps. A rejection and a new submission
-' start a new round.
-' Errors: the engine's.
-Public Function ApprovedThisRound(ByVal itemType As String, ByVal itemId As Long, ByVal pid As Long) As Boolean
-    Dim crit As String, lastSubmit As Long
-    crit = "ItemType=" & Q(itemType) & " AND ItemID=" & itemId
-    lastSubmit = Nz(DMax("AuditID", "tblAuditTrail", crit & " AND ActionType=" & Q(AU_SUBMITTED)), 0)
-    ApprovedThisRound = DCount("*", "tblAuditTrail", crit & " AND ActionType=" & Q(AU_APPROVED) & _
-        " AND PersonID=" & pid & " AND AuditID>" & lastSubmit) > 0
 End Function
 
 ' True when person pid wrote or changed question version qid (an Authored,
@@ -133,24 +114,15 @@ Private Function EditedVersion(ByVal qid As Long, ByVal pid As Long) As Boolean
         " AND PersonID=" & pid & " AND ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")") > 0
 End Function
 
-' The same two rules as SQL, for the queues, the Dashboard and the emails, so
-' they never send someone work ApproveProblem or ExamApproveProblem would
-' refuse: a condition that is True when person pidExpr has not approved item
-' idExpr (an ITEM_QUESTION or ITEM_EXAM id, as SQL) since it was last
-' submitted (ApprovedThisRound) and, for a question, did not write or change
-' it (EditedVersion). Both are SQL expressions, such as "q.QuestionID" and
-' "pr.PersonID".
+' EditedVersion as SQL, for the queues, the Dashboard and the emails, so they
+' never send someone a question ApproveProblem would refuse: a condition that
+' is True when person pidExpr did not write or change question idExpr. Both
+' are SQL expressions, such as "q.QuestionID" and "pr.PersonID".
 ' Builds the SQL only.
-Public Function NotBarredSql(ByVal itemType As String, ByVal idExpr As String, ByVal pidExpr As String) As String
-    Dim s As String
-    s = "NOT EXISTS (SELECT * FROM tblAuditTrail AS ap WHERE ap.ItemType=" & Q(itemType) & " AND ap.ItemID=" & idExpr & _
-        " AND ap.PersonID=" & pidExpr & " AND ((ap.ActionType=" & Q(AU_APPROVED) & " AND ap.AuditID>Nz((SELECT Max(sb.AuditID) " & _
-        "FROM tblAuditTrail AS sb WHERE sb.ItemType=ap.ItemType AND sb.ItemID=ap.ItemID AND sb.ActionType=" & _
-        Q(AU_SUBMITTED) & "),0))"
-    If itemType = ITEM_QUESTION Then
-        s = s & " OR ap.ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")"
-    End If
-    NotBarredSql = s & "))"
+Public Function NotEditorSql(ByVal idExpr As String, ByVal pidExpr As String) As String
+    NotEditorSql = "NOT EXISTS (SELECT * FROM tblAuditTrail AS ap WHERE ap.ItemType=" & Q(ITEM_QUESTION) & _
+        " AND ap.ItemID=" & idExpr & " AND ap.PersonID=" & pidExpr & " AND ap.ActionType IN (" & Q(AU_AUTHORED) & ", " & _
+        Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & "))"
 End Function
 
 ' Raise ERR_NOT_ALLOWED unless the signed-in person may approve or reject
