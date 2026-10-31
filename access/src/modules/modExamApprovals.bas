@@ -20,10 +20,12 @@ Option Explicit
 ' Who may approve or reject is read from the data file at the moment of the
 ' write (RequireExamApprover): an active person who holds the step's role
 ' now and may still use the app, and who signed off none of the exam's
-' topics (no one approves their own work). The DH who generated the exam
-' may approve it: the draw is random and the SMEs check it. Every write is
-' guarded by the state it expects, so two approvers acting at once can't
-' both win, and writes an audit row (modQuestions.AddAudit).
+' topics (no one approves their own work), and who has not approved it at
+' another step since it was last submitted (modApprovals.ApprovedThisRound:
+' one person may hold several chain roles but approves one step only). The
+' DH who generated the exam may approve it: the draw is random and the SMEs
+' check it. Every write is guarded by the state it expects, so two approvers
+' acting at once can't both win, and writes an audit row (modQuestions.AddAudit).
 
 Public Const AU_DOWNLOADED As String = "Downloaded"
 Public Const AU_DOC_MADE As String = "Document made"
@@ -125,6 +127,9 @@ Public Function ExamApproveProblem(ByVal examId As Long, Optional ByVal expectSt
     End If
     If DCount("*", "tblExamTopics", "ExamID=" & examId & " AND SignedOffByPersonID=" & pid) > 0 Then
         ExamApproveProblem = "You signed off a topic of this exam, so another " & code & " has to approve or reject it."
+    ElseIf ApprovedThisRound(ITEM_EXAM, examId, pid) Then
+        ExamApproveProblem = "You already approved it at an earlier step, so another " & code & " has to approve or reject it. " & _
+            "Each step needs a different person."
     End If
 End Function
 

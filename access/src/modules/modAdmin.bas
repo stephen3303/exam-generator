@@ -24,6 +24,11 @@ Public Const SET_OVERLAP_PCT As String = "OverlapMaxPct"
 Public Const SET_OVERLAP_WINDOW As String = "OverlapWindowExams"
 Public Const SET_DEFAULT_COUNT As String = "DefaultQuestionCount"
 Public Const SET_ADMIN_BOOTSTRAPPED As String = "AdminBootstrapped"   ' "1" once the first admin was made (modSignIn)
+' Audit rows for admin changes to who may do what (AuditAdmin). ItemID is
+' the person's person_id, or the changed list row's id.
+Public Const ITEM_PERSON As String = "Person"
+Public Const ITEM_SETTING As String = "Setting"
+
 Public Const SET_CLASS_ORDER_AT As String = "ClassOrderChangedAt"    ' the newest AuditID when the admin last reordered the classification levels (modExamDoc)
 
 ' The settings' values when tblSettings has no row for them. The back end's
@@ -35,7 +40,7 @@ Public Const DEFAULT_QUESTION_COUNT As Long = 4
 ' Questions per topic on one exam: a topic's DefaultCount, a template topic's
 ' QuestionCount and the DefaultQuestionCount setting all keep to this range.
 Public Const MIN_QUESTIONS_PER_TOPIC As Long = 1
-Public Const MAX_QUESTIONS_PER_TOPIC As Long = 50
+Public Const MAX_QUESTIONS_PER_TOPIC As Long = 40   ' the kit's Slider takes at most 41 stops
 
 ' The longest names the admin pages accept. Each mirrors its column's size in
 ' the back end (backend\modBuildBackEnd.bas, CreateTables).
@@ -244,15 +249,36 @@ Public Sub SetPersonRole(ByVal pid As Long, ByVal code As String, ByVal hasIt As
         Set ws = DBEngine.Workspaces(0)
         ws.BeginTrans: inTrans = True          ' the person, their access and the role together
         EnsurePerson pid
-        If Not PersonHasRole(pid, code) Then KitExecute "INSERT INTO tblPersonRoles (PersonID, RoleID) VALUES (" & pid & ", " & rid & ")"
+        If Not PersonHasRole(pid, code) Then
+            KitExecute "INSERT INTO tblPersonRoles (PersonID, RoleID) VALUES (" & pid & ", " & rid & ")"
+            AuditAdmin ITEM_PERSON, pid, code & " role given to " & PersonName(pid)
+        End If
         ws.CommitTrans: inTrans = False
     Else
-        KitExecute "DELETE FROM tblPersonRoles WHERE PersonID=" & pid & " AND RoleID=" & rid
+        On Error GoTo Fail
+        Set ws = DBEngine.Workspaces(0)
+        ws.BeginTrans: inTrans = True          ' the role and its audit row together
+        If KitExecute("DELETE FROM tblPersonRoles WHERE PersonID=" & pid & " AND RoleID=" & rid) > 0 Then
+            AuditAdmin ITEM_PERSON, pid, code & " role taken from " & PersonName(pid)
+        End If
+        ws.CommitTrans: inTrans = False
     End If
     Exit Sub
 Fail:
     If inTrans Then RollbackKeepingError ws
     RaiseAgain "modAdmin.SetPersonRole", code & " " & pid
+End Sub
+
+' Write the audit row for an admin change to rights or lists: who did it
+' (the signed-in person), when, and what, in words ("DH role given to
+' Smith, John (LT)"). Call it inside the change's own transaction, so the
+' change never stands without its row. Admin: Logs lists them.
+'   itemType   ITEM_PERSON or ITEM_SETTING
+'   itemId     the person's person_id, or the list row's id
+'   what       the change, "was / now" where it has one
+' Errors: the engine's.
+Public Sub AuditAdmin(ByVal itemType As String, ByVal itemId As Long, ByVal what As String)
+    AddAudit itemType, itemId, Null, AU_CHANGED, , what
 End Sub
 
 ' The active people who hold a role, "Smith, John (LT); Jones, Ann", or "".

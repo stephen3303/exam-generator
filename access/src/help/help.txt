@@ -347,7 +347,7 @@ Each new copy of the app brings its own wording for the topics, but only for top
 The audit trail and the error log, for the admin. Both tabs share the search box and the dates, which start at the last 30 days.
 
 # Audit trail
-Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference. **As** is the role the step was taken as. A draft question that was deleted shows as "Question" and its number, marked deleted; its Deleted entry names its key. Nobody can change or delete the audit trail from the app.
+Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference; and who gave or took a role, turned admin or access on or off, added or removed a topic's SMEs, or changed a classification level. **As** is the role the step was taken as. A draft question that was deleted shows as "Question" and its number, marked deleted; its Deleted entry names its key. Nobody can change or delete the audit trail from the app.
 
 # Errors
 Every error anyone's copy of the app has hit, newest first, with the page, the procedure and the error. Click an entry to see all of it: the call trail, the form and control, and the computer and build. **Copy** puts the whole entry on the clipboard, to paste into an email to whoever maintains the app.
@@ -377,7 +377,7 @@ The app sends its emails once your step is saved, from your computer's Outlook. 
 Click **Appearance** to choose the colors the whole app uses on this computer.
 
 # Sign out
-Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app, and so does signing in as someone with no Exam Generator role.
+Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app, and so does signing in as someone with no Exam Generator role. Each approval step needs a different person, so this is also how one computer can take a question or an exam through the DH, XO and SM.
 - If you sign in with Windows and have no app password yet, Sign out asks you to choose one first, so only you can sign back in as you. If someone else is signed in on your Windows account and you have no app password, Sign out is refused until you or a Personnel admin sets one.
 - Someone signing in on a computer that isn't theirs should leave **Use my Windows sign-in next time** unticked, or this Windows account will sign them in from then on.
 
