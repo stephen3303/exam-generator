@@ -145,7 +145,7 @@ Public Function NotBarredSql(ByVal itemType As String, ByVal idExpr As String, B
     Dim s As String
     s = "NOT EXISTS (SELECT * FROM tblAuditTrail AS ap WHERE ap.ItemType=" & Q(itemType) & " AND ap.ItemID=" & idExpr & _
         " AND ap.PersonID=" & pidExpr & " AND ((ap.ActionType=" & Q(AU_APPROVED) & " AND ap.AuditID>Nz((SELECT Max(sb.AuditID) " & _
-        "FROM tblAuditTrail AS sb WHERE sb.ItemType=" & Q(itemType) & " AND sb.ItemID=" & idExpr & " AND sb.ActionType=" & _
+        "FROM tblAuditTrail AS sb WHERE sb.ItemType=ap.ItemType AND sb.ItemID=ap.ItemID AND sb.ActionType=" & _
         Q(AU_SUBMITTED) & "),0))"
     If itemType = ITEM_QUESTION Then
         s = s & " OR ap.ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")"

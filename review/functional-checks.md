@@ -2,7 +2,7 @@
 
 Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail profile). Build first, as in REVIEW-TASK.md step 2. Report PASS or FAIL for each item, with what you saw, and screenshots where it helps. Make no code changes.
 
-1. **Upgrade.** Build a data file from the `main` branch's `backend\new-backend.ps1` (data version 1), then open it with this build. It should upgrade to version 4 without errors.
+1. **Upgrade.** Build a data file at commit `53aec40` (`git worktree add ..\eg-v1 53aec40`, then that folder's `access\backend\new-backend.ps1`; data version 1), then open it with this build. It should upgrade to version 4 without errors.
 2. **Upgrade while another copy is open.** Open the data file in a second copy of the app as an admin, then start the upgrade from the first copy. The upgrade should wait and say why, not fail with a raw error.
 3. **Word page markings.** Approve an exam long enough to fill three pages, with questions of different classification levels. Download it. Each page should carry its own highest marking, and the cover and body should keep their formatting. Known gap: a multi-page exam may carry the overall marking on every page instead (see the README); that is accepted for now, but a page marked lower than its content is a failure.
 4. **Outlook.**
@@ -27,7 +27,7 @@ Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail pr
    - Sign out and sign in as someone with no Exam Generator role. The app should say why and close.
    - As a Windows-only user with no app password, Sign out should ask you to choose one first. Signed in by password on someone else's Windows account whose owner has no app password, Sign out should refuse.
 12. **One person per approval step.**
-   - Give one person both DH and XO. After they approve a question or exam at the DH step, it should not show in their Approvals list or Dashboard at the XO step, no "waits for your approval" email should reach them, and approving it should be refused if they reach it another way.
+   - Give one person both DH and XO. After they approve a question or exam at the DH step, at the XO step it should not be on their Dashboard and no "waits for your approval" email should reach them. An exam should not be on their Approvals Exams tab. A question may still be on the Questions tab, which lists every question at your step with the reason it can't be approved; Approve there should be refused.
    - Send it back and submit it again. That person should be able to approve it at the DH step again.
 13. **Upgrade backup and skipped checks.**
    - After check 1, `ExamGen_BE.accdb.v1.bak` should sit next to the data file.
