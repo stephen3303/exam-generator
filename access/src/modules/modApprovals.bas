@@ -110,7 +110,7 @@ Public Function ApproveProblem(ByVal qid As Long, Optional ByVal expectStep As L
 End Function
 
 ' Separation of duties: True when person pid already approved item itemId
-' (ITEM_QUESTION or ITEM_EXAM; ItemID is the version's row) at any step since
+' (ITEM_QUESTION: the version's QuestionID; ITEM_EXAM: the ExamID) at any step since
 ' it was last submitted. One person may hold several chain roles (DH, XO,
 ' SM), but may approve only one step of each round, so the chain always
 ' needs as many people as it has steps. A rejection and a new submission
@@ -131,6 +131,26 @@ End Function
 Private Function EditedVersion(ByVal qid As Long, ByVal pid As Long) As Boolean
     EditedVersion = DCount("*", "tblAuditTrail", "ItemType=" & Q(ITEM_QUESTION) & " AND ItemID=" & qid & _
         " AND PersonID=" & pid & " AND ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")") > 0
+End Function
+
+' The same two rules as SQL, for the queues, the Dashboard and the emails, so
+' they never send someone work ApproveProblem or ExamApproveProblem would
+' refuse: a condition that is True when person pidExpr has not approved item
+' idExpr (an ITEM_QUESTION or ITEM_EXAM id, as SQL) since it was last
+' submitted (ApprovedThisRound) and, for a question, did not write or change
+' it (EditedVersion). Both are SQL expressions, such as "q.QuestionID" and
+' "pr.PersonID".
+' Builds the SQL only.
+Public Function NotBarredSql(ByVal itemType As String, ByVal idExpr As String, ByVal pidExpr As String) As String
+    Dim s As String
+    s = "NOT EXISTS (SELECT * FROM tblAuditTrail AS ap WHERE ap.ItemType=" & Q(itemType) & " AND ap.ItemID=" & idExpr & _
+        " AND ap.PersonID=" & pidExpr & " AND ((ap.ActionType=" & Q(AU_APPROVED) & " AND ap.AuditID>Nz((SELECT Max(sb.AuditID) " & _
+        "FROM tblAuditTrail AS sb WHERE sb.ItemType=" & Q(itemType) & " AND sb.ItemID=" & idExpr & " AND sb.ActionType=" & _
+        Q(AU_SUBMITTED) & "),0))"
+    If itemType = ITEM_QUESTION Then
+        s = s & " OR ap.ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")"
+    End If
+    NotBarredSql = s & "))"
 End Function
 
 ' Raise ERR_NOT_ALLOWED unless the signed-in person may approve or reject

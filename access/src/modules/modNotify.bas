@@ -75,7 +75,8 @@ Public Sub NoticeQuestionAtStep(ByVal qid As Long)
     rs.Close
     If stepId = 0 Then Exit Sub
     stp = RoleCodeOf(stepId)
-    SendToEach "SELECT PersonID FROM tblPersonRoles WHERE RoleID=" & stepId & " AND PersonID<>" & author, _
+    SendToEach "SELECT pr.PersonID FROM tblPersonRoles AS pr WHERE pr.RoleID=" & stepId & " AND pr.PersonID<>" & author & _
+        " AND " & NotBarredSql(ITEM_QUESTION, CStr(qid), "pr.PersonID"), _
         what & " waits for your approval", _
         what & " waits for your approval as " & stp & " in the Exam Generator." & vbCrLf & vbCrLf & _
         "Open the Exam Generator and go to Approvals to approve it or send it back."
@@ -152,8 +153,9 @@ Public Sub NoticeExamAtStep(ByVal examId As Long)
     If stepId = 0 Then Exit Sub
     what = ExamWhat(examId)
     stp = RoleCodeOf(stepId)
-    SendToEach "SELECT PersonID FROM tblPersonRoles WHERE RoleID=" & stepId & " AND PersonID NOT IN " & _
-        "(SELECT SignedOffByPersonID FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Not Null)", _
+    SendToEach "SELECT pr.PersonID FROM tblPersonRoles AS pr WHERE pr.RoleID=" & stepId & " AND pr.PersonID NOT IN " & _
+        "(SELECT SignedOffByPersonID FROM tblExamTopics WHERE ExamID=" & examId & " AND SignedOffByPersonID Is Not Null)" & _
+        " AND " & NotBarredSql(ITEM_EXAM, CStr(examId), "pr.PersonID"), _
         what & " waits for your approval", _
         what & " waits for your approval as " & stp & " in the Exam Generator." & vbCrLf & vbCrLf & _
         "Open the Exam Generator and go to Approvals, Exams, to approve it or send it back to its SMEs."
@@ -493,7 +495,8 @@ Private Function QuestionWaitWhere() As String
     Dim pid As Long
     pid = SignedInPersonID()
     QuestionWaitWhere = "q.StatusID=" & QStatusID(QS_REVIEW) & " AND q.AuthorPersonID<>" & pid & _
-        " AND q.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles WHERE PersonID=" & pid & ")"
+        " AND q.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles WHERE PersonID=" & pid & ")" & _
+        " AND " & NotBarredSql(ITEM_QUESTION, "q.QuestionID", CStr(pid))
 End Function
 
 ' The time of the last audit row on an item (its id is idExpr), as a
@@ -560,6 +563,7 @@ Public Function RecentActivitySql(Optional ByVal n As Long = 20) As String
     RecentActivitySql = "SELECT TOP " & n & " a.AuditID AS id, Format(a.ActionOn,'d mmm h:nn') AS when_txt, " & _
         PersonNameSql() & " AS who, a.ActionType & ' ' & IIf(a.ItemType=" & Q(ITEM_QUESTION) & ", IIf(IsNull(q.QuestionKey), " & _
         "'a question', 'Q' & q.QuestionKey & ' v' & a.VersionNo), IIf(a.ItemType=" & Q(ITEM_EXAM) & ", 'E' & a.ItemID & ' v' & " & _
-        "a.VersionNo, 'a reference')) AS what, a.ActionOn FROM (tblAuditTrail AS a LEFT JOIN " & PERSON_TABLE & _
+        "a.VersionNo, IIf(a.ItemType=" & Q(ITEM_PERSON) & ", 'a person''s access', IIf(a.ItemType=" & Q(ITEM_SETTING) & _
+        ", 'a setting', 'a reference')))) AS what, a.ActionOn FROM (tblAuditTrail AS a LEFT JOIN " & PERSON_TABLE & _
         " AS p ON a.PersonID=p.person_id) LEFT JOIN tblQuestions AS q ON a.ItemID=q.QuestionID" & mine & " ORDER BY a.AuditID DESC"
 End Function

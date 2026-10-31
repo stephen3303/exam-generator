@@ -34,7 +34,7 @@ What waits on you, and the topics short of approved questions, on one page.
 
 # The tiles
 - **Reviews open**: the exam topics you're an SME of that nobody has signed off yet.
-- **Approvals waiting**: the questions and exams at your step in the chain. Your own questions aren't counted, since you can't approve them, and neither are exams where you signed off a topic.
+- **Approvals waiting**: the questions and exams at your step in the chain. Only what you may approve is counted: not your own questions or ones you changed, not exams where you signed off a topic, and not anything you already approved at another step since it was last submitted.
 - **Sent back to you**: your questions an approver returned, to fix and resubmit.
 - **Topics short**: the active topics with fewer approved questions than their templates need under the overlap rule. The alert under the tiles names them.
 
@@ -88,7 +88,7 @@ Pick a row to see it on the right:
 - **Reject** sends it back to its author with your reason, which is required. See **Rejecting a question**.
 - Right-click a row for the same actions, and to show it in the question bank.
 
-You can't approve or reject a question you wrote: another holder of the same role has to. Who may approve is checked again when you click, so a role taken away since you signed in counts at once. If someone else acted on the question first, the app says so and the list shows where it stands now.
+You can't approve or reject a question you wrote or changed, or one you already approved at another step since it was last submitted: another holder of the same role has to. One person may hold the DH, XO and SM roles, but approves only one step of each round. Who may approve is checked again when you click, so a role taken away since you signed in counts at once. If someone else acted on the question first, the app says so and the list shows where it stands now.
 
 === approvals.reject | Rejecting a question
 **Reject** opens a window that shows who the question goes back to and asks for the reason. The reason is required: say what to change.
@@ -105,7 +105,7 @@ Pick a row to see it on the right: where it is in the chain, who it is for, who 
 - **Approve** sends it to the next step. The **SM**'s approval is final: the app asks first, then stamps the exam's overall marking (its highest portion marking) and makes its Word document. If Word can't make it, the exam stays approved, and **Download a copy** on the **Exams** page makes it later.
 - **Reject** opens a window: pick one topic or **(Every topic)**, check who gets it back, and give the reason, which is required. Those topics lose their sign-off and their SMEs get new reviews under **My reviews**. The exam's version goes up by one (E12 v2), and once every topic is signed off again it starts again at the **DH**. A topic with no active SME can't be sent back until the admin adds one; the window names it and keeps **Send back** greyed out.
 
-You can't approve or send back an exam if you signed off one of its topics: another holder of the same role has to, so it doesn't show on your list. The DH who generated it may approve it, since its questions were drawn at random and checked by the SMEs.
+You can't approve or send back an exam if you signed off one of its topics, or already approved it at another step since it was last submitted: another holder of the same role has to, so it doesn't show on your list. The DH who generated it may approve it, since its questions were drawn at random and checked by the SMEs.
 
 === exams | Exams
 Every exam and where it stands, the newest first. The department head starts a new exam here with **New exam**; see **Generating an exam**.

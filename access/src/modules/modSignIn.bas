@@ -59,6 +59,7 @@ Private Const PROBE_TABLE As String = "tblSettings"
 ' kept in tblSettings so the admin is told at each start until fixed by hand.
 Private Const SET_UPGRADE_SKIPPED As String = "UpgradeSkipped"
 Private m_skipped As String                     ' the checks this run of UpgradeData left out
+Private m_skipShown As Boolean   ' TellAdminSkipped has shown its notice in this session
 
 ' Whether the signed-in person may open a page, from the roles read at
 ' sign-in (TempVars): admin pages for the admin, the rest by role. It only
@@ -123,9 +124,11 @@ End Function
 Private Sub TellAdminSkipped()
     Dim s As String
     On Error GoTo Fail
+    If m_skipShown Then Exit Sub                 ' once a session, not at every reopen of frmMain
     If Not IsExamAdmin() Then Exit Sub
     s = SettingText(SET_UPGRADE_SKIPPED)
     If Len(s) = 0 Then Exit Sub
+    m_skipShown = True
     CloseSplash
     KitMsgBox "The last update of the shared data file had to leave out these checks, because rows already in it break " & _
         "them: " & s & "." & vbCrLf & vbCrLf & "The app's own checks still apply. Admin: Logs has the details. Once the rows " & _

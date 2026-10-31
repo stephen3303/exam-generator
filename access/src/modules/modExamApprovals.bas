@@ -440,7 +440,8 @@ Public Function ExamApprovalCount() As Long
 End Function
 
 ' The exams (as e) the signed-in person can act on: in review at a step
-' whose role they hold, and none of whose topics they signed off (another
+' whose role they hold, none of whose topics they signed off, and that they
+' have not approved at another step since it was last submitted (another
 ' holder of the role approves those; ExamApproveProblem). The Dashboard's
 ' list uses it too (modNotify.WaitingSql).
 ' Builds the SQL only (it reads the signed-in person's id and a status id).
@@ -449,7 +450,7 @@ Public Function ExamQueueWhere() As String
     pid = SignedInPersonID()
     ExamQueueWhere = "e.StatusID=" & ExamStatusID(ES_REVIEW) & " AND e.CurrentStepRoleID IN (SELECT RoleID FROM tblPersonRoles " & _
         "WHERE PersonID=" & pid & ") AND NOT EXISTS (SELECT * FROM tblExamTopics AS so WHERE so.ExamID=e.ExamID AND " & _
-        "so.SignedOffByPersonID=" & pid & ")"
+        "so.SignedOffByPersonID=" & pid & ") AND " & NotBarredSql(ITEM_EXAM, "e.ExamID", CStr(pid))
 End Function
 
 ' The status a chip of the Exams page keeps (EXAM_CHIPS; 0, All: "").

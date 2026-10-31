@@ -22,7 +22,7 @@ Public Const LOG_MAX As Long = 1000             ' rows a list shows at most
 
 ' The audit trail: id (AuditID), when_txt, ActionOn, who, ActionType, item
 ' ("Q12 v2", "E3 v1", "Reference: NSTM 555"), step (the role it was done
-' as) and note (the comment's first line).
+' as) and note_txt (the comment's first line).
 '   search   words to find in the who, action, item and comment ("" for all)
 '   fromDay, toDay   whole days, both included; Null leaves that end open
 ' Builds the SQL only. Errors: none.
