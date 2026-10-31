@@ -21,8 +21,8 @@ Option Explicit
 ' person who holds the step's role now and may still use the app, and who
 ' did not write or change this version of the question. One person may hold
 ' the DH, XO and SM roles and approve every step. Every approval, rejection
-' and retirement writes an audit row (modQuestions.AddAudit); the reason for a rejection is
-' its Comments.
+' and retirement writes an audit row (modQuestions.AddAudit); the reason
+' for a rejection is its Comments.
 '
 ' Owner: question approvals (build phase 6). Depends on: modAdmin,
 ' modErrors, modGlobals, modQuestions, modSignIn; the kit's modKitLocks,

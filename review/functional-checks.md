@@ -27,8 +27,9 @@ Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail pr
    - Sign out and sign in as someone with no Exam Generator role. The app should say why and close.
    - As a Windows-only user with no app password, Sign out should ask you to choose one first. Signed in by password on someone else's Windows account whose owner has no app password, Sign out should refuse.
 12. **Who may approve.**
-   - Give one person DH, XO and SM. They should be able to approve a question and an exam at all three steps, with each step on their Dashboard and in their emails in turn.
-   - An SME who also holds DH and changed a question's version should not see it on their Dashboard or get its "waits for your approval" email. The Approvals Questions tab may list it with the reason, and Approve there should be refused.
+   - Give one person DH, XO and SM. The DH step should reach them on the Dashboard and by email. After each approval the item should stay on their Approvals tab and Dashboard at the next step, with Approve enabled, until the SM's approval. No email comes for the XO or SM step, since they are the one acting.
+   - Double-click Approve at the DH step. Say whether it also approved the XO step.
+   - Give SME A the DH role too, and add a second DH. SME A edits and saves a question; SME B submits it. SME A should get no "waits for your approval" email and should not see it on the Dashboard; the second DH should get the email. The Approvals Questions tab may list it for SME A with the reason, and Approve there should be refused.
 13. **Upgrade backup and skipped checks.**
    - After check 1, `ExamGen_BE.accdb.v1.bak` should sit next to the data file.
    - Put two rows in the data file that break a check the upgrade adds (for example a duplicate) before upgrading. The upgrade should finish, and an admin should be told once at start-up which check was left out, not again on a palette switch.
