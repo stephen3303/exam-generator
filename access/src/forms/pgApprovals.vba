@@ -367,11 +367,11 @@ End Sub
 ' After the rows shown changed: the empty state, and the shown question
 ' kept when still listed (else the first).
 Private Sub AfterFilter()
-    Dim n As Long, any As Boolean
+    Dim n As Long, hasAny As Boolean
     n = Me.sfList.Form.RecordsetClone.RecordCount
-    any = ApprovalCount() > 0
+    hasAny = ApprovalCount() > 0
     If m_tab = "q" Then
-        If Not any Then
+        If Not hasAny Then
             ShowEmpty Me, "emptyList", n = 0, "Nothing waiting for you", "Questions sent to your step of the chain show here."
             SetVisible Me.emptyList_b, False
         Else

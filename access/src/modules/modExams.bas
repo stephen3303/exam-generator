@@ -504,7 +504,7 @@ Public Function ExamTopicQsSql(ByVal etId As Long, ByVal keys As String) As Stri
         "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, d.LevelName, q.TotalPoints AS pts, " & _
         "IIf(Not (q.IsCurrent AND q.StatusID=" & ApprovedStatusID() & "),'Replaced'," & _
         "IIf(q.QuestionKey IN (" & keys & "),IIf(eq.WasSwapped,'Swapped, given lately','Given lately')," & _
-        "IIf(eq.WasSwapped,'Swapped',''))) AS note, eq.SortOrder " & _
+        "IIf(eq.WasSwapped,'Swapped',''))) AS note_txt, eq.SortOrder " & _
         "FROM (tblExamQuestions AS eq INNER JOIN tblQuestions AS q ON eq.QuestionID=q.QuestionID) " & _
         "LEFT JOIN tblDifficultyLevels AS d ON q.DifficultyID=d.DifficultyID " & _
         "WHERE eq.ExamTopicID=" & etId & " ORDER BY eq.SortOrder, eq.ExamQuestionID"
@@ -533,7 +533,7 @@ Public Function SwapCandidatesSql(ByVal eqId As Long, ByVal keys As String, ByVa
     End If
     SwapCandidatesSql = "SELECT q.QuestionID AS id, 'Q' & q.QuestionKey & ' v' & q.VersionNo AS ref, q.QuestionKey, " & _
         "Replace(Replace(Nz(q.QuestionText,''),Chr(13),' '),Chr(10),'') AS QuestionText, Left(Nz(q.QuestionText,''),255) AS qsort, " & _
-        "d.LevelName, q.TotalPoints AS pts, IIf(q.QuestionKey IN (" & keys & "),'Given lately','') AS note " & _
+        "d.LevelName, q.TotalPoints AS pts, IIf(q.QuestionKey IN (" & keys & "),'Given lately','') AS note_txt " & _
         "FROM tblQuestions AS q LEFT JOIN tblDifficultyLevels AS d ON q.DifficultyID=d.DifficultyID WHERE " & where & _
         " ORDER BY IIf(q.QuestionKey IN (" & keys & "),1,0), q.QuestionKey"
 End Function

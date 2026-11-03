@@ -345,12 +345,14 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             problem = NameProblem(v, MAX_LEVEL_NAME, "tblClassLevels", "Marking", "classification level", "ClassLevelID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET Marking=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
+            AuditAdmin ITEM_SETTING, id, "Classification level marking was " & nm & ", now " & Trim$(v)
         Case "pm"
             v = KitInputBox("New portion mark for """ & nm & """:", "Classification levels", pm)
             If IsNull(v) Then Exit Sub
             problem = NameProblem(v, MAX_PORTION_MARK, "tblClassLevels", "PortionMark", "portion mark", "ClassLevelID=" & id)
             If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
             KitExecute "UPDATE tblClassLevels SET PortionMark=" & Q(Trim$(v)) & " WHERE ClassLevelID=" & id
+            AuditAdmin ITEM_SETTING, id, "Portion mark of " & nm & " was " & pm & ", now " & Trim$(v)
         Case "up", "down"
             ' The top level can't go up, nor the bottom one down (MoveRow's
             ' order: LevelRank, then ClassLevelID); nothing changes, so no stamp.
@@ -363,6 +365,7 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             ' so a document made while it moved counts as made before.
             SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
             If Not MoveRow("tblClassLevels", "ClassLevelID", "LevelRank", id, IIf(k = "up", -1, 1)) Then Exit Sub
+            AuditAdmin ITEM_SETTING, id, "Classification level " & nm & " moved " & IIf(k = "up", "up (ranks lower)", "down (ranks higher)")
             On Error Resume Next                ' if this fails, the first stamp still stands
             SetSetting SET_CLASS_ORDER_AT, CStr(Nz(DMax("AuditID", "tblAuditTrail"), 0))
             On Error GoTo 0
@@ -377,6 +380,7 @@ Private Sub ClassActions(ByVal atPointer As Boolean)
             If Not KitConfirmTyped("Delete the classification level """ & nm & """?", _
                 "No question, part or exam uses it. This can't be undone.", PURGE_WORD, "Delete", "Classification levels") Then Exit Sub
             KitExecute "DELETE FROM tblClassLevels WHERE ClassLevelID=" & id
+            AuditAdmin ITEM_SETTING, id, "Classification level " & nm & " deleted"
             GridSelect Me.sfClass, Null, True
             KitToast "Level deleted.", "destructive"
             Exit Sub

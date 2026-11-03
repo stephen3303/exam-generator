@@ -19,7 +19,9 @@ Option Explicit
 ' Who may approve or reject is checked in the data file at the moment of the
 ' write (RequireApprover), not from the roles read at sign-in: an active
 ' person who holds the step's role now and may still use the app, and who
-' did not write the question. Every approval, rejection and retirement
+' did not write or change this version of the question, and who has not
+' approved it at another step since it was last submitted (one person may
+' hold the DH, XO and SM roles, but approves one step only). Every approval, rejection and retirement
 ' writes an audit row (modQuestions.AddAudit); the reason for a rejection is
 ' its Comments.
 '
@@ -99,7 +101,36 @@ Public Function ApproveProblem(ByVal qid As Long, Optional ByVal expectStep As L
     End If
     If pid = author Then
         ApproveProblem = "You wrote this question, so another " & code & " has to approve or reject it."
+    ElseIf EditedVersion(qid, pid) Then
+        ApproveProblem = "You changed this version of the question, so another " & code & " has to approve or reject it."
+    ElseIf ApprovedThisRound(ITEM_QUESTION, qid, pid) Then
+        ApproveProblem = "You already approved it at an earlier step, so another " & code & " has to approve or reject it. " & _
+            "Each step needs a different person."
     End If
+End Function
+
+' Separation of duties: True when person pid already approved item itemId
+' (ITEM_QUESTION or ITEM_EXAM; ItemID is the version's row) at any step since
+' it was last submitted. One person may hold several chain roles (DH, XO,
+' SM), but may approve only one step of each round, so the chain always
+' needs as many people as it has steps. A rejection and a new submission
+' start a new round.
+' Errors: the engine's.
+Public Function ApprovedThisRound(ByVal itemType As String, ByVal itemId As Long, ByVal pid As Long) As Boolean
+    Dim crit As String, lastSubmit As Long
+    crit = "ItemType=" & Q(itemType) & " AND ItemID=" & itemId
+    lastSubmit = Nz(DMax("AuditID", "tblAuditTrail", crit & " AND ActionType=" & Q(AU_SUBMITTED)), 0)
+    ApprovedThisRound = DCount("*", "tblAuditTrail", crit & " AND ActionType=" & Q(AU_APPROVED) & _
+        " AND PersonID=" & pid & " AND AuditID>" & lastSubmit) > 0
+End Function
+
+' True when person pid wrote or changed question version qid (an Authored,
+' Edited or New version audit row): an SME who reworked a rejected question
+' may not approve their own changes.
+' Errors: the engine's.
+Private Function EditedVersion(ByVal qid As Long, ByVal pid As Long) As Boolean
+    EditedVersion = DCount("*", "tblAuditTrail", "ItemType=" & Q(ITEM_QUESTION) & " AND ItemID=" & qid & _
+        " AND PersonID=" & pid & " AND ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")") > 0
 End Function
 
 ' Raise ERR_NOT_ALLOWED unless the signed-in person may approve or reject
