@@ -2,9 +2,9 @@
 
 Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail profile). Build first, as in REVIEW-TASK.md step 2. Report PASS or FAIL for each item, with what you saw, and screenshots where it helps. Make no code changes.
 
-1. **Upgrade.** Build a data file from the `main` branch's `backend\new-backend.ps1` (data version 1), then open it with this build. It should upgrade to version 4 without errors.
+1. **Upgrade.** Build a data file at commit `53aec40` (`git worktree add ..\eg-v1 53aec40`, then that folder's `access\backend\new-backend.ps1`; data version 1), then open it with this build. It should upgrade to version 4 without errors.
 2. **Upgrade while another copy is open.** Open the data file in a second copy of the app as an admin, then start the upgrade from the first copy. The upgrade should wait and say why, not fail with a raw error.
-3. **Word page markings.** Approve an exam long enough to fill three pages, with questions of different classification levels. Download it. Each page should carry its own highest marking, and the cover and body should keep their formatting.
+3. **Word page markings.** Approve an exam long enough to fill three pages, with questions of different classification levels. Download it. Each page should carry its own highest marking, and the cover and body should keep their formatting. Known gap: a multi-page exam may carry the overall marking on every page instead (see the README); that is accepted for now, but a page marked lower than its content is a failure.
 4. **Outlook.**
    - When Outlook asks to allow the send, try it once allowing the send and once refusing it. Each time the app should say what happened.
    - With Outlook closed, take a step that sends notices. The emails should leave the Outbox.
@@ -21,8 +21,15 @@ Run these on a Windows VM with Access, Word and Outlook (desktop, with a mail pr
    - Add an SME to a topic of an exam in SME review, then open My reviews as that SME. They should have a review.
    - Repeat with two copies at the same moment: one signs off the topic while the other opens My reviews. No open review should be left on a topic that is already signed off.
 10. **Speed.** With three or more exams in SME review, time how long My reviews and Exams take to open.
-11. **Sign out** (My settings; the feature-sign-out branch).
+11. **Sign out** (My settings).
    - Sign out and sign in as another person. The app should reopen on their Dashboard with only their pages.
    - Sign out and close the sign-in screen. The app should close.
    - Sign out and sign in as someone with no Exam Generator role. The app should say why and close.
    - As a Windows-only user with no app password, Sign out should ask you to choose one first. Signed in by password on someone else's Windows account whose owner has no app password, Sign out should refuse.
+12. **Who may approve.**
+   - Give one person DH, XO and SM. The DH step should reach them on the Dashboard and by email. After each approval the item should stay on their Approvals tab and Dashboard at the next step, with Approve enabled, until the SM's approval. No email comes for the XO or SM step, since they are the one acting.
+   - Double-click Approve at the DH step. Say whether it also approved the XO step.
+   - Give SME A the DH role too, and add a second DH. SME A edits and saves a question; SME B submits it. SME A should get no "waits for your approval" email and should not see it on the Dashboard; the second DH should get the email. The Approvals Questions tab may list it for SME A with the reason, and Approve there should be refused.
+13. **Upgrade backup and skipped checks.**
+   - After check 1, `ExamGen_BE.accdb.v1.bak` should sit next to the data file.
+   - Put two rows in the data file that break a check the upgrade adds (for example a duplicate) before upgrading. The upgrade should finish, and an admin should be told once at start-up which check was left out, not again on a palette switch.

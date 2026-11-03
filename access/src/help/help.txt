@@ -34,7 +34,7 @@ What waits on you, and the topics short of approved questions, on one page.
 
 # The tiles
 - **Reviews open**: the exam topics you're an SME of that nobody has signed off yet.
-- **Approvals waiting**: the questions and exams at your step in the chain. Your own questions aren't counted, since you can't approve them, and neither are exams where you signed off a topic.
+- **Approvals waiting**: the questions and exams at your step in the chain. Only what you may approve is counted: not questions you wrote or changed, and not exams where you signed off a topic.
 - **Sent back to you**: your questions an approver returned, to fix and resubmit.
 - **Topics short**: the active topics with fewer approved questions than their templates need under the overlap rule. The alert under the tiles names them.
 
@@ -88,7 +88,7 @@ Pick a row to see it on the right:
 - **Reject** sends it back to its author with your reason, which is required. See **Rejecting a question**.
 - Right-click a row for the same actions, and to show it in the question bank.
 
-You can't approve or reject a question you wrote: another holder of the same role has to. Who may approve is checked again when you click, so a role taken away since you signed in counts at once. If someone else acted on the question first, the app says so and the list shows where it stands now.
+You can't approve or reject a question you wrote or changed: another holder of the same role has to. One person may hold the DH, XO and SM roles and approve every step. Who may approve is checked again when you click, so a role taken away since you signed in counts at once. If someone else acted on the question first, the app says so and the list shows where it stands now.
 
 === approvals.reject | Rejecting a question
 **Reject** opens a window that shows who the question goes back to and asks for the reason. The reason is required: say what to change.
@@ -347,7 +347,7 @@ Each new copy of the app brings its own wording for the topics, but only for top
 The audit trail and the error log, for the admin. Both tabs share the search box and the dates, which start at the last 30 days.
 
 # Audit trail
-Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference. **As** is the role the step was taken as. A draft question that was deleted shows as "Question" and its number, marked deleted; its Deleted entry names its key. Nobody can change or delete the audit trail from the app.
+Every change the app records, newest first: who authored, edited, submitted, approved or sent back a question; who generated, swapped, signed off, approved, sent back or downloaded an exam; who added or changed a reference; and who gave or took a role, turned admin or access on or off, added or removed a topic's SMEs, or changed a classification level. **As** is the role the step was taken as. A draft question that was deleted shows as "Question" and its number, marked deleted; its Deleted entry names its key. Nobody can change or delete the audit trail from the app.
 
 # Errors
 Every error anyone's copy of the app has hit, newest first, with the page, the procedure and the error. Click an entry to see all of it: the call trail, the form and control, and the computer and build. **Copy** puts the whole entry on the clipboard, to paste into an email to whoever maintains the app.
@@ -377,7 +377,7 @@ The app sends its emails once your step is saved, from your computer's Outlook. 
 Click **Appearance** to choose the colors the whole app uses on this computer.
 
 # Sign out
-Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app, and so does signing in as someone with no Exam Generator role.
+Click **Sign out** to let someone else sign in on this copy without closing it. The sign-in screen opens; after the next person signs in, the app opens on their Dashboard with their pages. Closing the sign-in screen closes the app, and so does signing in as someone with no Exam Generator role. It is also how one computer can take a question or an exam through approvers who are different people.
 - If you sign in with Windows and have no app password yet, Sign out asks you to choose one first, so only you can sign back in as you. If someone else is signed in on your Windows account and you have no app password, Sign out is refused until you or a Personnel admin sets one.
 - Someone signing in on a computer that isn't theirs should leave **Use my Windows sign-in next time** unticked, or this Windows account will sign them in from then on.
 
