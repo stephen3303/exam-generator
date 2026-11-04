@@ -21,7 +21,7 @@ End Sub
 ' "field|caption|width px|options[|sort field]"
 Private Function AuditCols() As Variant
     AuditCols = Array("when_txt|When|96|m|ActionOn", "who|Who|122|s", "ActionType|Action|90|", "item|Item|120|bs", _
-        "step|As|52|m", "note|Note|108|s")
+        "step|As|52|m", "note_txt|Note|108|s")
 End Function
 
 Private Function ErrorCols() As Variant

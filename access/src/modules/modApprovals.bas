@@ -19,9 +19,10 @@ Option Explicit
 ' Who may approve or reject is checked in the data file at the moment of the
 ' write (RequireApprover), not from the roles read at sign-in: an active
 ' person who holds the step's role now and may still use the app, and who
-' did not write the question. Every approval, rejection and retirement
-' writes an audit row (modQuestions.AddAudit); the reason for a rejection is
-' its Comments.
+' did not write or change this version of the question. One person may hold
+' the DH, XO and SM roles and approve every step. Every approval, rejection
+' and retirement writes an audit row (modQuestions.AddAudit); the reason
+' for a rejection is its Comments.
 '
 ' Owner: question approvals (build phase 6). Depends on: modAdmin,
 ' modErrors, modGlobals, modQuestions, modSignIn; the kit's modKitLocks,
@@ -99,7 +100,29 @@ Public Function ApproveProblem(ByVal qid As Long, Optional ByVal expectStep As L
     End If
     If pid = author Then
         ApproveProblem = "You wrote this question, so another " & code & " has to approve or reject it."
+    ElseIf EditedVersion(qid, pid) Then
+        ApproveProblem = "You changed this version of the question, so another " & code & " has to approve or reject it."
     End If
+End Function
+
+' True when person pid wrote or changed question version qid (an Authored,
+' Edited or New version audit row): an SME who reworked a rejected question
+' may not approve their own changes.
+' Errors: the engine's.
+Private Function EditedVersion(ByVal qid As Long, ByVal pid As Long) As Boolean
+    EditedVersion = DCount("*", "tblAuditTrail", "ItemType=" & Q(ITEM_QUESTION) & " AND ItemID=" & qid & _
+        " AND PersonID=" & pid & " AND ActionType IN (" & Q(AU_AUTHORED) & ", " & Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & ")") > 0
+End Function
+
+' EditedVersion as SQL, for the queues, the Dashboard and the emails, so they
+' never send someone a question ApproveProblem would refuse: a condition that
+' is True when person pidExpr did not write or change question idExpr. Both
+' are SQL expressions, such as "q.QuestionID" and "pr.PersonID".
+' Builds the SQL only.
+Public Function NotEditorSql(ByVal idExpr As String, ByVal pidExpr As String) As String
+    NotEditorSql = "NOT EXISTS (SELECT * FROM tblAuditTrail AS ap WHERE ap.ItemType=" & Q(ITEM_QUESTION) & _
+        " AND ap.ItemID=" & idExpr & " AND ap.PersonID=" & pidExpr & " AND ap.ActionType IN (" & Q(AU_AUTHORED) & ", " & _
+        Q(AU_EDITED) & ", " & Q(AU_NEWVERSION) & "))"
 End Function
 
 ' Raise ERR_NOT_ALLOWED unless the signed-in person may approve or reject

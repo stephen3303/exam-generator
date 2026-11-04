@@ -20,8 +20,9 @@ Option Explicit
 ' Who may approve or reject is read from the data file at the moment of the
 ' write (RequireExamApprover): an active person who holds the step's role
 ' now and may still use the app, and who signed off none of the exam's
-' topics (no one approves their own work). The DH who generated the exam
-' may approve it: the draw is random and the SMEs check it. Every write is
+' topics (no one approves their own work). One person may hold the DH, XO
+' and SM roles and approve every step. The DH who generated the exam may
+' approve it: the draw is random and the SMEs check it. Every write is
 ' guarded by the state it expects, so two approvers acting at once can't
 ' both win, and writes an audit row (modQuestions.AddAudit).
 

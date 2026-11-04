@@ -22,14 +22,14 @@ Public Const LOG_MAX As Long = 1000             ' rows a list shows at most
 
 ' The audit trail: id (AuditID), when_txt, ActionOn, who, ActionType, item
 ' ("Q12 v2", "E3 v1", "Reference: NSTM 555"), step (the role it was done
-' as) and note (the comment's first line).
+' as) and note_txt (the comment's first line).
 '   search   words to find in the who, action, item and comment ("" for all)
 '   fromDay, toDay   whole days, both included; Null leaves that end open
 ' Builds the SQL only. Errors: none.
 Public Function AuditLogSql(ByVal search As String, ByVal fromDay As Variant, ByVal toDay As Variant) As String
     AuditLogSql = "SELECT t.* FROM (SELECT TOP " & LOG_MAX & " a.AuditID AS id, Format(a.ActionOn,'d mmm yy h:nn') AS when_txt, " & _
         "a.ActionOn, " & WhoSql() & " AS who, a.ActionType, " & AuditItemSql() & " AS item, " & _
-        "r.RoleCode AS step, Left(Replace(Nz(a.Comments,''), Chr(13) & Chr(10), ' '), 120) AS note " & AuditFromSql() & _
+        "r.RoleCode AS step, Left(Replace(Nz(a.Comments,''), Chr(13) & Chr(10), ' '), 120) AS note_txt " & AuditFromSql() & _
         " WHERE " & AuditWhere(search, fromDay, toDay) & " ORDER BY a.ActionOn DESC, a.AuditID DESC) AS t " & _
         "ORDER BY t.ActionOn DESC, t.id DESC"
 End Function
