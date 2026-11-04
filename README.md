@@ -57,6 +57,8 @@ The data file holds the question bank, exams, each person's Exam Generator roles
 
 Then open `access\build\ExamGenerator.accdb`. The build stops and prints any Visual Basic or Access dialog it meets (a compile error, an error message) instead of hanging. The code loaded into the front end has line numbers so the error log names the failing line (`-NoLineNumbers` leaves them out).
 
+For testing, `.\tools\seed-demo.ps1` fills a new, empty data file with made-up people, questions in every state and five exams (two with their Word documents). Run it after `new-backend.ps1` and before `build.ps1 -BackEnd`; see [access/SEED-DEMO.md](access/SEED-DEMO.md).
+
 The palettes are generated: after changing one, run `python tools\make_themes.py src` in `access\`.
 
 ## Release
