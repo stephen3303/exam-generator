@@ -4,7 +4,7 @@
 
 Everything it adds is invented: the people, the references (each marked "(demo)") and the questions. It never touches a data file that already has questions or exams.
 
-It drives the app's own code, signed in as each made-up person in turn, so the same rules the pages enforce apply. If a rule stops it, it prints the app's own message and leaves the data file as it was.
+It drives the app's own code, signed in as each made-up person in turn, so the same rules the pages enforce apply. If a rule stops it, it prints the app's own message and leaves the data file as it was. The Personnel file isn't copied, so people it already added there stay; a second run reuses them.
 
 Nothing here has been run in Access or Word yet. If it stops, send the PowerShell output.
 
@@ -33,7 +33,8 @@ Other switches:
 
 - `-BackEnd <file>` seeds another data file (default `build\ExamGen_BE.accdb`).
 - `-DemoPassword <text>` changes the made-up people's password (default `ExamDemo-2026`, 8 characters or more).
-- `-NoDocs` skips Word. **Download a copy** on the Exams page makes the documents later.
+- `-NoDocs` skips Word. **Download a copy** on the Exams page makes the documents later. Use it if Word stalls the run.
+- `-NoLineNumbers` loads the code without line numbers, as in `build.ps1`.
 
 ## Who's who
 
@@ -56,7 +57,7 @@ Emails are off for everyone, and each has a made-up `@example.com` address, so n
 
 **Signed in as you (admin, DH, XO, SM):**
 
-- **Dashboard**: one question waiting at each of your three steps, and exam E3 waiting at the XO step. No topic is short of questions.
+- **Dashboard**: one question waiting at each of your three steps, and exam E3 waiting at the XO step. The Topics short tile shows all four topics, because the overlap rule (10 exams back, 30% repeats) wants more questions than a demo bank has: about 33 for damage control and 22 for each of the others.
 - **Approvals**: three questions (one at the DH step, one at the XO step, one at the SM step) and exam E3 at the XO step. Approve E3 at the XO step and then the SM step to watch the app make its Word document live, the same way the SM's approval does on the real chain.
 - **Question bank**: 36 approved questions across four topics, multiple choice, true/false and short answer, some with parts A and B, three parts marked (CUI). Use the status chips to find the drafts, the waiting ones, the rejected one and the retired version 1. Open **History** on "Water from a fire hose..." to see version 1 retired by version 2.
 - **Exams**: five exams.
@@ -76,7 +77,8 @@ Emails are off for everyone, and each has a made-up `@example.com` address, so n
 - `achen` **Dashboard**: one question sent back by the XO (the Class D fire question), with the XO's reason. **My reviews**: E4's damage control topic, sent back by the DH, and E5's damage control topic, both open (Alex Chen and Sam Rivera share them).
 - `jpatel` **Question bank**: a draft (the Mercator question) and a version 2 in draft of "How many minutes of latitude...". Version 1 stays in the bank until version 2 is approved.
 - `ckim`: a draft (the garbled message question).
-- `dreyes`, `mhale`, `tbrooks`: the same Approvals list as yours, each at their own step.
+- `dreyes` **Approvals**: one question (the soundings question). `mhale`: one question (the password question) and E3. `tbrooks`: one question (the relief valve question). You see all of these because you hold all three steps.
+- `dreyes` **Exams**, **New exam**: damage control and engineering show as repeats, since the five demo exams used every question in them lately. Generate asks before it goes over the rule.
 
 ## The Word documents
 

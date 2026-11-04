@@ -12,6 +12,7 @@
 #                         this makes one (in access\Personnel, with you as its admin)
 #   -DemoPassword <text>  every made-up person's app password (default ExamDemo-2026)
 #   -NoDocs               skip Word (the documents are then made by Download a copy)
+#   -NoLineNumbers        load the code without line numbers
 #
 # It refuses a data file that already has questions or exams. It drives the app's own
 # code, signed in as each made-up person in turn, so the app's rules apply to every step.
@@ -41,8 +42,6 @@ if ($DemoPassword.Length -lt 8) { throw 'Use at least 8 characters for -DemoPass
 # The seed works on a copy beside the data file and only takes its place once it
 # finished, so a failed run leaves the data file as it was (and still empty).
 $copy = Join-Path (Split-Path -Parent $BackEnd) ([IO.Path]::GetFileNameWithoutExtension($BackEnd) + '.seeding.accdb')
-Remove-Item $copy -ErrorAction SilentlyContinue
-Copy-Item $BackEnd $copy
 
 # The runner: a throwaway database with the kit's and the app's modules (no forms, so
 # no start-up runs) and this seed module.
@@ -52,10 +51,15 @@ $runner = Join-Path $work 'seed-runner.accdb'
 . (Join-Path $tools 'VbaLineNumbers.ps1')
 . (Join-Path $tools 'AccessWatch.ps1')
 
-$acc = New-Object -ComObject Access.Application
-$watch = Start-AccessWatch $acc -TimeoutSec 1200
-$failed = $false
+$acc = $null
+$watch = $null
+$dialogs = $null
+$failed = $true
 try {
+    Remove-Item $copy -ErrorAction SilentlyContinue
+    Copy-Item $BackEnd $copy
+    $acc = New-Object -ComObject Access.Application
+    $watch = Start-AccessWatch $acc -TimeoutSec 1200
     $acc.Visible = $false
     $acc.AutomationSecurity = 1   # let the seed's VBA run
     $acc.NewCurrentDatabase($runner)
@@ -77,23 +81,29 @@ try {
     }
 
     $bad = Test-AccessCompiles $acc $watch
-    if ($bad) { Write-Host "Compile error: $bad"; throw 'compile failed' }
+    if ($bad) { throw "Compile error: $bad" }
 
     Write-Host "Seeding $BackEnd (this takes a few minutes; Word runs hidden for the documents)..."
     $a1 = [string]$copy; $a2 = [string]$OwnerUser; $a3 = [string]$OwnerFirst; $a4 = [string]$OwnerLast
     $a5 = [string]$OwnerRank; $a6 = [string]$DemoPassword; $a7 = [bool](-not $NoDocs)
     $result = [string]$acc.Run('SeedDemoRun', [ref]$a1, [ref]$a2, [ref]$a3, [ref]$a4, [ref]$a5, [ref]$a6, [ref]$a7)
     $result -split "`r?`n" | Where-Object { $_ } | ForEach-Object { Write-Host $_ }
-    if (-not $result.StartsWith('OK')) { $failed = $true }
+    $failed = -not $result.StartsWith('OK')
 }
-catch { $failed = $true; if (-not $watch.Killed) { throw } }
+catch {
+    # A dialog the watch closed is printed by Stop-AccessWatch below; print anything else.
+    if (-not ($watch -and $watch.Killed)) { Write-Host "Stopped: $($_.Exception.Message)" }
+}
 finally {
-    $dialogs = Stop-AccessWatch $watch $acc
+    if ($watch) { $dialogs = Stop-AccessWatch $watch $acc }
+    elseif ($acc) { try { $acc.Quit() } catch { } }
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+    if ($failed -or $dialogs) {
+        Remove-Item $copy -ErrorAction SilentlyContinue
+        Remove-Item ([IO.Path]::ChangeExtension($copy, '.laccdb')) -ErrorAction SilentlyContinue
+    }
 }
 if ($dialogs -or $failed) {
-    Remove-Item $copy -ErrorAction SilentlyContinue
-    Remove-Item ([IO.Path]::ChangeExtension($copy, '.laccdb')) -ErrorAction SilentlyContinue
     if ($dialogs) { Write-Host 'Stopped: Access showed the dialog(s) above.' }
     Write-Host "Seed did not finish cleanly, so $BackEnd was left as it was. Send the lines above."
     exit 1
