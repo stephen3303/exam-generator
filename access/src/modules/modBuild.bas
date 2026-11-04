@@ -99,6 +99,7 @@ Private Sub BuildUserInterface()
     Build_dlgReference             ' cite or add a reference
     Build_dlgHistory               ' a question's history
     Build_dlgReject                ' send a question back to its author
+    Build_dlgBankExport            ' the topics to export the bank from
     Build_dlgNewExam               ' generate an exam (modBuildExams)
     Build_dlgSwap                  ' swap a question on an exam topic
     Build_dlgRejectExam            ' send an exam back to its SMEs

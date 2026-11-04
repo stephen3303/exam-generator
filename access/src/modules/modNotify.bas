@@ -563,6 +563,6 @@ Public Function RecentActivitySql(Optional ByVal n As Long = 20) As String
         PersonNameSql() & " AS who, a.ActionType & ' ' & IIf(a.ItemType=" & Q(ITEM_QUESTION) & ", IIf(IsNull(q.QuestionKey), " & _
         "'a question', 'Q' & q.QuestionKey & ' v' & a.VersionNo), IIf(a.ItemType=" & Q(ITEM_EXAM) & ", 'E' & a.ItemID & ' v' & " & _
         "a.VersionNo, IIf(a.ItemType=" & Q(ITEM_PERSON) & ", 'a person''s access', IIf(a.ItemType=" & Q(ITEM_SETTING) & _
-        ", 'a setting', 'a reference')))) AS what, a.ActionOn FROM (tblAuditTrail AS a LEFT JOIN " & PERSON_TABLE & _
-        " AS p ON a.PersonID=p.person_id) LEFT JOIN tblQuestions AS q ON a.ItemID=q.QuestionID" & mine & " ORDER BY a.AuditID DESC"
+        ", 'a setting', IIf(a.ItemType=" & Q(ITEM_BANK) & ", 'the question bank', 'a reference'))))) AS what, a.ActionOn " & _
+        "FROM (tblAuditTrail AS a LEFT JOIN " & PERSON_TABLE & " AS p ON a.PersonID=p.person_id) LEFT JOIN tblQuestions AS q ON a.ItemID=q.QuestionID" & mine & " ORDER BY a.AuditID DESC"
 End Function

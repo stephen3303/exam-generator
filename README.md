@@ -9,7 +9,7 @@ The front end is built in code with the [access-modern-ui](https://github.com/st
 ```
 access/build.ps1              builds the front end (access\build\ExamGenerator.accdb; -Release adds the locked .accde)
 access/backend/               the shared data file's script (modBuildBackEnd.bas) and new-backend.ps1
-review/                       review prompts and the review task for Stephen's review VMs
+review/                       review prompts, the review task for Stephen's review VMs, and question-bank-sample.xlsx (the bank's Excel layout)
 access/kit/                   the kit, copied from one kit commit, with one file from a kit branch not yet
                               merged (KIT_VERSION.txt says which commit and which file)
 access/tools/                 the kit's build tools (palettes, line numbers, dialog watch, release lock)
@@ -24,6 +24,7 @@ access/src/modules/           the app's code:
                                 modSignIn           start-up, sign-in, roles, the admin check at each write
                                 modAdmin            settings, people and roles, the overlap rule, list helpers
                                 modQuestions        questions, references, the editor's working copy, audit rows
+                                modBank             the question bank's export to and import from Excel
                                 modApprovals        the question approval chain, approve and reject
                                 modExams            generating exams, the draw and overlap rule, SME reviews and swaps
                                 modExamApprovals    the exam approval chain, send-back, Download a copy

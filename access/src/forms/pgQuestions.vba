@@ -17,7 +17,7 @@ Option Explicit
 ' one nothing cites. New reference adds one.
 '
 ' Owner: the question bank (build phase 5). Depends on: modErrors,
-' modGlobals, modQuestions, modSignIn, modUI; the kit's modGridFilter,
+' modBank, modGlobals, modQuestions, modSignIn, modUI; the kit's modGridFilter,
 ' modKitFiles, modKitKeys, modKitPurge, modKitUI, modKitUtil, modMenu.
 
 Private Const MSG_TITLE As String = "Question bank"
@@ -161,12 +161,29 @@ Err_Handler:
     HandleError "pgQuestions.btnNew_Click"
 End Sub
 
+' Export: the list shown as a CSV file or workbook. The admin also gets
+' the whole bank (or chosen topics) as an Excel workbook, and Import
+' questions from one (modBank).
 Private Sub btnExport_Click()
+    Dim k As String
     On Error GoTo Err_Handler
-    If m_tab = "r" Then ExportGridAs Me.sfRefs.Form, "References" Else ExportGridAs Me.sfList.Form, "Question bank"
+    If IsExamAdmin() Then
+        k = KitMenu(Me.btnExport, "list|Export the list shown|EDE1", "bank|Export the question bank...|E78C", _
+            "-", "import|Import questions...|E8B5")
+    Else
+        k = "list"
+    End If
+    Select Case k
+        Case "list"
+            If m_tab = "r" Then ExportGridAs Me.sfRefs.Form, "References" Else ExportGridAs Me.sfList.Form, "Question bank"
+        Case "bank"
+            If RunDialog("dlgBankExport") Then KitToast Nz(TempVars("BankExportNote"), "Exported."), "success"
+            TempVars("BankExportNote") = Null
+        Case "import": ImportClicked
+    End Select
     Exit Sub
 Err_Handler:
-    HandleError "pgQuestions.btnExport_Click"
+    HandleError "pgQuestions.btnExport_Click", k
 End Sub
 
 Private Sub btnOpen_Click()
@@ -271,6 +288,59 @@ Public Sub GridRightClick(ByVal grid As String)
     Exit Sub
 Err_Handler:
     HandleError "pgQuestions.GridRightClick", grid
+End Sub
+
+' Import questions from a workbook: pick it, check all of it (nothing is
+' written while any row has a problem; the problems are listed, with the
+' whole list to copy), say what will happen, and on OK write it all as
+' drafts. The list then shows the Draft chip.
+Private Sub ImportClicked()
+    Dim path As String, problem As String, n As Long, skipped As Long, busy As Boolean
+    Dim num As Long, desc As String, src As String
+    On Error GoTo Err_Handler
+    If Not RefLeaveOK() Then Exit Sub
+    path = KitPickFile("Import questions", "Excel workbook|*.xlsx", "bankexport")
+    If Len(path) = 0 Then Exit Sub
+    KitBusy "Checking " & Mid$(path, InStrRev(path, "\") + 1) & "...": busy = True
+    problem = CheckBankFile(path)
+    KitBusyEnd: busy = False
+    If Len(problem) > 0 Then
+        n = LineCount(problem)
+        If KitMsgBox("Nothing was imported. Fix " & IIf(n = 1, "this", "these") & " in the file, then import it again:" & vbCrLf & vbCrLf & _
+                FirstLines(problem) & vbCrLf & vbCrLf & "Copy the full list?", vbYesNo + vbExclamation, "Import questions") = vbYes Then
+            If KitCopyText(problem) Then KitToast "The list of problems was copied.", "success"
+        End If
+        Exit Sub
+    End If
+    If Not BankImportReady() Then
+        KitMsgBox BankImportSummary(), vbInformation, "Import questions"
+        ClearCheckedBank
+        Exit Sub
+    End If
+    If KitMsgBox(BankImportSummary(), vbOKCancel + vbQuestion, "Import questions") <> vbOK Then ClearCheckedBank: Exit Sub
+    KitBusy "Importing questions...": busy = True
+    n = ImportCheckedBank(skipped, problem)
+    KitBusyEnd: busy = False
+    If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, "Import questions": Exit Sub
+    m_refFilter = 0
+    m_chip = 1                                  ' Draft
+    ChipOn Me, "chip", m_chip
+    ClearGridFilters Me.sfList
+    m_tab = "q"
+    SelectTab Me, "q"
+    ShowGroup
+    m_qid = 0
+    SetSearch Me, "txtSearch", ""               ' SearchFor: both lists again, the new references too
+    KitToast "Imported " & n & " " & Plural(n, "question") & " as drafts." & _
+        IIf(skipped > 0, " " & skipped & " saved meanwhile " & IIf(skipped = 1, "was", "were") & " skipped.", ""), "success"
+    Exit Sub
+Err_Handler:
+    ' KitBusyEnd resets Err, so keep the error to show it.
+    num = Err.Number: desc = Err.Description: src = Err.Source
+    If busy Then KitBusyEnd
+    ClearCheckedBank
+    Err.Number = num: Err.Description = desc: Err.Source = src
+    HandleError "pgQuestions.ImportClicked", path
 End Sub
 
 ' New question (Questions tab) or New reference (References tab).
