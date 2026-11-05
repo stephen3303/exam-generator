@@ -55,12 +55,27 @@ Private Sub Form_Load()
         Me.chkApp = CBool(Nz(DLookup("is_active", PERSON_APP_TABLE, "person_id=" & m_id & " AND app_code='" & _
             Replace(PersonnelUiAppCode(), "'", "''") & "'"), False))
         SetVisible Me.lblUserHint, False
+        CloseUpUserHint
     End If
     Me.lblApp.Caption = "Can open " & APP_NAME
     CenterOnApp Me
     Exit Sub
 Err_Handler:
     HandleError "dlgPerson.Form_Load"
+End Sub
+
+' Changing someone has no sign-in hint: move everything under it up, so the
+' UPN row sits one row gap under the sign-in name like every other row.
+Private Sub CloseUpUserHint()
+    Dim c As Control, hintTop As Long, delta As Long
+    hintTop = Me.lblUserHint.Top
+    delta = Me.lblUpn.Top - (Me.txtUser.Top + Me.txtUser.Height) - Sp(SP_ROW_GAP)
+    If delta <= 0 Then Exit Sub
+    For Each c In Me.Controls
+        If c.Top > hintTop Then c.Top = c.Top - delta
+    Next
+    Me.Section(acDetail).Height = Me.Section(acDetail).Height - delta
+    Me.InsideHeight = Me.InsideHeight - delta
 End Sub
 
 ' F1 opens the help on adding and changing people (KitHelp).

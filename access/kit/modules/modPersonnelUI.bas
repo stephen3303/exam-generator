@@ -477,9 +477,9 @@ Private Sub Build_dlgPerson()
     Set c = Txt("txtPwd", "", x, y, half, px(30)): c.InputMask = SECRET_MASK
     Set c = Txt("txtPwd2", "", x2, y, half, px(30)): c.InputMask = SECRET_MASK
     y = y + px(30) + px(4)
-    Lbl "lblPwdHint", "", x, y, w - px(140) - Sp(SP_ITEM_GAP), px(32), 8, False, CLR_MUTED_FG   ' Form_Load: new or change
+    Lbl "lblPwdHint", "", x, y, w - px(140) - Sp(SP_ITEM_GAP), px(44), 8, False, CLR_MUTED_FG   ' Form_Load: new or change; 3 lines
     Btn "btnResetPwd", "Reset password", x + w - px(140), y, px(140), px(30), "outline"   ' hidden while adding
-    y = y + px(32) + gap
+    y = y + px(44) + gap
     Lbl "lblError", "", x, y, w, px(36), 9, False, CLR_ERROR
     y = y + px(36) + gap
     Set c = Btn("btnSave", "Save", x + w - 2 * btnW - Sp(SP_ITEM_GAP), y, btnW, px(32)): c.Default = True

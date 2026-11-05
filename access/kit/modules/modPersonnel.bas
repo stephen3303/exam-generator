@@ -1050,12 +1050,14 @@ End Function
 
 ' Save upn (a UPN, or a DoD ID for its UPN) as the person's user principal
 ' name, replacing theirs; "" removes it. "" when saved, else why not
-' (PersonnelUpnProblem), with nothing changed. Admins only; not logged.
+' (PersonnelUpnProblem), with nothing changed. Error 5 when personId isn't
+' in Personnel, so no UPN is held for nobody. Admins only; not logged.
 Public Function PersonnelSetUpn(ByVal personId As Long, ByVal upn As String) As String
     Dim udb As DAO.Database, n As Long, d As String, src As String
     On Error GoTo Fail
     PersonnelSetUpn = PersonnelUpnProblem(personId, upn)       ' checks admin
     If Len(PersonnelSetUpn) > 0 Then Exit Function
+    If DCount("*", PERSON_TABLE, "person_id=" & personId) = 0 Then Err.Raise 5, "modPersonnel", "There is no such person."
     upn = UpnFromInput(upn)
     Set udb = UpnDb()
     If StrComp(UpnOf(udb, personId), upn, vbBinaryCompare) <> 0 Then SaveUpn udb, personId, upn
