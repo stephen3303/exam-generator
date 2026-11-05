@@ -14,8 +14,10 @@ Option Explicit
 ' clears the session and shows the sign-in screen, so another person can
 ' sign in on the same copy. A Personnel link or button for admins:
 '   =KitPersonnelManage("SABER")
-' opens the Personnel page (dlgPersonnel): the list of people, Add person
-' and Import (dlgPerson adds or changes one, and resets a password).
+' opens the Personnel page (dlgPersonnel): the list of people, Add person,
+' Import and Export (dlgPerson adds or changes one, and resets a password).
+' A "Change my password" menu item or button for everyone:
+'   =KitPersonnelChangePassword()
 '
 ' To pick a person on a page or dialog (an assignee, a reviewer):
 '   PersonPickBox "txtOwner", "owner_person_id", x, y, w
@@ -97,6 +99,41 @@ Public Function KitPersonnelManage(ByVal appCode As String)
     Exit Function
 Fail:
     HandleError "modPersonnelUI.KitPersonnelManage", appCode, "The Personnel page couldn't be opened."
+End Function
+
+' "Change my password", for any signed-in person: asks for the current app
+' password (when they have one), then the new one twice, in the kit's masked
+' input box. With no password yet, being signed in (by Windows) proves who
+' they are, so they just choose one. True when it was changed.
+Public Function KitPersonnelChangePassword() As Boolean
+    Dim cur As Variant, p1 As Variant, p2 As Variant, problem As String, id As Long
+    On Error GoTo Fail
+    id = SignedInPersonID()
+    If id = 0 Then KitMsgBox "Sign in first.", vbInformation, "Change my password": Exit Function
+    cur = ""
+    If PersonnelHasPassword(id) Then
+        cur = KitInputBox("Type your current app password.", "Change my password", , True)
+        If IsNull(cur) Then Exit Function
+    End If
+    Do
+        p1 = KitInputBox("Choose a new app password (8 or more characters).", "Change my password", , True)
+        If IsNull(p1) Then Exit Function
+        p2 = KitInputBox("Type the new password again.", "Change my password", , True)
+        If IsNull(p2) Then Exit Function
+        If StrComp(p1, p2, vbBinaryCompare) <> 0 Then
+            problem = "The two passwords don't match."
+        Else
+            problem = PersonnelChangePassword(id, cur, p1)
+        End If
+        If Len(problem) = 0 Then Exit Do
+        KitMsgBox problem, vbExclamation, "Change my password"
+        If problem = "Your current password isn't right." Then Exit Function
+    Loop
+    KitToast "Password changed", "success"
+    KitPersonnelChangePassword = True
+    Exit Function
+Fail:
+    HandleError "modPersonnelUI.KitPersonnelChangePassword", "", "The password couldn't be changed."
 End Function
 
 ' Why the Windows account running Access can't sign in to appCode:
@@ -359,8 +396,8 @@ Private Sub Build_dlgSignIn()
     SaveForm SIGNIN_FORM
 End Sub
 
-' dlgPersonnel, the Personnel page for directory admins: a search box, Import
-' and Add person, the list of people (double-click or Edit to change one)
+' dlgPersonnel, the Personnel page for directory admins: a search box, Export,
+' Import and Add person, the list of people (double-click or Edit to change one)
 ' and Close.
 Private Sub Build_dlgPersonnel()
     Const DLG_W As Long = 11520         ' 768 px
@@ -375,6 +412,7 @@ Private Sub Build_dlgPersonnel()
     Set c = Txt("txtSearch", "", x, y, px(260), px(30), 9)
     c.Format = "@;""Search people..."""
     Ev c, "OnChange"
+    Btn "btnExport", "Export...", x + w - 3 * btnW - 2 * Sp(SP_ITEM_GAP), y, btnW, px(30), "outline"
     Btn "btnImport", "Import...", x + w - 2 * btnW - Sp(SP_ITEM_GAP), y, btnW, px(30), "outline"
     Btn "btnAdd", "Add person", x + w - btnW, y, btnW, px(30)
     y = y + px(30) + Sp(SP_ROW_GAP)
@@ -394,9 +432,12 @@ Private Sub Build_dlgPersonnel()
 End Sub
 
 ' dlgPerson: add or change one person. OpenArgs "new" or a person_id. Name,
-' rank, command and email; sign-in name and Windows account; Active,
-' Personnel admin and "Can open <app>"; an app password typed twice; a line
-' for what went wrong; Save and Close. Adding stays open after Save, ready
+' rank, command and email; sign-in name and Windows account; user
+' principal name (admins only, never exported), which finds a blank Windows
+' account on Save; Active,
+' Personnel admin and "Can open <app>"; an app password typed twice and
+' Reset password (a one-time password they must change); a line for what
+' went wrong; Save and Close. Adding stays open after Save, ready
 ' for the next person.
 Private Sub Build_dlgPerson()
     Const DLG_W As Long = 8400          ' 560 px
@@ -416,6 +457,12 @@ Private Sub Build_dlgPerson()
     Lbl "lblUserHint", "Blank: made from the Windows account, or the first initial and last name.", _
         x, y, w, px(16), 8, False, CLR_MUTED_FG
     y = y + px(16) + Sp(16)
+    FieldLabel "lblUpn", "User principal name (UPN) or DoD ID", x, y, half, ""
+    y = y + px(18)
+    Txt "txtUpn", "", x, y, half, px(30)
+    Lbl "lblUpnHint", "Admins only; never exported. Save finds a blank Windows account from it.", _
+        x2, y, half, px(30), 8, False, CLR_MUTED_FG
+    y = y + px(30) + Sp(16)
     Chk "chkActive", "", x, y + px(2)
     Lbl "lblActive", "Active (can sign in)", x + px(24), y, half - px(24), px(20), 9
     Chk "chkAdmin", "", x2, y + px(2)
@@ -430,8 +477,9 @@ Private Sub Build_dlgPerson()
     Set c = Txt("txtPwd", "", x, y, half, px(30)): c.InputMask = SECRET_MASK
     Set c = Txt("txtPwd2", "", x2, y, half, px(30)): c.InputMask = SECRET_MASK
     y = y + px(30) + px(4)
-    Lbl "lblPwdHint", "", x, y, w, px(32), 8, False, CLR_MUTED_FG         ' Form_Load: new or change
-    y = y + px(32) + gap
+    Lbl "lblPwdHint", "", x, y, w - px(140) - Sp(SP_ITEM_GAP), px(44), 8, False, CLR_MUTED_FG   ' Form_Load: new or change; 3 lines
+    Btn "btnResetPwd", "Reset password", x + w - px(140), y, px(140), px(30), "outline"   ' hidden while adding
+    y = y + px(44) + gap
     Lbl "lblError", "", x, y, w, px(36), 9, False, CLR_ERROR
     y = y + px(36) + gap
     Set c = Btn("btnSave", "Save", x + w - 2 * btnW - Sp(SP_ITEM_GAP), y, btnW, px(32)): c.Default = True
