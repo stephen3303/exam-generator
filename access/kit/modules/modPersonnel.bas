@@ -1163,14 +1163,21 @@ Private Function UpnOwner(udb As DAO.Database, ByVal upn As String) As Long
 End Function
 
 ' Save upn as personId's UPN in udb, replacing any they had; "" removes it.
-' Makes the table when it isn't there yet.
+' Makes the table when it isn't there yet. One statement either way, so a
+' UPN someone else saved meanwhile fails the unique index and leaves this
+' person's old UPN as it was.
 Private Sub SaveUpn(udb As DAO.Database, ByVal personId As Long, ByVal upn As String)
     If Len(upn) > 0 Then EnsureUpnTable udb
     If Not HasTable(udb, PERSON_UPN_TABLE) Then Exit Sub
-    udb.Execute "DELETE FROM " & PERSON_UPN_TABLE & " WHERE person_id=" & personId, dbFailOnError
-    If Len(upn) > 0 Then
-        udb.Execute "INSERT INTO " & PERSON_UPN_TABLE & " (person_id, upn, updated_by, updated_at) VALUES (" & personId & _
-            ", " & SqlText(upn) & ", " & SqlText(KitUser()) & ", Now())", dbFailOnError
+    If Len(upn) = 0 Then
+        udb.Execute "DELETE FROM " & PERSON_UPN_TABLE & " WHERE person_id=" & personId, dbFailOnError
+    Else
+        udb.Execute "UPDATE " & PERSON_UPN_TABLE & " SET upn=" & SqlText(upn) & ", updated_by=" & SqlText(KitUser()) & _
+            ", updated_at=Now() WHERE person_id=" & personId, dbFailOnError
+        If udb.RecordsAffected = 0 Then
+            udb.Execute "INSERT INTO " & PERSON_UPN_TABLE & " (person_id, upn, updated_by, updated_at) VALUES (" & personId & _
+                ", " & SqlText(upn) & ", " & SqlText(KitUser()) & ", Now())", dbFailOnError
+        End If
     End If
 End Sub
 
