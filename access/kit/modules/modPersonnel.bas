@@ -51,6 +51,14 @@ Public Const PERSONNEL_NO_ADMIN As Long = 3       ' linked and reachable, but no
 
 Private Const DEFAULT_KEY As String = "kit-personnel-1"
 Private Const MIN_PASSWORD_LEN As Long = 8
+' The first character of password_hash for a temporary password an admin set
+' (PersonnelResetPassword): the person must change it at their next password
+' sign-in. A mark in the hash, not a column, so existing Personnel files
+' need no change while other people have them open.
+Private Const TEMP_PWD_MARK As String = "!"
+Private Const TEMP_PWD_LEN As Long = 12
+' No 0/O, 1/l/I: a temporary password is read out or copied by hand.
+Private Const TEMP_PWD_CHARS As String = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
 
 ' The linked Personnel file's password (see the top of the module).
 Public Function PersonnelKey() As String
@@ -386,7 +394,7 @@ Public Function PersonnelSignIn(ByVal username As String, ByVal password As Stri
     On Error GoTo Fail
     Set rs = CurrentDb.OpenRecordset("SELECT person_id, password_hash FROM " & PERSON_TABLE & _
         " WHERE is_active AND username=" & SqlText(Trim$(username)), dbOpenSnapshot)
-    If Not rs.EOF Then ok = VerifyPassword(password, Nz(rs!password_hash, ""))
+    If Not rs.EOF Then ok = VerifyPassword(password, HashOnly(Nz(rs!password_hash, "")))
     If ok Then
         If Not PersonCanUse(rs!person_id, appCode) Then
             PersonnelSignIn = "You don't have access to " & APP_NAME & " yet. Ask a Personnel admin" & PersonnelAdminNames() & " to give you access."
@@ -443,14 +451,66 @@ Public Function WindowsAccountKnown() As Boolean
 End Function
 
 ' Set a person's app password (salted hash). Returns "" or why the password
-' is refused.
-Public Function PersonnelSetPassword(ByVal personId As Long, ByVal password As String) As String
+' is refused. temporary marks it as one the person must change when they
+' next sign in with it (an admin set it, so the admin knows it).
+Public Function PersonnelSetPassword(ByVal personId As Long, ByVal password As String, _
+        Optional ByVal temporary As Boolean = False) As String
     If Len(password) < MIN_PASSWORD_LEN Then
         PersonnelSetPassword = "Use at least " & MIN_PASSWORD_LEN & " characters."
         Exit Function
     End If
-    KitExecute "UPDATE " & PERSON_TABLE & " SET password_hash=" & SqlText(HashPassword(password)) & ", " & StampSql() & _
-        " WHERE person_id=" & personId
+    KitExecute "UPDATE " & PERSON_TABLE & " SET password_hash=" & SqlText(IIf(temporary, TEMP_PWD_MARK, "") & HashPassword(password)) & _
+        ", " & StampSql() & " WHERE person_id=" & personId
+End Function
+
+' An admin's password reset: a new random temporary password for personId,
+' which they must change when they sign in with it. Returns it, to show the
+' admin once; it is never saved, only its hash. Refused (error 5) unless the
+' signed-in person is an active admin, and for the admin's own password
+' (KitPersonnelChangePassword is for that). Written to the Windows event log.
+Public Function PersonnelResetPassword(ByVal personId As Long) As String
+    Dim pwd As String, who As String
+    On Error GoTo Fail
+    PersonnelRequireAdmin
+    If personId = SignedInPersonID() Then Err.Raise 5, "modPersonnel", "Use Change my password for your own password."
+    who = Nz(DLookup("username", PERSON_TABLE, "person_id=" & personId), "")
+    If Len(who) = 0 Then Err.Raise 5, "modPersonnel", "That person isn't in the Personnel file."
+    pwd = TemporaryPassword()
+    PersonnelSetPassword personId, pwd, True
+    KitEventLog "Personnel: " & KitUser() & " reset the app password of " & who & "."
+    PersonnelResetPassword = pwd
+    Exit Function
+Fail:
+    RaiseAgain "modPersonnel.PersonnelResetPassword", CStr(personId)
+End Function
+
+' True when personId's app password is a temporary one an admin set, which
+' they must change at their next password sign-in.
+Public Function PersonnelPasswordIsTemporary(ByVal personId As Long) As Boolean
+    PersonnelPasswordIsTemporary = (Left$(Nz(DLookup("password_hash", PERSON_TABLE, "person_id=" & personId), ""), 1) = TEMP_PWD_MARK)
+End Function
+
+' True when personId has an app password (temporary or not).
+Public Function PersonnelHasPassword(ByVal personId As Long) As Boolean
+    PersonnelHasPassword = (Len(Nz(DLookup("password_hash", PERSON_TABLE, "person_id=" & personId), "")) > 0)
+End Function
+
+' A person changing their own app password: "" when done, else why not
+' (the current password is wrong, the new one too short or the same). With
+' no password yet, currentPassword is ignored: being signed in proves who
+' they are. The new password is never temporary.
+Public Function PersonnelChangePassword(ByVal personId As Long, ByVal currentPassword As String, ByVal newPassword As String) As String
+    Dim stored As String
+    stored = Nz(DLookup("password_hash", PERSON_TABLE, "person_id=" & personId), "")
+    If Len(stored) > 0 Then
+        If Not VerifyPassword(currentPassword, HashOnly(stored)) Then
+            PersonnelChangePassword = "Your current password isn't right.": Exit Function
+        End If
+        If StrComp(currentPassword, newPassword, vbBinaryCompare) = 0 Then
+            PersonnelChangePassword = "Choose a password different from the current one.": Exit Function
+        End If
+    End If
+    PersonnelChangePassword = PersonnelSetPassword(personId, newPassword, False)
 End Function
 
 ' Save the current Windows account to the signed-in person's record ("Use
@@ -585,15 +645,39 @@ Public Function PersonnelPeopleSql(ByVal term As String, ByVal appCode As String
         " ORDER BY p.last_name, p.first_name"
 End Function
 
-' Add the people in a CSV or Excel file (.csv, .xlsx, .xls; first row is the
-' headers) and let them open appCode. Headers in any order and case, with
-' spaces and underscores ignored (First name, first_name): First name and
-' Last name are needed; Middle initial, Rank, Command, Email, Sign-in name
-' (or Username) and Windows account are used when there. A row that can't be
-' added (no name, or a sign-in name or Windows account already used) is
-' skipped. Returns what happened, for a message.
+'Import and export (the Personnel page's Import... and Export...)
+'
+' Import reads a CSV or Excel file (.csv, .xlsx, .xls; first row is the
+' headers), including a contacts list exported from Outlook. Headers are
+' matched in any order and case, with spaces, underscores and hyphens
+' ignored; each field takes the first header it finds:
+'   First name     First name, Given name
+'   Last name      Last name, Surname, Family name
+'                  (or both from Display name, Name, Full name or E-mail
+'                  display name: "SMITH, JOHN A" or "John A Smith")
+'   Middle initial Middle initial, MI, or Middle name's first letter
+'   Rank           Rank, Pay grade, Grade, or Title (not Mr., Mrs., Ms., Dr.)
+'   Command        Command, Unit, Company, Organization
+'   Email          Email, E-mail address, Mail, SMTP address
+'   Sign-in name   Sign-in name, Username
+'   Windows        Windows account (DOMAIN\user), Windows SID or SID
+'   Lookup only    User principal name or UPN, DoD ID or EDIPI
+' A row with no Windows SID is looked up in Active Directory
+' (modPersonnelAD.PersonnelFindAccount) by its UPN (a DoD ID gives
+' <DoD ID>.A@smil.mil), else its Windows account, else its email; what is
+' found fills its Windows account and SID, so the person is signed in by
+' Windows the first time they open an app. The UPN and DoD ID are not kept.
+'
+' A row that matches someone already in the file (same SID, Windows account,
+' only person with that email, or sign-in name) fills in what that person
+' is missing (never changes what is there, their name, admin or active),
+' and they are given access to appCode unless an admin already decided it.
+' Anyone else is added with access to appCode. Returns what happened, for a
+' message. Admins only.
 Public Function PersonnelImport(ByVal path As String, ByVal appCode As String) As String
-    Dim rows As Collection, row As Variant, n As Long, added As Long, skipped As Long, why As String, problem As String
+    Dim rows As Collection, row As Variant, n As Long, problem As String, outcome As String, lookedUp As String
+    Dim added As Long, updated As Long, same As Long, linked As Long, skipped As Long, notFound As Long
+    Dim why As String, missing As String, msg As String
     Dim num As Long, d As String, src As String, busy As Boolean
     On Error GoTo Fail
     PersonnelRequireAdmin
@@ -602,9 +686,18 @@ Public Function PersonnelImport(ByVal path As String, ByVal appCode As String) A
     Set rows = ImportRows(path)
     For Each row In rows
         n = n + 1
-        problem = ImportPerson(row, appCode)
+        problem = ImportPerson(row, appCode, outcome, lookedUp)
         If Len(problem) = 0 Then
-            added = added + 1
+            Select Case outcome
+                Case "added": added = added + 1
+                Case "updated": updated = updated + 1
+                Case Else: same = same + 1
+            End Select
+            If lookedUp = "found" Then linked = linked + 1
+            If lookedUp = "missing" Then
+                notFound = notFound + 1
+                If notFound <= 5 Then missing = missing & vbCrLf & "- Row " & (n + 1)
+            End If
         Else
             skipped = skipped + 1
             If skipped <= 5 Then why = why & vbCrLf & "- Row " & (n + 1) & ": " & problem   ' row 1 is the headers
@@ -613,11 +706,22 @@ Public Function PersonnelImport(ByVal path As String, ByVal appCode As String) A
     KitBusyEnd
     busy = False
     If n = 0 Then PersonnelImport = "That file has no people in it.": Exit Function
-    PersonnelImport = "Added " & added & IIf(added = 1, " person", " people") & "."
+    msg = "Added " & added & IIf(added = 1, " person", " people") & "."
+    If updated > 0 Then msg = msg & " Filled in details for " & updated & " already in Personnel."
+    If same > 0 Then msg = msg & " " & same & " already up to date."
+    If linked > 0 Then msg = msg & " Linked " & linked & " to their Windows account."
     If skipped > 0 Then
-        PersonnelImport = PersonnelImport & " Skipped " & skipped & ":" & why
-        If skipped > 5 Then PersonnelImport = PersonnelImport & vbCrLf & "- and " & (skipped - 5) & " more"
+        msg = msg & vbCrLf & vbCrLf & "Skipped " & skipped & ":" & why
+        If skipped > 5 Then msg = msg & vbCrLf & "- and " & (skipped - 5) & " more"
     End If
+    If notFound > 0 Then
+        msg = msg & vbCrLf & vbCrLf & "Not found in Active Directory, so they sign in with an app password until " & _
+            "you add their Windows account: " & notFound & missing
+        If notFound > 5 Then msg = msg & vbCrLf & "- and " & (notFound - 5) & " more"
+    End If
+    KitEventLog "Personnel: " & KitUser() & " imported " & path & " (added " & added & ", updated " & updated & _
+        ", skipped " & skipped & ")."
+    PersonnelImport = msg
     Exit Function
 Fail:
     ' KitBusyEnd resets Err, so keep the error and put it back.
@@ -625,6 +729,41 @@ Fail:
     If busy Then KitBusyEnd
     Err.Number = num: Err.Description = d: Err.Source = src
     RaiseAgain "modPersonnel.PersonnelImport", path
+End Function
+
+' Write everyone in the Personnel file to a CSV at path, in the headers
+' PersonnelImport reads, so the file can be imported into another Personnel
+' file. Adds Personnel admin, Active and Apps (the app codes they may open)
+' for the reader; Import doesn't use those. No password data. Admins only;
+' written to the Windows event log. Returns how many people.
+Public Function PersonnelExport(ByVal path As String) As Long
+    Dim rs As DAO.Recordset, ra As DAO.Recordset, sb As String, apps As String, n As Long
+    On Error GoTo Fail
+    PersonnelRequireAdmin
+    sb = CsvLine("First name", "Middle initial", "Last name", "Rank", "Command", "Email", "Sign-in name", _
+        "Windows account", "Windows SID", "Personnel admin", "Active", "Apps")
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM " & PERSON_TABLE & " ORDER BY last_name, first_name", dbOpenSnapshot)
+    Do While Not rs.EOF
+        apps = ""
+        Set ra = CurrentDb.OpenRecordset("SELECT app_code FROM " & PERSON_APP_TABLE & " WHERE is_active AND person_id=" & _
+            rs!person_id & " ORDER BY app_code", dbOpenSnapshot)
+        Do While Not ra.EOF
+            apps = apps & IIf(Len(apps) > 0, " ", "") & ra!app_code
+            ra.MoveNext
+        Loop
+        ra.Close
+        sb = sb & CsvLine(rs!first_name, rs!middle_initial, rs!last_name, rs!rank, rs!command, rs!email, rs!username, _
+            rs!windows_account, rs!windows_sid, IIf(rs!is_admin, "Yes", "No"), IIf(rs!is_active, "Yes", "No"), apps)
+        n = n + 1
+        rs.MoveNext
+    Loop
+    rs.Close
+    WriteTextFile path, sb
+    KitEventLog "Personnel: " & KitUser() & " exported " & n & " people to " & path & "."
+    PersonnelExport = n
+    Exit Function
+Fail:
+    RaiseAgain "modPersonnel.PersonnelExport", path
 End Function
 
 ' The file's rows as dictionaries keyed by header with spaces, underscores
@@ -669,25 +808,159 @@ Fail:
     RaiseAgain "modPersonnel.ImportRows", path
 End Function
 
-' Add one imported row and let them open appCode. "" when added, else why
-' not (AddPerson's refusals).
-Private Function ImportPerson(ByVal d As Object, ByVal appCode As String) As String
-    Dim id As Long, username As String
+' Add or fill in one imported row (see PersonnelImport). "" when done, with
+' outcome "added", "updated" or "same"; else why it was skipped.
+' lookedUp is "found" when Active Directory gave the Windows account,
+' "missing" when the row had a UPN, DoD ID or Windows account it didn't
+' find, else "".
+Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcome As String, lookedUp As String) As String
+    Dim first As String, last As String, mi As String, rank As String, cmd As String, email As String
+    Dim user As String, acct As String, sid As String, upn As String, t As String, foundAcct As String, foundSid As String
+    Dim id As Long, other As Variant, sets As String
+    Dim rs As DAO.Recordset
     On Error GoTo Fail
-    username = ImportValue(d, "signinname")
-    If Len(username) = 0 Then username = ImportValue(d, "username")
-    id = AddPerson(ImportValue(d, "firstname"), ImportValue(d, "lastname"), ImportValue(d, "rank"), _
-        ImportValue(d, "windowsaccount"), username, False, ImportValue(d, "middleinitial"), _
-        ImportValue(d, "command"), ImportValue(d, "email"))
-    SetPersonApp id, appCode, True
+    outcome = "": lookedUp = ""
+    first = ImportValue(d, "firstname", "givenname")
+    last = ImportValue(d, "lastname", "surname", "familyname")
+    mi = Left$(ImportValue(d, "middleinitial", "mi", "middlename"), 1)
+    If Len(first) = 0 Or Len(last) = 0 Then
+        SplitDisplayName ImportValue(d, "displayname", "name", "fullname", "emaildisplayname"), first, last, mi
+    End If
+    rank = ImportValue(d, "rank", "paygrade", "grade")
+    If Len(rank) = 0 Then
+        t = ImportValue(d, "title")
+        Select Case LCase$(Replace(t, ".", ""))
+            Case "mr", "mrs", "ms", "miss", "mx", "dr", "prof", "sir", "madam": t = ""
+        End Select
+        If Len(t) <= 20 Then rank = t
+    End If
+    cmd = ImportValue(d, "command", "unit", "company", "organization")
+    email = ImportValue(d, "email", "emailaddress", "mail", "smtpaddress")
+    user = ImportValue(d, "signinname", "username")
+    acct = ImportValue(d, "windowsaccount", "account")
+    If InStr(acct, "\") = 0 Then acct = ""
+    sid = UCase$(ImportValue(d, "windowssid", "sid", "objectsid"))
+    If Not sid Like "S-1-*" Then sid = ""
+    upn = ImportValue(d, "userprincipalname", "upn")
+    If Len(upn) = 0 Then upn = PersonnelUpnFor(ImportValue(d, "dodid", "edipi", "dodidnumber"))
+
+    ' Active Directory: the Windows account and SID, unless the row has the SID.
+    If Len(sid) = 0 Then
+        t = upn
+        If Len(t) = 0 Then t = acct
+        If Len(t) = 0 Then t = email
+        If Len(t) > 0 Then
+            If PersonnelFindAccount(t, foundAcct, foundSid) Then
+                acct = foundAcct: sid = foundSid: lookedUp = "found"
+            ElseIf Len(upn) > 0 Or Len(acct) > 0 Then
+                lookedUp = "missing"        ' an email alone not found is no surprise
+            End If
+        End If
+    End If
+
+    ' Someone already here: by SID, Windows account, the one person with this email, or sign-in name.
+    If Len(sid) > 0 Then id = Nz(DLookup("person_id", PERSON_TABLE, "windows_sid=" & SqlText(sid)), 0)
+    If id = 0 And Len(acct) > 0 Then id = Nz(DLookup("person_id", PERSON_TABLE, "windows_account=" & SqlText(acct)), 0)
+    If id = 0 And Len(email) > 0 Then
+        If DCount("*", PERSON_TABLE, "email=" & SqlText(email)) = 1 Then id = DLookup("person_id", PERSON_TABLE, "email=" & SqlText(email))
+    End If
+    If id = 0 And Len(user) > 0 Then id = Nz(DLookup("person_id", PERSON_TABLE, "username=" & SqlText(user)), 0)
+
+    If id = 0 Then
+        If Len(sid) > 0 And Len(acct) = 0 Then Err.Raise 5, "modPersonnel", "It has a Windows SID but no Windows account."
+        id = AddPerson(first, last, rank, acct, user, False, mi, cmd, email)
+        If Len(sid) > 0 Then KitExecute "UPDATE " & PERSON_TABLE & " SET windows_sid=" & SqlText(sid) & " WHERE person_id=" & id
+        SetPersonApp id, appCode, True
+        outcome = "added"
+        Exit Function
+    End If
+
+    ' Fill in only what they are missing.
+    If Len(acct) > 0 Then
+        other = DLookup("person_id", PERSON_TABLE, "windows_account=" & SqlText(acct) & " AND person_id<>" & id)
+        If Not IsNull(other) Then Err.Raise 5, "modPersonnel", "The Windows account " & acct & " is already someone else's."
+    End If
+    If Len(sid) > 0 Then
+        other = DLookup("person_id", PERSON_TABLE, "windows_sid=" & SqlText(sid) & " AND person_id<>" & id)
+        If Not IsNull(other) Then Err.Raise 5, "modPersonnel", "That Windows account is already someone else's."
+    End If
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM " & PERSON_TABLE & " WHERE person_id=" & id, dbOpenSnapshot)
+    If Len(acct) > 0 And IsNull(rs!windows_account) Then
+        sets = sets & ", windows_account=" & SqlText(acct)
+        If Len(sid) > 0 And IsNull(rs!windows_sid) Then sets = sets & ", windows_sid=" & SqlText(sid)
+    ElseIf Len(sid) > 0 And IsNull(rs!windows_sid) Then
+        ' Only the account's own SID: the saved DOMAIN\user must be the one AD found.
+        If StrComp(Nz(rs!windows_account, ""), acct, vbTextCompare) = 0 Then sets = sets & ", windows_sid=" & SqlText(sid)
+    End If
+    If Len(email) > 0 And IsNull(rs!email) Then sets = sets & ", email=" & SqlText(email)
+    If Len(rank) > 0 And IsNull(rs!rank) Then
+        sets = sets & ", rank=" & SqlText(rank) & ", display_name=" & SqlText(PersonDisplayName(rank, rs!first_name, rs!last_name))
+    End If
+    If Len(cmd) > 0 And IsNull(rs!command) Then sets = sets & ", command=" & SqlText(cmd)
+    If Len(mi) > 0 And IsNull(rs!middle_initial) Then sets = sets & ", middle_initial=" & SqlText(mi)
+    rs.Close
+    If Len(sets) > 0 Then
+        KitExecute "UPDATE " & PERSON_TABLE & " SET " & Mid$(sets, 3) & ", " & StampSql() & " WHERE person_id=" & id
+        outcome = "updated"
+    Else
+        outcome = "same"
+        If lookedUp = "found" Then lookedUp = ""        ' already linked: nothing new
+    End If
+    ' Access to the app, unless an admin already gave or took it away.
+    If IsNull(DLookup("person_id", PERSON_APP_TABLE, "person_id=" & id & " AND app_code=" & SqlText(appCode))) Then
+        SetPersonApp id, appCode, True
+        If outcome = "same" Then outcome = "updated"
+    End If
     Exit Function
 Fail:
     If Err.Number <> 5 Then RaiseAgain "modPersonnel.ImportPerson"
     ImportPerson = Err.Description
 End Function
 
-Private Function ImportValue(ByVal d As Object, ByVal key As String) As String
-    If d.Exists(key) Then ImportValue = d(key)
+' The first of keys the row has a value for, or "".
+Private Function ImportValue(ByVal d As Object, ParamArray keys() As Variant) As String
+    Dim k As Variant
+    For Each k In keys
+        If d.Exists(k) Then
+            If Len(d(k)) > 0 Then ImportValue = d(k): Exit Function
+        End If
+    Next
+End Function
+
+' First, last name and middle initial from a display name: "SMITH, JOHN A"
+' or "John A Smith", with anything in brackets dropped ("(USN)"). Fills
+' only the parts still empty.
+Private Sub SplitDisplayName(ByVal s As String, first As String, last As String, mi As String)
+    Dim p As Long, q As Long, toks() As String, rest As String, f As String, l As String, m As String
+    Do
+        p = InStr(s, "("): If p = 0 Then Exit Do
+        q = InStr(p, s, ")"): If q = 0 Then q = Len(s)
+        s = Left$(s, p - 1) & Mid$(s, q + 1)
+    Loop
+    s = Trim$(Replace(s, "  ", " "))
+    If Len(s) = 0 Then Exit Sub
+    If InStr(s, ",") > 0 Then
+        l = Trim$(Left$(s, InStr(s, ",") - 1))
+        rest = Trim$(Mid$(s, InStr(s, ",") + 1))
+        If Len(rest) > 0 Then
+            toks = Split(rest, " ")
+            f = toks(0)
+            If UBound(toks) >= 1 Then m = InitialOf(toks(1))
+        End If
+    Else
+        toks = Split(s, " ")
+        If UBound(toks) < 1 Then Exit Sub
+        f = toks(0): l = toks(UBound(toks))
+        If UBound(toks) >= 2 Then m = InitialOf(toks(1))
+    End If
+    If Len(first) = 0 Then first = f
+    If Len(last) = 0 Then last = l
+    If Len(mi) = 0 Then mi = m
+End Sub
+
+' tok as a middle initial when it is one letter ("A" or "A."), else "".
+Private Function InitialOf(ByVal tok As String) As String
+    If Len(Replace(tok, ".", "")) = 1 Then InitialOf = Left$(tok, 1)
 End Function
 
 Private Function HeaderKey(ByVal s As String) As String
@@ -714,6 +987,27 @@ Private Sub StartSession(ByVal personId As Long, ByVal quiet As Boolean)
     rs.Close
     If Not quiet Then KitToast "Signed in as " & TempVars("PersonName"), "success"
 End Sub
+
+' A stored password_hash without the temporary mark.
+Private Function HashOnly(ByVal stored As String) As String
+    If Left$(stored, 1) = TEMP_PWD_MARK Then HashOnly = Mid$(stored, 2) Else HashOnly = stored
+End Function
+
+' A random TEMP_PWD_LEN-character password from TEMP_PWD_CHARS, with at
+' least one capital, small letter and digit.
+Private Function TemporaryPassword() As String
+    Dim hx As String, i As Long, s As String, n As Long
+    n = Len(TEMP_PWD_CHARS)
+    Do
+        hx = RandomHex(TEMP_PWD_LEN)
+        s = ""
+        For i = 0 To TEMP_PWD_LEN - 1
+            s = s & Mid$(TEMP_PWD_CHARS, (CLng("&H" & Mid$(hx, i * 2 + 1, 2)) Mod n) + 1, 1)
+        Next
+    ' Binary compares: Option Compare Database makes Like and = ignore case.
+    Loop Until StrComp(s, LCase$(s), vbBinaryCompare) <> 0 And StrComp(s, UCase$(s), vbBinaryCompare) <> 0 And s Like "*#*"
+    TemporaryPassword = s
+End Function
 
 ' The sign-in name for a Windows account: "NAVY\jsmith" gives "jsmith".
 Private Function SignInNameFor(ByVal windowsAccount As String) As String

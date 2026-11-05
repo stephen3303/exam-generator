@@ -190,5 +190,9 @@ Public Sub Build_pgMySettings()
     Set c = Btn("btnSignOut", "Sign out", x + px(16), y + px(80), px(120), px(28), "outline")
     c.ControlTipText = "Sign out so someone else can sign in on this copy"
     c.OnClick = "=AppSignOut()"
+    ' The kit's Change my password, beside Sign out.
+    Set c = Btn("btnChangePwd", "Change my password", x + px(16) + px(120) + Sp(SP_ITEM_GAP), y + px(80), px(160), px(28), "outline")
+    c.ControlTipText = "Change the app password you sign in with after Sign out"
+    c.OnClick = "=KitPersonnelChangePassword()"
     SaveForm "pgMySettings"
 End Sub
