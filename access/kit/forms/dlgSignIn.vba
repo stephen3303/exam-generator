@@ -15,9 +15,19 @@ Private Sub Form_Load()
     On Error GoTo Err_Handler
     Me.txtAccount = WinAccount()
     If Len(PersonnelSignInWhyText()) = 0 Then CollapseRow "why" Else FitWhy PersonnelSignInWhyText()
-    If WindowsAccountKnown() Or Len(WinAccount()) = 0 Then CollapseRow "win"
+    If WindowsAccountKnown() Or Len(WinAccount()) = 0 Or PersonnelUiSignInWhy() = "demo" Then CollapseRow "win"
+    If PersonnelUiSignInWhy() = "demo" Then
+        ' A demo person is made up: never offer to tie this Windows account to one.
+        Me.txtAccount.Tag = "acct": Me.btnCopyAccount.Tag = "acct"
+        CollapseRow "acct"
+    End If
     CenterOnApp Me
-    Me.txtUser.SetFocus
+    If PersonnelUiSignInWhy() = "demo" Then
+        Me.txtUser = DEMO_ADMIN_USER                ' a demo file was just made: its first admin
+        Me.txtPwd.SetFocus
+    Else
+        Me.txtUser.SetFocus
+    End If
     Exit Sub
 Err_Handler:
     LogError "dlgSignIn.Form_Load"

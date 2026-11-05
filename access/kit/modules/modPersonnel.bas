@@ -49,6 +49,13 @@ Public Const PERSON_TABLE As String = "kit_person"
 Public Const PERSON_APP_TABLE As String = "kit_person_app"
 Public Const PERSON_UPN_TABLE As String = "kit_person_upn"
 
+' The demo Personnel file (CreateDemoPersonnelFile): made-up people for
+' demos and testing, every one with this app password.
+Public Const DEMO_PASSWORD As String = "pass1234"
+Public Const DEMO_PEOPLE As Long = 20
+Public Const DEMO_ADMIN_USER As String = "demo01"
+Public Const DEMO_COMMAND As String = "DEMO DATA (made-up people)"
+
 ' PersonnelStatus results.
 Public Const PERSONNEL_READY As Long = 0          ' linked and reachable
 Public Const PERSONNEL_NOT_SET_UP As Long = 1     ' no file linked or in the default place: offer find or create
@@ -210,6 +217,37 @@ End Sub
 ' Returns the admin's person_id.
 Public Function CreatePersonnelFile(ByVal path As String, ByVal appCode As String, ByVal firstName As String, _
         ByVal lastName As String, Optional ByVal rank As String = "", Optional ByVal siteKey As String = "") As Long
+    On Error GoTo Fail
+    CreatePersonnelFile = MakePersonnelFile(path, appCode, siteKey, False, firstName, lastName, rank)
+    Exit Function
+Fail:
+    RaiseAgain "modPersonnel.CreatePersonnelFile"
+End Function
+
+' Create a new Personnel file of DEMO DATA at path, as CreatePersonnelFile
+' does (the same refusals and site key), with the DEMO_PEOPLE made-up people
+' of DemoPeople in it instead of the current Windows user: each with the
+' app password DEMO_PASSWORD (hashed and salted like any other), access to
+' appCode, a made-up DoD ID (its UPN) and DEMO_COMMAND as their command, so
+' each record says it is demo data (sign-in names demo01 on, too). No Windows account is
+' saved for any of them, so nobody is signed in: the sign-in screen comes
+' next (PersonnelSignInWhyText "demo"). For demos and testing only.
+' Returns the first demo admin's person_id (DEMO_ADMIN_USER).
+Public Function CreateDemoPersonnelFile(ByVal path As String, ByVal appCode As String, _
+        Optional ByVal siteKey As String = "") As Long
+    On Error GoTo Fail
+    CreateDemoPersonnelFile = MakePersonnelFile(path, appCode, siteKey, True)
+    Exit Function
+Fail:
+    RaiseAgain "modPersonnel.CreateDemoPersonnelFile"
+End Function
+
+' CreatePersonnelFile and CreateDemoPersonnelFile: the file, its key and
+' links, then its first admin (the current Windows user) or the demo people.
+' Anything that fails takes the half-made file back.
+Private Function MakePersonnelFile(ByVal path As String, ByVal appCode As String, ByVal siteKey As String, _
+        ByVal demo As Boolean, Optional ByVal firstName As String = "", Optional ByVal lastName As String = "", _
+        Optional ByVal rank As String = "") As Long
     Dim db As DAO.Database, n As Long, d As String, src As String, made As Boolean, keyMade As Boolean, v As Variant
     Dim problem As String
     On Error GoTo Fail
@@ -229,9 +267,13 @@ Public Function CreatePersonnelFile(ByVal path As String, ByVal appCode As Strin
     db.Close
     Set db = Nothing
     LinkPersonnelFile path
-    CreatePersonnelFile = AddPerson(firstName, lastName, rank, WinAccount(), "", True)
-    KitExecute "UPDATE " & PERSON_TABLE & " SET windows_sid=" & SqlOrNull(WinSid()) & " WHERE person_id=" & CreatePersonnelFile
-    SetPersonApp CreatePersonnelFile, appCode, True
+    If demo Then
+        MakePersonnelFile = AddDemoPeople(path, appCode)
+    Else
+        MakePersonnelFile = AddPerson(firstName, lastName, rank, WinAccount(), "", True)
+        KitExecute "UPDATE " & PERSON_TABLE & " SET windows_sid=" & SqlOrNull(WinSid()) & " WHERE person_id=" & MakePersonnelFile
+        SetPersonApp MakePersonnelFile, appCode, True
+    End If
     Exit Function
 Fail:
     ' Take back a half-made file and its links, so a second try isn't
@@ -248,7 +290,54 @@ Fail:
     If keyMade Then Kill PersonnelKeyPath(path)
     On Error GoTo 0
     Err.Number = n: Err.Description = d: Err.Source = src
-    RaiseAgain "modPersonnel.CreatePersonnelFile", path
+    RaiseAgain "modPersonnel.MakePersonnelFile", path
+End Function
+
+' The demo people (CreateDemoPersonnelFile), one "rank|first|last|admin"
+' each. Made-up names, chosen to read as samples; a mix of officers, chiefs
+' and enlisted, two of them Personnel admins.
+Private Function DemoPeople() As Variant
+    DemoPeople = Array("CDR|Avery|Sample|1", "YNC|Blake|Example|1", "LCDR|Casey|Testwell|0", "LT|Dana|Mockford|0", _
+        "LTJG|Emery|Placeholder|0", "ENS|Finley|Demoson|0", "CWO3|Gray|Fictive|0", "MMCM|Harper|Specimen|0", _
+        "ETCS|Indigo|Prototype|0", "STSC|Jordan|Notreal|0", "MM1|Kendall|Madeup|0", "ET1|Logan|Pretendo|0", _
+        "YN1|Morgan|Trialman|0", "IT2|Noel|Dummyfield|0", "LS2|Oakley|Mockridge|0", "MM2|Parker|Samplewood|0", _
+        "ET3|Quinn|Testa|0", "STS3|Reese|Examplar|0", "SN|Sawyer|Fakeley|0", "FN|Taylor|Pseudonym|0")
+End Function
+
+' Add the demo people to the new file at path (just linked) with access to
+' appCode; returns the first one's person_id. Sign-in names demo01 to
+' demo20; email first.last@demo.invalid (a domain that can never be real);
+' DoD IDs 0000000001 to 0000000020 as their UPNs.
+Private Function AddDemoPeople(ByVal path As String, ByVal appCode As String) As Long
+    Dim v As Variant, f As Variant, i As Long, id As Long, udb As DAO.Database, nm As String
+    Dim n As Long, d As String, src As String
+    On Error GoTo Fail
+    For Each v In DemoPeople()
+        i = i + 1
+        f = Split(v, "|")
+        nm = "demo" & Format$(i, "00")
+        id = AddPerson(f(1), f(2), f(0), "", nm, f(3) = "1", "", DEMO_COMMAND, _
+            LCase$(f(1) & "." & f(2)) & "@demo.invalid")
+        PersonnelSetPassword id, DEMO_PASSWORD
+        SetPersonApp id, appCode, True
+        If i = 1 Then AddDemoPeople = id
+    Next
+    Set udb = DBEngine.OpenDatabase(path, False, False, ";PWD=" & PersonnelKeyFor(path))
+    i = 0
+    For Each v In DemoPeople()
+        i = i + 1
+        SaveUpn udb, PersonIdFor("demo" & Format$(i, "00")), PersonnelUpnFor(Format$(i, "0000000000"))
+    Next
+    udb.Close
+    Exit Function
+Fail:
+    ' Close the file first, so MakePersonnelFile can take it back.
+    n = Err.Number: d = Err.Description: src = Err.Source
+    On Error Resume Next
+    If Not udb Is Nothing Then udb.Close
+    On Error GoTo 0
+    Err.Number = n: Err.Description = d: Err.Source = src
+    RaiseAgain "modPersonnel.AddDemoPeople", path
 End Function
 
 ' Make the current Windows user the first admin of the linked Personnel file
