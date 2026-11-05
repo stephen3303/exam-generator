@@ -14,8 +14,9 @@ Option Explicit
 ' is what Get-ADUser -Filter "UserPrincipalName -eq '...'" | Select SID does,
 ' with Windows' own calls, on any domain-joined PC.
 '
-' The UPN and DoD ID are only used for the lookup and are never saved:
-' kit_person holds no DoD ID (modPersonnel).
+' Nothing here saves anything. modPersonnel keeps a person's UPN, and so
+' their DoD ID, in kit_person_upn, which only admins can read and which is
+' never exported or logged.
 
 ' A DoD ID (10 digits) becomes this UPN: <DoD ID> & PERSONNEL_UPN_SUFFIX.
 Public Const PERSONNEL_UPN_SUFFIX As String = ".A@smil.mil"

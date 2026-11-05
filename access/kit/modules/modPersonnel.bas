@@ -5,12 +5,18 @@ Option Explicit
 ' they may open, and signing them in.
 '
 ' The directory is one encrypted data file, Personnel_be.accdb, in its own
-' restricted folder on the share, that every app links to. It holds two
+' restricted folder on the share, that every app links to. It holds these
 ' tables, and nothing else holds people's names:
 '   kit_person      one row per person: Windows account and SID, sign-in
 '                   name, rank and name, command, email, app password hash,
-'                   directory admin, active (no SSN or DoD ID)
+'                   directory admin, active (no SSN)
 '   kit_person_app  which apps (app_code "SABER", "SPM", "MG") a person may open
+'   kit_person_upn  a person's user principal name ("1234567890.A@smil.mil",
+'                   so it holds their DoD ID), kept to find their Windows
+'                   account again. Made the first time one is saved. It is
+'                   never linked into a front end: only an active admin
+'                   reads or writes it (PersonnelUpn, PersonnelSetUpn,
+'                   Import), and it is never exported or written to a log.
 ' Each app keeps its own roles and links them to person_id.
 '
 ' Startup, straight after the app's own KitEnsureBackend:
@@ -41,6 +47,7 @@ Public Const PERSONNEL_KEY_MIN As Long = 12
 Public Const PERSONNEL_KEY_MAX As Long = 20       ' an Access database password's limit
 Public Const PERSON_TABLE As String = "kit_person"
 Public Const PERSON_APP_TABLE As String = "kit_person_app"
+Public Const PERSON_UPN_TABLE As String = "kit_person_upn"
 
 ' PersonnelStatus results.
 Public Const PERSONNEL_READY As Long = 0          ' linked and reachable
@@ -661,16 +668,19 @@ End Function
 '   Email          Email, E-mail address, Mail, SMTP address
 '   Sign-in name   Sign-in name, Username
 '   Windows        Windows account (DOMAIN\user), Windows SID or SID
-'   Lookup only    User principal name or UPN, DoD ID or EDIPI
+'   UPN            User principal name or UPN, or a DoD ID or EDIPI
+'                  (which gives <DoD ID>.A@smil.mil)
 ' A row with no Windows SID is looked up in Active Directory
-' (modPersonnelAD.PersonnelFindAccount) by its UPN (a DoD ID gives
-' <DoD ID>.A@smil.mil), else its Windows account, else its email; what is
-' found fills its Windows account and SID, so the person is signed in by
-' Windows the first time they open an app. The UPN and DoD ID are not kept.
+' (modPersonnelAD.PersonnelFindAccount) by its UPN, else its Windows
+' account, else its email; what is found fills its Windows account and
+' SID, so the person is signed in by Windows the first time they open an
+' app. The UPN is kept in kit_person_upn (admins only, never exported or
+' logged) so the account can be found again later.
 '
 ' A row that matches someone already in the file (same SID, Windows account,
-' only person with that email, or sign-in name) fills in what that person
-' is missing (never changes what is there, their name, admin or active),
+' saved UPN, only person with that email, or sign-in name) fills in what
+' that person is missing (never changes what is there, their name, admin
+' or active),
 ' and they are given access to appCode unless an admin already decided it.
 ' Anyone else is added with access to appCode. Returns what happened, for a
 ' message. Admins only.
@@ -678,15 +688,16 @@ Public Function PersonnelImport(ByVal path As String, ByVal appCode As String) A
     Dim rows As Collection, row As Variant, n As Long, problem As String, outcome As String, lookedUp As String
     Dim added As Long, updated As Long, same As Long, linked As Long, skipped As Long, notFound As Long
     Dim why As String, missing As String, msg As String
-    Dim num As Long, d As String, src As String, busy As Boolean
+    Dim num As Long, d As String, src As String, busy As Boolean, udb As DAO.Database
     On Error GoTo Fail
     PersonnelRequireAdmin
     KitBusy "Importing people..."
     busy = True
     Set rows = ImportRows(path)
+    Set udb = UpnDb()
     For Each row In rows
         n = n + 1
-        problem = ImportPerson(row, appCode, outcome, lookedUp)
+        problem = ImportPerson(row, appCode, udb, outcome, lookedUp)
         If Len(problem) = 0 Then
             Select Case outcome
                 Case "added": added = added + 1
@@ -703,6 +714,8 @@ Public Function PersonnelImport(ByVal path As String, ByVal appCode As String) A
             If skipped <= 5 Then why = why & vbCrLf & "- Row " & (n + 1) & ": " & problem   ' row 1 is the headers
         End If
     Next
+    udb.Close
+    Set udb = Nothing
     KitBusyEnd
     busy = False
     If n = 0 Then PersonnelImport = "That file has no people in it.": Exit Function
@@ -726,6 +739,9 @@ Public Function PersonnelImport(ByVal path As String, ByVal appCode As String) A
 Fail:
     ' KitBusyEnd resets Err, so keep the error and put it back.
     num = Err.Number: d = Err.Description: src = Err.Source
+    On Error Resume Next
+    If Not udb Is Nothing Then udb.Close
+    On Error GoTo 0
     If busy Then KitBusyEnd
     Err.Number = num: Err.Description = d: Err.Source = src
     RaiseAgain "modPersonnel.PersonnelImport", path
@@ -734,7 +750,8 @@ End Function
 ' Write everyone in the Personnel file to a CSV at path, in the headers
 ' PersonnelImport reads, so the file can be imported into another Personnel
 ' file. Adds Personnel admin, Active and Apps (the app codes they may open)
-' for the reader; Import doesn't use those. No password data. Admins only;
+' for the reader; Import doesn't use those. No password data and no UPN
+' (kit_person_upn holds DoD IDs and stays in the file). Admins only;
 ' written to the Windows event log. Returns how many people.
 Public Function PersonnelExport(ByVal path As String) As Long
     Dim rs As DAO.Recordset, ra As DAO.Recordset, sb As String, apps As String, n As Long
@@ -812,11 +829,12 @@ End Function
 ' outcome "added", "updated" or "same"; else why it was skipped.
 ' lookedUp is "found" when Active Directory gave the Windows account,
 ' "missing" when the row had a UPN, DoD ID or Windows account it didn't
-' find, else "".
-Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcome As String, lookedUp As String) As String
+' find, else "". udb is the Personnel file with kit_person_upn (UpnDb).
+Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, udb As DAO.Database, _
+        outcome As String, lookedUp As String) As String
     Dim first As String, last As String, mi As String, rank As String, cmd As String, email As String
     Dim user As String, acct As String, sid As String, upn As String, t As String, foundAcct As String, foundSid As String
-    Dim id As Long, other As Variant, sets As String
+    Dim id As Long, other As Variant, sets As String, upnKeep As String, upnId As Long, upnNew As Boolean
     Dim rs As DAO.Recordset
     On Error GoTo Fail
     outcome = "": lookedUp = ""
@@ -843,6 +861,9 @@ Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcom
     If Not sid Like "S-1-*" Then sid = ""
     upn = ImportValue(d, "userprincipalname", "upn")
     If Len(upn) = 0 Then upn = PersonnelUpnFor(ImportValue(d, "dodid", "edipi", "dodidnumber"))
+    ' Kept only when it is a UPN; anything else in the column (DOMAIN\user) is just looked up.
+    If Len(upn) > 0 And Len(UpnProblem(upn)) = 0 Then upnKeep = upn
+    upnId = UpnOwner(udb, upnKeep)
 
     ' Active Directory: the Windows account and SID, unless the row has the SID.
     If Len(sid) = 0 Then
@@ -858,9 +879,10 @@ Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcom
         End If
     End If
 
-    ' Someone already here: by SID, Windows account, the one person with this email, or sign-in name.
+    ' Someone already here: by SID, Windows account, saved UPN, the one person with this email, or sign-in name.
     If Len(sid) > 0 Then id = Nz(DLookup("person_id", PERSON_TABLE, "windows_sid=" & SqlText(sid)), 0)
     If id = 0 And Len(acct) > 0 Then id = Nz(DLookup("person_id", PERSON_TABLE, "windows_account=" & SqlText(acct)), 0)
+    If id = 0 Then id = upnId
     If id = 0 And Len(email) > 0 Then
         If DCount("*", PERSON_TABLE, "email=" & SqlText(email)) = 1 Then id = DLookup("person_id", PERSON_TABLE, "email=" & SqlText(email))
     End If
@@ -870,6 +892,7 @@ Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcom
         If Len(sid) > 0 And Len(acct) = 0 Then Err.Raise 5, "modPersonnel", "It has a Windows SID but no Windows account."
         id = AddPerson(first, last, rank, acct, user, False, mi, cmd, email)
         If Len(sid) > 0 Then KitExecute "UPDATE " & PERSON_TABLE & " SET windows_sid=" & SqlText(sid) & " WHERE person_id=" & id
+        If Len(upnKeep) > 0 Then SaveUpn udb, id, upnKeep
         SetPersonApp id, appCode, True
         outcome = "added"
         Exit Function
@@ -884,6 +907,9 @@ Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcom
         other = DLookup("person_id", PERSON_TABLE, "windows_sid=" & SqlText(sid) & " AND person_id<>" & id)
         If Not IsNull(other) Then Err.Raise 5, "modPersonnel", "That Windows account is already someone else's."
     End If
+    If upnId <> 0 And upnId <> id Then Err.Raise 5, "modPersonnel", "Its user principal name is already someone else's."
+    ' Their UPN, unless they have one saved already.
+    If Len(upnKeep) > 0 And upnId = 0 Then upnNew = (Len(UpnOf(udb, id)) = 0)
     Set rs = CurrentDb.OpenRecordset("SELECT * FROM " & PERSON_TABLE & " WHERE person_id=" & id, dbOpenSnapshot)
     If Len(acct) > 0 And IsNull(rs!windows_account) Then
         sets = sets & ", windows_account=" & SqlText(acct)
@@ -899,8 +925,11 @@ Private Function ImportPerson(ByVal d As Object, ByVal appCode As String, outcom
     If Len(cmd) > 0 And IsNull(rs!command) Then sets = sets & ", command=" & SqlText(cmd)
     If Len(mi) > 0 And IsNull(rs!middle_initial) Then sets = sets & ", middle_initial=" & SqlText(mi)
     rs.Close
+    If upnNew Then SaveUpn udb, id, upnKeep
     If Len(sets) > 0 Then
         KitExecute "UPDATE " & PERSON_TABLE & " SET " & Mid$(sets, 3) & ", " & StampSql() & " WHERE person_id=" & id
+        outcome = "updated"
+    ElseIf upnNew Then
         outcome = "updated"
     Else
         outcome = "same"
@@ -973,6 +1002,177 @@ Private Function LikeText(ByVal s As String) As String
 End Function
 
 ' ---------------------------------------------------------------------------
+' User principal names (kit_person_upn): admins only, never exported or logged
+' ---------------------------------------------------------------------------
+
+' The person's saved user principal name, or "". Admins only.
+Public Function PersonnelUpn(ByVal personId As Long) As String
+    Dim udb As DAO.Database, n As Long, d As String, src As String
+    On Error GoTo Fail
+    PersonnelRequireAdmin
+    Set udb = UpnDb()
+    PersonnelUpn = UpnOf(udb, personId)
+    udb.Close
+    Exit Function
+Fail:
+    n = Err.Number: d = Err.Description: src = Err.Source
+    On Error Resume Next
+    If Not udb Is Nothing Then udb.Close
+    On Error GoTo 0
+    Err.Number = n: Err.Description = d: Err.Source = src
+    RaiseAgain "modPersonnel.PersonnelUpn", CStr(personId)
+End Function
+
+' Why upn can't be saved as personId's user principal name ("" when it
+' can): not name@domain, or someone else's. A DoD ID (10 digits) counts as
+' its UPN (PersonnelUpnFor); "" is fine (no UPN). Admins only.
+Public Function PersonnelUpnProblem(ByVal personId As Long, ByVal upn As String) As String
+    Dim udb As DAO.Database, owner As Long, n As Long, d As String, src As String
+    On Error GoTo Fail
+    PersonnelRequireAdmin
+    upn = UpnFromInput(upn)
+    If Len(upn) = 0 Then Exit Function
+    PersonnelUpnProblem = UpnProblem(upn)
+    If Len(PersonnelUpnProblem) > 0 Then Exit Function
+    Set udb = UpnDb()
+    owner = UpnOwner(udb, upn)
+    udb.Close
+    If owner <> 0 And owner <> personId Then PersonnelUpnProblem = "That user principal name is already someone else's."
+    Exit Function
+Fail:
+    n = Err.Number: d = Err.Description: src = Err.Source
+    On Error Resume Next
+    If Not udb Is Nothing Then udb.Close
+    On Error GoTo 0
+    Err.Number = n: Err.Description = d: Err.Source = src
+    RaiseAgain "modPersonnel.PersonnelUpnProblem", CStr(personId)
+End Function
+
+' Save upn (a UPN, or a DoD ID for its UPN) as the person's user principal
+' name, replacing theirs; "" removes it. "" when saved, else why not
+' (PersonnelUpnProblem), with nothing changed. Admins only; not logged.
+Public Function PersonnelSetUpn(ByVal personId As Long, ByVal upn As String) As String
+    Dim udb As DAO.Database, n As Long, d As String, src As String
+    On Error GoTo Fail
+    PersonnelSetUpn = PersonnelUpnProblem(personId, upn)       ' checks admin
+    If Len(PersonnelSetUpn) > 0 Then Exit Function
+    upn = UpnFromInput(upn)
+    Set udb = UpnDb()
+    If StrComp(UpnOf(udb, personId), upn, vbBinaryCompare) <> 0 Then SaveUpn udb, personId, upn
+    udb.Close
+    Exit Function
+Fail:
+    n = Err.Number: d = Err.Description: src = Err.Source
+    On Error Resume Next
+    If Not udb Is Nothing Then udb.Close
+    On Error GoTo 0
+    Err.Number = n: Err.Description = d: Err.Source = src
+    RaiseAgain "modPersonnel.PersonnelSetUpn", CStr(personId)
+End Function
+
+' Link a person who has no Windows account yet to the one Active Directory
+' finds for their saved UPN (modPersonnelAD.PersonnelFindAccount). True when
+' it was found and saved; False when they have an account already, no UPN,
+' it isn't found, or it is someone else's. Admins only.
+Public Function PersonnelLinkFromUpn(ByVal personId As Long) As Boolean
+    Dim upn As String, acct As String, sid As String
+    On Error GoTo Fail
+    upn = PersonnelUpn(personId)                                ' checks admin
+    If Len(upn) = 0 Then Exit Function
+    If Len(Nz(DLookup("windows_account", PERSON_TABLE, "person_id=" & personId), "")) > 0 Then Exit Function
+    If Not PersonnelFindAccount(upn, acct, sid) Then Exit Function
+    If Not IsNull(DLookup("person_id", PERSON_TABLE, "(windows_account=" & SqlText(acct) & " OR windows_sid=" & _
+        SqlText(sid) & ") AND person_id<>" & personId)) Then Exit Function
+    KitExecute "UPDATE " & PERSON_TABLE & " SET windows_account=" & SqlText(acct) & ", windows_sid=" & SqlText(sid) & _
+        ", " & StampSql() & " WHERE person_id=" & personId
+    PersonnelLinkFromUpn = True
+    Exit Function
+Fail:
+    RaiseAgain "modPersonnel.PersonnelLinkFromUpn", CStr(personId)
+End Function
+
+' The Personnel file's tables, children first, for emptying it
+' (modKitPurge): kit_person_upn too when the file has it.
+Public Function PersonnelDataTables() As Variant
+    Dim db As DAO.Database
+    Set db = DBEngine.OpenDatabase(PersonnelPath(), False, True, ";PWD=" & PersonnelKey())
+    If HasTable(db, PERSON_UPN_TABLE) Then
+        PersonnelDataTables = Array(PERSON_UPN_TABLE, PERSON_APP_TABLE, PERSON_TABLE)
+    Else
+        PersonnelDataTables = Array(PERSON_APP_TABLE, PERSON_TABLE)
+    End If
+    db.Close
+End Function
+
+' The linked Personnel file opened by itself, for kit_person_upn, which is
+' never linked into a front end. Close it when done.
+Private Function UpnDb() As DAO.Database
+    Dim path As String
+    path = PersonnelPath()
+    If Len(path) = 0 Then Err.Raise 5, "modPersonnel", "No Personnel file is linked."
+    Set UpnDb = DBEngine.OpenDatabase(path, False, False, ";PWD=" & PersonnelKeyFor(path))
+End Function
+
+' Make kit_person_upn in udb when it isn't there yet. A new table, so this
+' works while other people have the file open (unlike changing kit_person).
+Private Sub EnsureUpnTable(udb As DAO.Database)
+    If HasTable(udb, PERSON_UPN_TABLE) Then Exit Sub
+    CreateUpnTable udb
+    udb.TableDefs.Refresh
+End Sub
+
+Private Sub CreateUpnTable(db As DAO.Database)
+    db.Execute "CREATE TABLE " & PERSON_UPN_TABLE & " (person_id LONG NOT NULL CONSTRAINT pk_" & PERSON_UPN_TABLE & _
+        " PRIMARY KEY, upn TEXT(100) NOT NULL, updated_by TEXT(150), updated_at DATETIME)", dbFailOnError
+    db.Execute "CREATE UNIQUE INDEX ux_person_upn ON " & PERSON_UPN_TABLE & " (upn)", dbFailOnError
+End Sub
+
+' What an admin typed as a UPN, trimmed, with a DoD ID made into its UPN.
+Private Function UpnFromInput(ByVal s As String) As String
+    s = Trim$(s)
+    If Len(PersonnelUpnFor(s)) > 0 Then s = PersonnelUpnFor(s)
+    UpnFromInput = s
+End Function
+
+' Why upn isn't a user principal name ("" when it looks like one).
+Private Function UpnProblem(ByVal upn As String) As String
+    If Len(upn) > 100 Or InStr(upn, " ") > 0 Or Not upn Like "?*@?*.?*" Then
+        UpnProblem = "Enter a user principal name, such as 1234567890" & PERSONNEL_UPN_SUFFIX & ", or a 10-digit DoD ID."
+    End If
+End Function
+
+' The UPN saved for personId in udb, or "".
+Private Function UpnOf(udb As DAO.Database, ByVal personId As Long) As String
+    Dim rs As DAO.Recordset
+    If Not HasTable(udb, PERSON_UPN_TABLE) Then Exit Function
+    Set rs = udb.OpenRecordset("SELECT upn FROM " & PERSON_UPN_TABLE & " WHERE person_id=" & personId, dbOpenSnapshot)
+    If Not rs.EOF Then UpnOf = Nz(rs!upn, "")
+    rs.Close
+End Function
+
+' Whose saved UPN upn is in udb (case ignored), or 0.
+Private Function UpnOwner(udb As DAO.Database, ByVal upn As String) As Long
+    Dim rs As DAO.Recordset
+    If Len(upn) = 0 Then Exit Function
+    If Not HasTable(udb, PERSON_UPN_TABLE) Then Exit Function
+    Set rs = udb.OpenRecordset("SELECT person_id FROM " & PERSON_UPN_TABLE & " WHERE upn=" & SqlText(upn), dbOpenSnapshot)
+    If Not rs.EOF Then UpnOwner = rs!person_id
+    rs.Close
+End Function
+
+' Save upn as personId's UPN in udb, replacing any they had; "" removes it.
+' Makes the table when it isn't there yet.
+Private Sub SaveUpn(udb As DAO.Database, ByVal personId As Long, ByVal upn As String)
+    If Len(upn) > 0 Then EnsureUpnTable udb
+    If Not HasTable(udb, PERSON_UPN_TABLE) Then Exit Sub
+    udb.Execute "DELETE FROM " & PERSON_UPN_TABLE & " WHERE person_id=" & personId, dbFailOnError
+    If Len(upn) > 0 Then
+        udb.Execute "INSERT INTO " & PERSON_UPN_TABLE & " (person_id, upn, updated_by, updated_at) VALUES (" & personId & _
+            ", " & SqlText(upn) & ", " & SqlText(KitUser()) & ", Now())", dbFailOnError
+    End If
+End Sub
+
+' ---------------------------------------------------------------------------
 ' Helpers
 ' ---------------------------------------------------------------------------
 
@@ -1026,6 +1226,7 @@ Private Sub CreatePersonnelTables(db As DAO.Database)
     db.Execute "CREATE TABLE " & PERSON_APP_TABLE & " (person_id LONG NOT NULL, app_code TEXT(20) NOT NULL, is_active YESNO, " & _
         "granted_at DATETIME, granted_by TEXT(150), CONSTRAINT pk_" & PERSON_APP_TABLE & " PRIMARY KEY (person_id, app_code), " & _
         "CONSTRAINT fk_person_app FOREIGN KEY (person_id) REFERENCES " & PERSON_TABLE & " (person_id))", dbFailOnError
+    CreateUpnTable db
 End Sub
 
 Private Function HasTable(db As DAO.Database, ByVal nm As String) As Boolean

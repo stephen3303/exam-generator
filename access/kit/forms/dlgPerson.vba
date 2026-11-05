@@ -5,6 +5,8 @@ Option Explicit
 ' builds it; dlgPersonnel and KitPersonnelStart open it). OpenArgs: "new" or
 ' a person_id. Adding stays open after Save, cleared for the next person;
 ' changing closes. Reset password gives someone else a one-time password.
+' The UPN box shows and saves their user principal name (kit_person_upn,
+' admins only); with no Windows account, Save looks it up from the UPN.
 ' Ends "ok" when anything was saved.
 
 Private m_id As Long            ' 0 while adding
@@ -40,6 +42,7 @@ Private Sub Form_Load()
         Me.txtMiddle = rs!middle_initial: Me.txtRank = rs!rank
         Me.txtCommand = rs!command: Me.txtEmail = rs!email
         Me.txtUser = rs!username: Me.txtAccount = rs!windows_account
+        Me.txtUpn = PersonnelUpn(m_id)
         Me.chkActive = CBool(rs!is_active): Me.chkAdmin = CBool(rs!is_admin)
         If m_id = SignedInPersonID() Then
             Me.lblPwdHint.Caption = "Type a new password to change yours, or leave it blank to keep it."
@@ -75,7 +78,7 @@ Private Sub StartNew()
     Dim nm As Variant
     m_id = 0
     Me.lblTitle.Caption = "Add person"
-    For Each nm In Array("txtFirst", "txtLast", "txtMiddle", "txtRank", "txtCommand", "txtEmail", "txtUser", "txtAccount", "txtPwd", "txtPwd2")
+    For Each nm In Array("txtFirst", "txtLast", "txtMiddle", "txtRank", "txtCommand", "txtEmail", "txtUser", "txtAccount", "txtUpn", "txtPwd", "txtPwd2")
         Me.Controls(nm).Value = Null
     Next
     Me.chkActive = True: Me.chkAdmin = False: Me.chkApp = True
@@ -87,7 +90,7 @@ End Sub
 
 Private Sub btnSave_Click()
     On Error GoTo Err_Handler
-    Dim pwd As String, problem As String, id As Long, who As String
+    Dim pwd As String, problem As String, id As Long, who As String, linked As Boolean
     Me.btnSave.SetFocus                         ' commits the box being typed in
     Me.lblError.Caption = ""
     PersonnelRequireAdmin                       ' error 5, shown below, if an admin has since changed them
@@ -101,6 +104,8 @@ Private Sub btnSave_Click()
         Exit Sub
     End If
     If Len(pwd) > 0 And Len(pwd) < 8 Then Me.lblError.Caption = "Use at least 8 characters for the password.": Exit Sub
+    problem = PersonnelUpnProblem(m_id, Nz(Me.txtUpn, ""))
+    If Len(problem) > 0 Then Me.lblError.Caption = problem: Exit Sub
     If m_id = 0 Then
         id = AddPerson(Nz(Me.txtFirst, ""), Nz(Me.txtLast, ""), Nz(Me.txtRank, ""), Nz(Me.txtAccount, ""), _
             Nz(Me.txtUser, ""), Nz(Me.chkAdmin, False), Nz(Me.txtMiddle, ""), Nz(Me.txtCommand, ""), Nz(Me.txtEmail, ""))
@@ -116,12 +121,19 @@ Private Sub btnSave_Click()
             Nz(Me.txtMiddle, ""), Nz(Me.txtCommand, ""), Nz(Me.txtEmail, "")
     End If
     SetPersonApp id, PersonnelUiAppCode(), Nz(Me.chkApp, False)
+    problem = PersonnelSetUpn(id, Nz(Me.txtUpn, ""))
+    If Len(problem) = 0 And Len(Trim$(Nz(Me.txtAccount, ""))) = 0 Then linked = PersonnelLinkFromUpn(id)
     ' A password typed for someone else is known to the admin, so it is one-time.
-    If Len(pwd) > 0 Then problem = PersonnelSetPassword(id, pwd, id <> SignedInPersonID())
+    If Len(pwd) > 0 And Len(problem) = 0 Then problem = PersonnelSetPassword(id, pwd, id <> SignedInPersonID())
     m_saved = True
     TempVars("DialogResult") = "ok"
     who = Nz(DLookup("display_name", PERSON_TABLE, "person_id=" & id), "")
-    If Len(problem) > 0 Then Me.lblError.Caption = problem: Exit Sub
+    If Len(problem) > 0 Then
+        m_id = id                               ' saved: a second Save changes them, not adds them again
+        Me.lblError.Caption = problem
+        Exit Sub
+    End If
+    If linked Then who = who & ", linked to " & DLookup("windows_account", PERSON_TABLE, "person_id=" & id)
     If m_id = 0 Then
         KitToast "Added " & who, "success"
         StartNew

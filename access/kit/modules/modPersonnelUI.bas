@@ -432,7 +432,9 @@ Private Sub Build_dlgPersonnel()
 End Sub
 
 ' dlgPerson: add or change one person. OpenArgs "new" or a person_id. Name,
-' rank, command and email; sign-in name and Windows account; Active,
+' rank, command and email; sign-in name and Windows account; user
+' principal name (admins only, never exported), which finds a blank Windows
+' account on Save; Active,
 ' Personnel admin and "Can open <app>"; an app password typed twice and
 ' Reset password (a one-time password they must change); a line for what
 ' went wrong; Save and Close. Adding stays open after Save, ready
@@ -455,6 +457,12 @@ Private Sub Build_dlgPerson()
     Lbl "lblUserHint", "Blank: made from the Windows account, or the first initial and last name.", _
         x, y, w, px(16), 8, False, CLR_MUTED_FG
     y = y + px(16) + Sp(16)
+    FieldLabel "lblUpn", "User principal name (UPN) or DoD ID", x, y, half, ""
+    y = y + px(18)
+    Txt "txtUpn", "", x, y, half, px(30)
+    Lbl "lblUpnHint", "Admins only; never exported. Save finds a blank Windows account from it.", _
+        x2, y, half, px(30), 8, False, CLR_MUTED_FG
+    y = y + px(30) + Sp(16)
     Chk "chkActive", "", x, y + px(2)
     Lbl "lblActive", "Active (can sign in)", x + px(24), y, half - px(24), px(20), 9
     Chk "chkAdmin", "", x2, y + px(2)

@@ -17,7 +17,7 @@ at all. Only Personnel admins can open this page.
 # Add people
 - **Add person** opens a blank form. It stays open after Save, so you can add the next person straight away.
 - **Import** adds everyone in a CSV or Excel file. The first row names the columns: First name and Last name, and any of Middle initial, Rank, Command, Email, Sign-in name and Windows account. A contacts list exported from Outlook as CSV works as it is.
-- Add a **UPN** column (such as 1234567890.A@smil.mil) or a **DoD ID** column and Import finds each person's Windows account in Active Directory, so Windows signs them in the first time they open the app. Without one it tries their email. The UPN and DoD ID are only used to look them up and are not kept.
+- Add a **UPN** column (such as 1234567890.A@smil.mil) or a **DoD ID** column and Import finds each person's Windows account in Active Directory, so Windows signs them in the first time they open the app. Without one it tries their email. The UPN is kept with the person (it holds their DoD ID): only Personnel admins can see it, and Export leaves it out.
 - Someone already in Personnel isn't added twice: Import fills in only what their record is missing, such as their Windows account or email, and never changes their name, admin or Active.
 - Imported people can open this app. Rows with no name, or a Windows account someone else already has, are skipped and listed, and so are people Active Directory didn't find.
 
@@ -29,6 +29,7 @@ Double-click them, or pick them and choose **Edit**.
 
 === directory.person | Add or change a person
 - **Windows account** is DOMAIN\user, such as NAVY\jsmith. With it saved, the person is signed in by Windows with no password.
+- **User principal name (UPN)** is their smart card sign-in, such as 1234567890.A@smil.mil; you can type just the 10-digit DoD ID. Only Personnel admins see it, and Export leaves it out. With the Windows account blank, Save finds it from the UPN in Active Directory.
 - **Sign-in name** is what they type on the sign-in screen. Leave it blank and it is made from the Windows account, or from the first initial and last name.
 - **Active** lets them sign in. Make people inactive rather than deleting them, so their past work still shows their name.
 - **Personnel admin** lets them open the Personnel page. There is always at least one active admin, and you can't remove your own admin access.
