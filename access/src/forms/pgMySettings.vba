@@ -72,6 +72,7 @@ Private Sub ShowSignedIn()
         Me.lblSignedIn.Caption = IIf(DataLinked(), "Nobody is signed in on this copy.", _
             "This copy was built without the data file, so nobody signs in.")
         SetEnabled Me.btnSignOut, False
+        SetEnabled Me.btnChangePwd, False
     End If
 End Sub
 
