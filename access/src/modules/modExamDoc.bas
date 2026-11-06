@@ -26,10 +26,11 @@ Option Explicit
 ' a section of its own by putting a continuous section break in place of
 ' the paragraph mark that ends the page (Word puts the break in front of
 ' the mark, so the mark is then deleted): the break ends that paragraph
-' instead and takes no room, so the layout doesn't move. Paragraphs are
-' kept whole on a page so every page starts a new paragraph. If a page
-' can't be split that way, or the layout moved, every page carries the
-' overall marking instead: never lower than its content.
+' instead and takes no room. Paragraphs are kept whole on a page so every
+' page starts a new paragraph. Where Word still moves text, or a page
+' starts inside a paragraph, a section can touch two pages: it then
+' carries the higher marking of the two, so a page is never marked lower
+' than its content (see StampMarkings).
 '
 ' Word is driven by late binding (no reference to set), hidden, and quit
 ' when done, also on an error.
@@ -447,17 +448,24 @@ End Function
 ' Page markings
 ' ---------------------------------------------------------------------------
 
-' Lay the document out, make each page its own section, and stamp each
-' section's banner with the highest marking of the portions in it (the
-' cover: the overall one). The portions are Word ranges, which move with the
-' text, so the ranks are read from the final layout, after the breaks went
-' in. Falls back to the overall marking on every page when a page can't be
-' split cleanly, the split didn't leave exactly one section per page, or
-' sameOrder is False (the classification order changed since the exam was
-' approved); note then says why.
+' Lay the document out, make each page its own section where it can, and
+' stamp each section's banner. The portions are Word ranges, which move
+' with the text, so the pages are read from the final layout, after the
+' breaks went in.
+'
+' Word may still move text a little once the breaks are in (STE-180), and a
+' paragraph longer than a page can't be split at its page's top, so a
+' section can end up on more than one page. Each section's banner is
+' therefore the highest marking on every page the section touches (a page
+' with no marked portion, such as the cover, counts as the overall
+' marking). Whichever section Word takes a page's header and footer from
+' touches that page, so no page is ever marked lower than its content, and
+' only a page that shares a section with another can be marked higher;
+' note then says so. Every page carries the overall marking when sameOrder
+' is False (the classification order changed since the exam was approved).
 Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByRef note As String)
-    Dim nPages As Long, secRk() As Long, starts() As Long, i As Long, p As Long, ok As Boolean, pos As Long
-    Dim sec As Object, r As Object, s0 As Long, s1 As Long, rr As Object, fmt As Object
+    Dim nPages As Long, pageRk() As Long, secRk As Long, starts() As Long, i As Long, p As Long, pos As Long
+    Dim sec As Object, r As Object, rr As Object, fmt As Object, a As Long, b As Long, pg As Long, over As Boolean
     ' The portions as ranges, now that nothing more is added after them: the
     ' text before a position never changed while later paragraphs were
     ' added, so each range is exactly its paragraph. From here they move
@@ -466,22 +474,18 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
     For i = 0 To m_pN - 1
         Set m_pRng(i) = m_doc.Range(m_pS(i), m_pE(i))
     Next
-    m_doc.Repaginate
-    nPages = m_doc.ComputeStatistics(wdStatisticPages)
-    ok = sameOrder And nPages >= 1
-    If ok Then
-        ReDim starts(1 To nPages)
+    If sameOrder Then
+        m_doc.Repaginate
+        nPages = m_doc.ComputeStatistics(wdStatisticPages)
+        ' Where each page starts; 0 where it starts inside a paragraph (one
+        ' longer than a page), which gets no break.
+        ReDim starts(1 To nPages + 1)
         For p = 2 To nPages
             pos = m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start
-            starts(p) = pos
-            If pos < 1 Then
-                ok = False
-            ElseIf m_doc.Range(pos - 1, pos).Text <> vbCr Then
-                ok = False                                 ' the page starts inside a paragraph
+            If pos >= 1 Then
+                If m_doc.Range(pos - 1, pos).Text = vbCr Then starts(p) = pos
             End If
         Next
-    End If
-    If ok Then
         ' From the last page back, so the earlier positions stay put. Word
         ' puts the break in front of the range, leaving the page's last
         ' paragraph mark after it, where it would be an empty line at the top
@@ -490,30 +494,34 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
         ' one's format (Word 2013 on), so page p's first paragraph gets its
         ' own back (its page break and indent).
         For p = nPages To 2 Step -1
-            Set fmt = m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format.Duplicate
-            m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
-            Set rr = m_doc.Range(starts(p), starts(p) + 1)
-            If rr.Text = vbCr Then
-                rr.Delete
-                m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format = fmt
+            If starts(p) > 0 Then
+                Set fmt = m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format.Duplicate
+                m_doc.Range(starts(p) - 1, starts(p)).InsertBreak wdSectionBreakContinuous
+                Set rr = m_doc.Range(starts(p), starts(p) + 1)
+                If rr.Text = vbCr Then
+                    rr.Delete
+                    m_doc.Range(starts(p), starts(p)).Paragraphs(1).Format = fmt
+                End If
             End If
         Next
         m_doc.Repaginate
-        ok = SectionsArePages(nPages)
-    End If
-    If ok Then
-        ReDim secRk(1 To nPages)
-        secRk(1) = overall
-        For p = 2 To nPages
-            Set sec = m_doc.Sections(p)
-            s0 = sec.Range.Start: s1 = sec.Range.End
-            ' By where each portion starts: a paragraph is kept whole on its
-            ' page, and its end can take in the break that follows it.
-            For i = 0 To m_pN - 1
-                Set r = m_pRng(i)
-                If r.Start >= s0 And r.Start < s1 And m_pRank(i) > secRk(p) Then secRk(p) = m_pRank(i)
+        ' The highest marking on each page of the final layout, by every
+        ' page each portion is on.
+        nPages = m_doc.ComputeStatistics(wdStatisticPages)
+        ReDim pageRk(1 To nPages)
+        For i = 0 To m_pN - 1
+            Set r = m_pRng(i)
+            a = PageOf(r.Start)
+            b = PageOf(IIf(r.End - 1 > r.Start, r.End - 1, r.Start))
+            For pg = a To b
+                If pg >= 1 And pg <= nPages Then
+                    If m_pRank(i) > pageRk(pg) Then pageRk(pg) = m_pRank(i)
+                End If
             Next
-            If secRk(p) = 0 Then secRk(p) = overall          ' a page with no marked portion found
+        Next
+        pageRk(1) = overall                                 ' the cover
+        For pg = 1 To nPages
+            If pageRk(pg) = 0 Then pageRk(pg) = overall     ' a page with no marked portion found
         Next
     End If
     For p = 1 To m_doc.Sections.Count
@@ -522,32 +530,31 @@ Private Sub StampMarkings(ByVal overall As Long, ByVal sameOrder As Boolean, ByR
             sec.Headers(wdHeaderFooterPrimary).LinkToPrevious = False
             sec.Footers(wdHeaderFooterPrimary).LinkToPrevious = False
         End If
-        If ok Then SetMarking sec, RankMarking(secRk(p)) Else SetMarking sec, RankMarking(overall)
+        secRk = overall
+        If sameOrder Then
+            ' Every page this section touches.
+            a = PageOf(sec.Range.Start)
+            b = PageOf(IIf(sec.Range.End - 1 > sec.Range.Start, sec.Range.End - 1, sec.Range.Start))
+            If a < 1 Then a = 1
+            If b > nPages Then b = nPages
+            secRk = 0
+            For pg = a To b
+                If pageRk(pg) > secRk Then secRk = pageRk(pg)
+            Next
+            For pg = a To b
+                If pageRk(pg) < secRk Then over = True
+            Next
+            If secRk = 0 Then secRk = overall
+        End If
+        SetMarking sec, RankMarking(secRk)
     Next
     If Not sameOrder Then
         note = "The classification order was changed after the SM approved this exam, so every page carries the higher of " & _
             "the overall marking approved then and the exam's highest marking now."
-    ElseIf Not ok Then
-        note = "Word couldn't split the pages cleanly, so every page carries the exam's overall marking."
+    ElseIf over Then
+        note = "Word moved some text across a page break, so a page next to it carries its neighbour's higher marking."
     End If
 End Sub
-
-' True when the document has exactly nPages pages and nPages sections, and
-' each section starts at the top of its page and ends on it.
-Private Function SectionsArePages(ByVal nPages As Long) As Boolean
-    Dim p As Long, sec As Object, s0 As Long, s1 As Long
-    If m_doc.Sections.Count <> nPages Or m_doc.ComputeStatistics(wdStatisticPages) <> nPages Then Exit Function
-    For p = 1 To nPages
-        Set sec = m_doc.Sections(p)
-        s0 = sec.Range.Start: s1 = sec.Range.End - 1
-        If s1 < s0 Then Exit Function                      ' an empty section
-        If PageOf(s0) <> p Or PageOf(s1) <> p Then Exit Function
-        If p > 1 Then
-            If m_doc.GoTo(wdGoToPage, wdGoToAbsolute, p).Start <> s0 Then Exit Function
-        End If
-    Next
-    SectionsArePages = True
-End Function
 
 ' The page character position pos is on.
 Private Function PageOf(ByVal pos As Long) As Long
