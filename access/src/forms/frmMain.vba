@@ -7,6 +7,9 @@ Option Explicit
 ' opens it and stays over it while Form_Load finds the data file, signs the
 ' user in and reads their roles (AppStartUp, modSignIn); a user who can't
 ' use the app is told why and it closes.
+'
+' Owner: the shell (build phase 1). Depends on: modErrors, modSignIn; the
+' kit's modKitShell, modKitUI.
 
 Private Sub Form_Load()
     Dim stage As String

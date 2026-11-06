@@ -1,9 +1,14 @@
 Option Compare Database
 Option Explicit
 
-' Example: builds the dlgAppearance palette picker (kit\forms\dlgAppearance.vba
-' is its code-behind). Call Build_dlgAppearance from BuildAll with the other
-' dialogs. ShowAppearance (modDarkMode) opens it.
+' Exam Generator (Access edition) - builds the dlgAppearance palette picker
+' (its code-behind is the kit's kit\forms\dlgAppearance.vba).
+' BuildUserInterface calls Build_dlgAppearance with the other dialogs;
+' ShowAppearance (the kit's modDarkMode) opens it. It began as the kit's
+' example module and is now the app's own.
+'
+' Owner: the app core (build phase 1). Depends on: modPalette; the kit's
+' modUIKit.
 
 Public Sub Build_dlgAppearance()
     Dim c As Control, i As Long, k As Long, y As Long

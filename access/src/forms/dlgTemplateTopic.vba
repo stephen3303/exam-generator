@@ -11,6 +11,10 @@ Option Explicit
 ' TempVars("TemplateTopicID"); RunDialog sees DialogResult "ok".
 '
 ' A pick in the picker fires no event, so a timer watches for it.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modErrors,
+' modGlobals, modSignIn, modUI; the kit's modKitLocks, modKitUI, modKitUtil,
+' modMenu.
 
 Private Const MSG_TITLE As String = "Templates"
 
@@ -21,8 +25,8 @@ Private m_seen As Long          ' the pick the timer last saw
 Private Sub Form_Load()
     Dim tplName As String, nm As String
     On Error GoTo Err_Handler
-    m_tpl = ArgLong("tpl")
-    m_topic = ArgLong("topic")
+    m_tpl = OpenArgLong(Me, "tpl")
+    m_topic = OpenArgLong(Me, "topic")
     tplName = Nz(DLookup("TemplateName", "tblTemplates", "TemplateID=" & m_tpl), "")
     If m_topic <> 0 Then
         nm = Nz(DLookup("TopicName", "tblTopics", "TopicID=" & m_topic), "")
@@ -144,18 +148,8 @@ Private Sub ShowNeed()
         Exit Sub
     End If
     n = SliderValue(Me, "sldCount")
-    have = DCount("*", "tblQuestions", "TopicID=" & k & " AND IsCurrent AND StatusID=" & ApprovedStatusID())
-    need = QuestionsNeeded(n, SettingLong(SET_OVERLAP_PCT, 30), SettingLong(SET_OVERLAP_WINDOW, 10))
-    Me.lblNeed.Caption = "It has " & have & " approved " & IIf(have = 1, "question", "questions") & "; the overlap rule needs " & _
+    have = ApprovedOnHand(k)
+    need = QuestionsNeeded(n, OverlapPct(), OverlapWindow())
+    Me.lblNeed.Caption = "It has " & have & " approved " & Plural(have, "question") & "; the overlap rule needs " & _
         need & " when an exam takes " & n & "." & IIf(have < need, " Until more are approved it will be short.", "")
 End Sub
-
-' The number after name= in OpenArgs ("tpl=3;topic=12"), or 0.
-Private Function ArgLong(ByVal name As String) As Long
-    Dim part As Variant
-    For Each part In Split(Nz(Me.OpenArgs, ""), ";")
-        If LCase$(Left$(part, Len(name) + 1)) = LCase$(name) & "=" Then
-            If IsNumeric(Mid$(part, Len(name) + 2)) Then ArgLong = CLng(Mid$(part, Len(name) + 2))
-        End If
-    Next
-End Function

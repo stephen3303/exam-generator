@@ -9,6 +9,9 @@ Option Explicit
 '
 ' The list pages follow the plan's pattern: the list card on the left and a
 ' 360px detail card on the right, both from y 124px under the search box.
+'
+' Owner: the admin pages (build phase 4). Depends on: modAdmin, modBuild;
+' the kit's modMenu, modPersonnelUI, modUIKit.
 
 Private Const DETAIL_W As Long = 5400            ' the detail card, 360 px
 Private Const LIST_Y As Long = 1860              ' the list and detail cards' top, 124 px
@@ -134,7 +137,13 @@ Public Sub Build_pgAdmRules()
     Lbl "lblRuleIntro", "A new exam may reuse questions given in recent exams, up to a limit. These settings set " & _
         "that limit for every topic.", fx, y + px(40), fw, px(36), 9, False, CLR_MUTED_FG
     FieldLbl "lblPct", "MOST OF A TOPIC'S QUESTIONS THAT MAY REPEAT", fx, y + px(88), fw
-    Slider "sldPct", "", fx, y + px(108), fw, 0, 100, 5, "RuleChanged", True, "0\%"
+    Slider "sldPct", "", fx, y + px(108), fw, 0, 100, 5, "RuleChanged", True, "0"
+    ' The value shown with a % sign added as text: a Format property with a %
+    ' in it (0%, 0\% or 0"%") shows the value times 100 in Access.
+    With F.Controls("sldPct_lbl")
+        .Format = ""
+        .ControlSource = "=Nz([sldPct_val],0) & ""%"""
+    End With
     Lbl "lblPctHint", "0% means every question must be fresh; 100% means repeats are never limited.", _
         fx, y + px(132), fw, px(18), 9, False, CLR_MUTED_FG
     FieldLbl "lblWindow", "RECENT EXAMS CHECKED", fx, y + px(168), fw
@@ -145,8 +154,9 @@ Public Sub Build_pgAdmRules()
     Set c = Txt("txtDefault", "", fx, y + px(266), px(80), px(30))
     c.TextAlign = 3
     Ev c, "OnChange"
-    Lbl "lblDefaultHint", "What a new topic, and a topic added to a template, starts with (1 to 50).", _
-        fx + px(92), y + px(266), fw - px(92), px(30), 9, False, CLR_MUTED_FG
+    Lbl "lblDefaultHint", "What new topics, and topics added to a template, start with (" & _
+        MIN_QUESTIONS_PER_TOPIC & " to " & MAX_QUESTIONS_PER_TOPIC & ").", _
+        fx + px(92), y + px(264), fw - px(92), px(38), 9, False, CLR_MUTED_FG
     Alert "alShort", fx, y + px(312), fw, px(160), "info", "Topics short of questions"
     Set c = Btn("btnSave", "Save", fx, y + h - px(48), px(88), px(32)): c.ControlTipText = "Save (Ctrl+S)": Anchor c, 0, 1
     Set c = Btn("btnUndo", "Undo changes", fx + px(96), y + h - px(48), px(120), px(32), "ghost"): Anchor c, 0, 1
@@ -368,11 +378,11 @@ Public Sub Build_dlgTemplateTopic()
     F.KeyPreview = True                     ' the slider's arrow keys (SliderStep)
     Lbl "lblHead", "", px(20), px(20), w - px(40), px(24), 11, True
     FieldLbl "lblTopic", "TOPIC", px(20), px(60), w - px(40)
-    Set c = PickBox("txtTopic", "", "SELECT TopicID, TopicName, Nz(DefaultCount,4) & ' per exam' AS per_exam " & _
+    Set c = PickBox("txtTopic", "", "SELECT TopicID, TopicName, Nz(DefaultCount," & DEFAULT_QUESTION_COUNT & ") & ' per exam' AS per_exam " & _
         "FROM tblTopics WHERE IsActive", px(20), px(78), w - px(40), px(30), "Type part of a topic's name")
     Ev c, "OnKeyDown"
     FieldLbl "lblCount", "QUESTIONS ON EACH EXAM", px(20), px(124), w - px(40)
-    Slider "sldCount", "", px(20), px(144), w - px(40), 1, 20, 1, "CountChanged", True, "0"
+    Slider "sldCount", "", px(20), px(144), w - px(40), MIN_QUESTIONS_PER_TOPIC, MAX_QUESTIONS_PER_TOPIC, 1, "CountChanged", True, "0"
     Lbl "lblNeed", "", px(20), px(172), w - px(40), px(36), 9, False, CLR_MUTED_FG
     Set c = Btn("btnOK", "Add", w - px(20) - 2 * px(88) - px(8), px(228), px(88), px(30))
     c.Default = True

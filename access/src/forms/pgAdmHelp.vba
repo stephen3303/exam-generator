@@ -8,18 +8,21 @@ Option Explicit
 ' it at once. A front end with no data file linked edits zz_help alone.
 '
 ' The fields are unbound, so the page keeps track of an unsaved edit itself
-' (m_dirty) and asks before it is lost: another topic, New topic, a search
+' (m_isDirty) and asks before it is lost: another topic, New topic, a search
 ' that hides the topic, or leaving the page (CanLeave). A topic's key is set
 ' when it is made and can't change after, because the pages and dialogs find
 ' their help by it.
+'
+' Owner: the help (build phase 3). Depends on: modErrors, modGlobals,
+' modSignIn, modUI; the kit's modKitHelp, modKitKeys, modKitUI, modKitUtil.
 
 Private Const MSG_TITLE As String = "Help topics"
 
 Private m_table As String       ' help_topic, or zz_help with no data file linked
 Private m_key As String         ' the open topic's key ("" when none is open)
 Private m_lastKey As String     ' the topic open before New topic, for Undo changes
-Private m_new As Boolean        ' the open topic is new and not saved yet
-Private m_dirty As Boolean      ' the fields have changes not saved yet
+Private m_isNew As Boolean      ' the open topic is new and not saved yet
+Private m_isDirty As Boolean    ' the fields have changes not saved yet
 Private m_search As String
 
 Private Sub Form_Load()
@@ -47,7 +50,7 @@ Public Function Shortcut(ByVal action As String) As Boolean
     On Error GoTo Err_Handler
     Select Case action
         Case SHORTCUT_SAVE
-            If m_dirty Then SaveTopic
+            If m_isDirty Then SaveTopic
             Shortcut = True
         Case SHORTCUT_NEW
             NewTopic
@@ -65,9 +68,9 @@ Public Sub GridClick(ByVal grid As String, ByVal dbl As Boolean)
     Dim key As String
     On Error GoTo Err_Handler
     key = Nz(Me.sfList.Form.txtSel, "")
-    If Len(key) = 0 Or (key = m_key And Not m_new) Then Exit Sub
+    If Len(key) = 0 Or (key = m_key And Not m_isNew) Then Exit Sub
     If Not LeaveTopic() Then
-        MarkRow m_key
+        GridSelect Me.sfList, m_key
         Exit Sub
     End If
     ShowTopic key
@@ -119,10 +122,10 @@ End Sub
 ' first when the admin says so (a new topic has to be).
 Private Sub btnPreview_Click()
     On Error GoTo Err_Handler
-    If m_new Then
+    If m_isNew Then
         If KitMsgBox("Preview shows saved topics. Save this new topic first?", vbOKCancel + vbQuestion, MSG_TITLE) <> vbOK Then Exit Sub
         If Not SaveTopic() Then Exit Sub
-    ElseIf m_dirty Then
+    ElseIf m_isDirty Then
         Select Case KitMsgBox("Preview shows the topic as saved. Save your changes first?", vbYesNoCancel + vbQuestion, MSG_TITLE)
             Case vbYes: If Not SaveTopic() Then Exit Sub
             Case vbCancel: Exit Sub
@@ -139,7 +142,7 @@ End Sub
 Private Sub btnUndo_Click()
     Dim key As String
     On Error GoTo Err_Handler
-    If m_new Then key = m_lastKey Else key = m_key
+    If m_isNew Then key = m_lastKey Else key = m_key
     ShowTopic key
     Exit Sub
 Err_Handler:
@@ -173,8 +176,8 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub Edited()
-    If m_dirty Then Exit Sub
-    m_dirty = True
+    If m_isDirty Then Exit Sub
+    m_isDirty = True
     ShowState
 End Sub
 
@@ -183,7 +186,7 @@ Private Sub NewTopic()
     If Not LeaveTopic() Then Exit Sub
     m_lastKey = m_key
     ShowTopic ""
-    m_new = True
+    m_isNew = True
     Me.lblStamp.Caption = "New topic, not saved yet"
     ShowState
     Me.txtKey.SetFocus
@@ -193,12 +196,12 @@ End Sub
 ' cancels, or the topic can't be saved (the admin has been told why).
 Private Function LeaveTopic() As Boolean
     Dim nm As String
-    If Not m_dirty Then LeaveTopic = True: Exit Function
-    nm = Trim$(FieldText(Me.txtTitle))
-    If Len(nm) = 0 Then nm = IIf(m_new, "the new topic", m_key) Else nm = """" & nm & """"
+    If Not m_isDirty Then LeaveTopic = True: Exit Function
+    nm = Trim$(FieldText(Me, Me.txtTitle))
+    If Len(nm) = 0 Then nm = IIf(m_isNew, "the new topic", m_key) Else nm = """" & nm & """"
     Select Case KitMsgBox("Save your changes to " & nm & "?", vbYesNoCancel + vbQuestion, MSG_TITLE)
         Case vbYes: LeaveTopic = SaveTopic()
-        Case vbNo: m_dirty = False: LeaveTopic = True
+        Case vbNo: m_isDirty = False: LeaveTopic = True
     End Select
 End Function
 
@@ -207,16 +210,16 @@ End Function
 Private Function SaveTopic() As Boolean
     Dim key As String, title As String, body As String, problem As String
     RequireExamAdmin                        ' the right is checked now, not as of sign-in
-    key = LCase$(Trim$(FieldText(Me.txtKey)))
-    title = Trim$(FieldText(Me.txtTitle))
-    body = FieldText(Me.txtBody)
+    key = LCase$(Trim$(FieldText(Me, Me.txtKey)))
+    title = Trim$(FieldText(Me, Me.txtTitle))
+    body = FieldText(Me, Me.txtBody)
     problem = TopicProblem(key, title)
     If Len(problem) > 0 Then
         KitMsgBox problem, vbExclamation, MSG_TITLE
         Exit Function
     End If
     KitHelpSave key, title, body
-    m_key = key: m_new = False: m_dirty = False
+    m_key = key: m_isNew = False: m_isDirty = False
     RefreshList
     ShowTopic key
     If m_table = HELP_SHARED_TABLE Then
@@ -241,7 +244,7 @@ Private Function TopicProblem(ByVal key As String, ByVal title As String) As Str
         TopicProblem = "Give the topic a title. The help window lists topics by their titles."
     ElseIf Len(title) > 80 Then
         TopicProblem = "A topic's title can be at most 80 characters."
-    ElseIf m_new Then
+    ElseIf m_isNew Then
         If TopicExists(key) Then
             TopicProblem = "There is already a topic with the key " & key & ". Open it from the list to change it."
         Else
@@ -264,7 +267,7 @@ End Function
 ' and mark its row.
 Private Sub ShowTopic(ByVal key As String)
     Dim rs As DAO.Recordset
-    m_key = "": m_new = False: m_dirty = False
+    m_key = "": m_isNew = False: m_isDirty = False
     Me.txtKey = Null: Me.txtTitle = Null: Me.txtBody = Null
     Me.lblStamp.Caption = ""
     If Len(key) > 0 Then
@@ -279,7 +282,7 @@ Private Sub ShowTopic(ByVal key As String)
         End If
         rs.Close
     End If
-    MarkRow m_key
+    GridSelect Me.sfList, m_key
     ShowState
 End Sub
 
@@ -296,12 +299,12 @@ End Function
 ' typed only for a new topic.
 Private Sub ShowState()
     Dim isOpen As Boolean
-    isOpen = m_new Or Len(m_key) > 0
-    Me.txtKey.Locked = Not m_new
+    isOpen = m_isNew Or Len(m_key) > 0
+    Me.txtKey.Locked = Not m_isNew
     Me.txtTitle.Locked = Not isOpen
     Me.txtBody.Locked = Not isOpen
-    SetEnabled Me.btnSave, m_dirty
-    SetEnabled Me.btnUndo, m_dirty Or m_new
+    SetEnabled Me.btnSave, m_isDirty
+    SetEnabled Me.btnUndo, m_isDirty Or m_isNew
     SetEnabled Me.btnPreview, isOpen
 End Sub
 
@@ -317,7 +320,7 @@ Private Sub RefreshList()
     ShowEmpty Me, "emptyList", n = 0
     ' The empty state shows in place of the list: a subform always covers a label.
     SetVisible Me.sfList, n > 0
-    If MarkRow(m_key) Or m_dirty Or m_new Then Exit Sub
+    If GridSelect(Me.sfList, m_key) Or m_isDirty Or m_isNew Then Exit Sub
     If IsNull(SelectFirstRow(Me.sfList)) Then ShowTopic ""
 End Sub
 
@@ -333,39 +336,7 @@ Private Function ListSql() As String
         "FROM " & m_table & where & " ORDER BY sort_order, topic_key"
 End Function
 
-' Select key's row in the list (none for ""). False when it isn't listed.
-Private Function MarkRow(ByVal key As String) As Boolean
-    Dim g As Form
-    Set g = Me.sfList.Form
-    g.txtSel = Null
-    If Len(key) > 0 Then
-        With g.RecordsetClone
-            .FindFirst "id=" & Q(key)
-            If Not .NoMatch Then
-                g.Bookmark = .Bookmark
-                g.txtSel = key
-                MarkRow = True
-            End If
-        End With
-    End If
-    g.Recalc
-End Function
-
-' A field's text: what is typed so far while it has the focus (Ctrl+S saves
-' without leaving it), else its value.
-Private Function FieldText(c As Control) As String
-    Dim act As String
-    On Error Resume Next
-    act = Me.ActiveControl.Name             ' error 2474 when none has the focus
-    On Error GoTo 0
-    If act = c.Name Then FieldText = Nz(c.Text, "") Else FieldText = Nz(c.Value, "")
-End Function
-
 ' help_topic when this copy is linked to it, else zz_help.
 Private Function TopicTable() As String
-    Dim td As DAO.TableDef
-    TopicTable = HELP_TABLE
-    For Each td In CurrentDb.TableDefs
-        If StrComp(td.Name, HELP_SHARED_TABLE, vbTextCompare) = 0 Then TopicTable = HELP_SHARED_TABLE: Exit Function
-    Next
+    If TableExists(HELP_SHARED_TABLE) Then TopicTable = HELP_SHARED_TABLE Else TopicTable = HELP_TABLE
 End Function
