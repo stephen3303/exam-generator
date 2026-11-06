@@ -303,7 +303,8 @@ Private Sub ImportClicked()
     If Len(path) = 0 Then Exit Sub
     KitBusy "Checking " & Mid$(path, InStrRev(path, "\") + 1) & "...": busy = True
     problem = CheckBankFile(path)
-    KitBusyEnd: busy = False
+    KitBusyEnd
+    busy = False
     If Len(problem) > 0 Then
         n = LineCount(problem)
         If KitMsgBox("Nothing was imported. Fix " & IIf(n = 1, "this", "these") & " in the file, then import it again:" & vbCrLf & vbCrLf & _
@@ -320,7 +321,8 @@ Private Sub ImportClicked()
     If KitMsgBox(BankImportSummary(), vbOKCancel + vbQuestion, "Import questions") <> vbOK Then ClearCheckedBank: Exit Sub
     KitBusy "Importing questions...": busy = True
     n = ImportCheckedBank(skipped, problem)
-    KitBusyEnd: busy = False
+    KitBusyEnd
+    busy = False
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, "Import questions": Exit Sub
     m_refFilter = 0
     m_chip = 1                                  ' Draft

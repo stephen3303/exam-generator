@@ -519,8 +519,7 @@ Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String
         ws.Cells(r, 2).Value = CellText(meta(i + 1))
         r = r + 1
     Next
-    notes = Array( _
-        "How the sheets fit together", _
+    notes = Array("How the sheets fit together", _
         "Questions: one row per question. Question ID is this file's own number for the question; it only links the rows of the " & _
             "other sheets to it, and the bank gives an imported question a new number.", _
         "Parts: one row per part of a multipart question (A, B...). A question with parts needs at least two, the parts' points " & _
@@ -533,14 +532,12 @@ Private Sub WriteReadMe(ws As Object, ByVal nQ As Long, ByVal topicIds As String
         "Citations: which questions cite which references, with the paragraph (optional).", _
         "Lists: the topics, types, difficulties and markings the bank had when this file was made. Topic, Type, Difficulty and " & _
             "Marking must use these names exactly.", _
-        "", _
-        "Text", _
+        "", "Text", _
         "Commas, quotes and line breaks (Alt+Enter in Excel) are kept as typed. A question, part or option text can be at most " & _
             MAX_TEXT & " characters. Points use a dot for a half point (1.5). In the long text columns, type an apostrophe " & _
             "before a text that starts with = so Excel keeps it as text; Excel reads a long text again when you edit its cell, so " & _
             "the same goes for a text there that looks like a number (0800).", _
-        "", _
-        "Import", _
+        "", "Import", _
         "Import checks the whole file first and lists every problem with its sheet and row; nothing is added until the file has " & _
             "none. Each question comes in as a new draft, so it goes through the SMEs and the approval chain like any other. A " & _
             "question already in its topic (the same text, parts and options) is skipped and listed. Topics turned off take no " & _
@@ -994,12 +991,13 @@ Private Sub CheckRows(sheets As Object, ByVal fileName As String, probs As Colle
                 If p("label") <> OptionLetter(n) And n <= 26 Then
                     probs.Add s & "its parts must be lettered A, B, C... in order on the Parts sheet; part " & OptionLetter(n) & _
                         " is """ & p("label") & """ (Parts row " & p("row") & ")."
+                    n = -1                          ' the points aren't summed: no follow-on message
                     Exit For
                 End If
                 If p.Exists("points") Then sum = sum + p("points")
                 If ClassRank(p("markId")) > top Then top = ClassRank(p("markId")): qn("markId") = p("markId")
             Next
-            If qn.Exists("points") And PartsHavePoints(qn) Then
+            If n >= 0 And qn.Exists("points") And PartsHavePoints(qn) Then
                 If Abs(sum - qn("points")) > 0.001 Then probs.Add s & "the parts' points (" & PointsText(sum) & _
                     ") don't add up to the question's (" & PointsText(qn("points")) & ")."
             End If

@@ -63,7 +63,8 @@ Private Sub btnExport_Click()
     If Len(dest) = 0 Then Exit Sub
     KitBusy "Exporting the question bank to Excel...": busy = True
     problem = ExportBank(dest, ids, n)
-    KitBusyEnd: busy = False
+    KitBusyEnd
+    busy = False
     If Len(problem) > 0 Then KitMsgBox problem, vbExclamation, MSG_TITLE: Exit Sub
     TempVars("BankExportNote") = "Exported " & n & " " & Plural(n, "question") & " to " & Mid$(dest, InStrRev(dest, "\") + 1) & "."
     TempVars("DialogResult") = "ok"
