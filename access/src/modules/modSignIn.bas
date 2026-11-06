@@ -286,9 +286,12 @@ End Function
 ' column the data file gained after this copy was linked). A failed refresh
 ' is logged; the first use of the column then reports it.
 Private Sub EnsureLinkHas(ByVal tbl As String, ByVal col As String)
-    Dim td As DAO.TableDef, fld As DAO.Field
+    Dim db As DAO.Database, td As DAO.TableDef, fld As DAO.Field
     On Error GoTo Fail
-    Set td = CurrentDb.TableDefs(tbl)
+    ' Held in db: CurrentDb is a new object each call, and a TableDef read
+    ' from it alone is invalid once that object goes (error 3420).
+    Set db = CurrentDb
+    Set td = db.TableDefs(tbl)
     If Len(td.Connect) = 0 Then Exit Sub                 ' a local table: nothing to refresh
     For Each fld In td.Fields
         If StrComp(fld.Name, col, vbTextCompare) = 0 Then Exit Sub
