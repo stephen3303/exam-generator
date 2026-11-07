@@ -20,13 +20,17 @@ Option Explicit
 '
 ' What it leaves (see access\SEED-DEMO.md for the click-through):
 '   people      the owner (admin, DH, XO, SM) and 8 made-up people
-'   topics      4 in use and 1 turned off; templates 2 in use
-'   questions   36 approved in the bank, one with an approved version 2
-'               (version 1 retired), one with a version 2 in draft, two
-'               drafts, one waiting at each of the DH, XO and SM, one rejected
-'   exams       E1 and E2 approved with their Word documents (E2 had a
-'               question swapped), E3 waiting on the XO, E4 sent back to its
-'               SMEs by the DH, E5 still in SME review with one topic signed off
+'   topics      6 in use and 1 turned off; templates 4 in use
+'   questions   80 approved in the bank; 3 retired by an approved version 2;
+'               a version 2 in draft and one waiting on the DH; drafts in
+'               five topics; several waiting at each of the DH, XO and SM;
+'               rejected by each of the DH, XO and SM; one rejected, fixed
+'               and sent again
+'   exams       13: four approved with their Word documents (one had a
+'               question swapped); waiting on each of the DH, XO and SM (one
+'               of them sent back once and signed off again); sent back to
+'               their SMEs by each of the DH, XO and SM; two still with
+'               their SMEs, one with a topic signed off and one untouched
 ' Then the dates are spread over the last 80 days so the Statistics page
 ' and the histories read like real use.
 
@@ -52,11 +56,14 @@ Private m_docsFailed As Long
 ' find them by Windows account); ownerFirst, ownerLast and ownerRank are used
 ' only when there is no Personnel file yet and one is made. demoPassword is
 ' every made-up person's app password (and the owner's, when they have
-' none). makeDocs False skips Word.
+' none). makeDocs False skips Word. personnelFile names the Personnel file
+' to use ("" for the usual place: a Personnel folder beside the data file's
+' folder, made there when there is none).
 ' Returns "OK" and the report, one line each, or "ERROR ..." and the report
 ' so far.
 Public Function SeedDemoRun(ByVal bePath As String, ByVal ownerUser As String, ByVal ownerFirst As String, _
-        ByVal ownerLast As String, ByVal ownerRank As String, ByVal demoPassword As String, ByVal makeDocs As Boolean) As String
+        ByVal ownerLast As String, ByVal ownerRank As String, ByVal demoPassword As String, ByVal makeDocs As Boolean, _
+        ByVal personnelFile As String) As String
     Dim owner As Long
     On Error GoTo Fail
     g_Silent = True
@@ -71,7 +78,12 @@ Public Function SeedDemoRun(ByVal bePath As String, ByVal ownerUser As String, B
     m_step = "link the data file": LinkDataFile bePath
     m_step = "check the data file is new": CheckEmpty
     m_step = "the work tables": EnsureWorkTables
-    m_step = "the Personnel file": owner = SetUpOwner(ownerUser, ownerFirst, ownerLast, ownerRank, demoPassword)
+    m_step = "the Personnel file"
+    If Len(personnelFile) > 0 Then
+        LinkPersonnelFile personnelFile
+        Note "Personnel file named: " & personnelFile
+    End If
+    owner = SetUpOwner(ownerUser, ownerFirst, ownerLast, ownerRank, demoPassword)
     m_step = "people": AddPeople owner, demoPassword
     m_step = "topics and templates": AddTopicsAndTemplates
     m_step = "references": AddReferences
@@ -278,6 +290,8 @@ Private Sub AddTopicsAndTemplates()
     AddTopic "NAV", "Navigation", "Charts, aids to navigation, fixes and compass error.", "jpatel,rford"
     AddTopic "ENG", "Engineering Fundamentals", "Pumps, lube oil, electrical protection and tagout.", "srivera,achen"
     AddTopic "COM", "Communications and Security", "Voice procedure, precedence and everyday information security.", "ckim,jpatel"
+    AddTopic "SEA", "Seamanship", "Line handling, anchoring, small boats and deck safety.", "achen,ckim"
+    AddTopic "HAZ", "Hazardous Materials", "Labels, storage, spills and the safety data sheet.", "srivera,jpatel"
     AddTopic "OLD", "Legacy Seamanship (turned off)", "A topic that is turned off, with no questions.", ""
     KitExecute "UPDATE tblTopics SET IsActive=False WHERE TopicID=" & m_topics("OLD")
 
@@ -291,7 +305,21 @@ Private Sub AddTopicsAndTemplates()
         ", " & Q("Demo: damage control with one engineering question.") & ", True)")
     AddTemplateTopic t2, "DC", 3
     AddTemplateTopic t2, "ENG", 1
-    Note "Topics: 4 in use and 1 turned off. Templates: Basic Qualification Board (9 questions) and Damage Control Refresher (4)."
+    t1 = InsertRow("INSERT INTO tblTemplates (TemplateName, Description, IsActive) VALUES (" & Q("Deck and Hazmat Qualification") & _
+        ", " & Q("Demo: seamanship and hazardous materials, with damage control.") & ", True)")
+    AddTemplateTopic t1, "SEA", 3
+    AddTemplateTopic t1, "HAZ", 3
+    AddTemplateTopic t1, "DC", 2
+    t2 = InsertRow("INSERT INTO tblTemplates (TemplateName, Description, IsActive) VALUES (" & Q("Comprehensive Board") & _
+        ", " & Q("Demo: two questions from every topic.") & ", True)")
+    AddTemplateTopic t2, "DC", 2
+    AddTemplateTopic t2, "NAV", 2
+    AddTemplateTopic t2, "ENG", 2
+    AddTemplateTopic t2, "COM", 2
+    AddTemplateTopic t2, "SEA", 2
+    AddTemplateTopic t2, "HAZ", 2
+    Note "Topics: 6 in use and 1 turned off. Templates: Basic Qualification Board (9 questions), Damage Control Refresher (4), " & _
+        "Deck and Hazmat Qualification (8) and Comprehensive Board (12)."
 End Sub
 
 Private Sub AddTopic(ByVal code As String, ByVal nm As String, ByVal desc As String, ByVal smes As String)
@@ -319,7 +347,9 @@ Private Sub AddReferences()
     m_refs("NFH") = AddReference("Navigation Fundamentals Handbook (demo)", "NFH-20", "3")
     m_refs("EPB") = AddReference("Engineering Plant Basics (demo)", "EPB-7", "A")
     m_refs("CPG") = AddReference("Communications Procedures Guide (demo)", "CPG-12", "2")
-    Note "References: 5 made-up references."
+    m_refs("SH") = AddReference("Seamanship Handbook (demo)", "SH-3", "4")
+    m_refs("HMC") = AddReference("Hazardous Material Control Guide (demo)", "HMC-5", "B")
+    Note "References: 7 made-up references."
 End Sub
 
 ' ---------------------------------------------------------------------------
@@ -340,6 +370,8 @@ Private Sub AddBank()
     authors("NAV") = Array("jpatel")
     authors("ENG") = Array("srivera", "achen")
     authors("COM") = Array("ckim", "jpatel")
+    authors("SEA") = Array("achen", "ckim")
+    authors("HAZ") = Array("srivera", "jpatel")
     Set specs = BankSpecs()
     For Each spec In specs
         a = authors(Split(spec, "|")(0))
@@ -395,42 +427,159 @@ Private Function BankSpecs() As Collection
     c.Add "COM|MC|M|2|U|What should a user do with a suspicious email that has an attachment?||Open the attachment to check it;Forward it to the division;*Report it without opening the attachment;Reply and ask the sender|CPG~4.4|"
     c.Add "COM|SA|H|6|U|A watchstander finds an unknown removable drive in a secure space.|||CPG~4.6|State the immediate action.~3~U~Do not connect it. Secure it and report it to the security officer.^Explain the risk it poses.~3~CUI~It may carry malicious code or data that could compromise the network."
     c.Add "COM|MC|E|2|U|Which proword means I have received your last transmission satisfactorily?||Over;*Roger;Wait;Break|CPG~1.4|"
+    MoreBankSpecs c
     Set BankSpecs = c
 End Function
 
+' The rest of the bank (44): more of the first four topics, then seamanship
+' and hazardous materials. Kept apart so neither list grows too long to read.
+Private Sub MoreBankSpecs(ByVal c As Collection)
+    ' Damage Control (6 more)
+    c.Add "DC|MC|M|2|U|Which material condition gives the least watertight integrity and is set in port during working hours?||*X-RAY;YOKE;ZEBRA;WILLIAM|DCTM~5.3|"
+    c.Add "DC|TF|M|1|U|A reflash watch is posted after a fire is reported out.|True||DCTM~6.4|"
+    c.Add "DC|SA|M|4|U|Explain why a space is tested for oxygen and toxic gases after a fire.|Burning uses up oxygen and gives off toxic gases, so the air must be proved safe before anyone enters without breathing apparatus.||SSP~2.6|"
+    c.Add "DC|MC|E|2|U|What does a fitting marked with a black W stay as?||*Open at all times unless damage control needs it closed;Closed at general quarters;Closed in port;Open only in port|DCTM~5.5|"
+    c.Add "DC|MC|H|4|U|Flooding is reported in a space below the waterline. What is done first?||Start the dewatering pumps;*Report it and set the boundaries;Open the space to inspect it;Shift ballast|DCTM~7.2|"
+    c.Add "DC|SA|H|6|U|A compartment is flooding through a cracked pipe.|||DCTM~7.4|Name two ways to stop or slow the leak.~3~U~Any two of: secure the valves that feed the pipe, a pipe patch, a jubilee clamp, wedges and rags.^Explain why the boundaries are set before the patch.~3~U~So the water can't spread to the next spaces if the patch fails."
+    ' Navigation (6 more)
+    c.Add "NAV|MC|M|2|U|What is the purpose of a range made of two lights or markers?||To show an isolated danger;*To keep the ship on the centerline of a channel;To mark a wreck;To give the depth|NFH~4.6|"
+    c.Add "NAV|TF|E|1|U|A bearing taken from the ship to an object is a line of position.|True||NFH~3.2|"
+    c.Add "NAV|SA|M|4|U|Explain what a dead reckoning position is.|A position worked out from the last fix using only the ordered course and speed, with no allowance for current or wind.||NFH~3.5|"
+    c.Add "NAV|MC|H|3|U|The compass shows 095 and the deviation is 3 degrees east. What is the magnetic heading?||092;*098;095;101|NFH~2.4|"
+    c.Add "NAV|MC|E|2|U|What does a green can buoy mark when entering from sea in IALA Region B?||The starboard side;*The port side;A mid-channel point;A junction|NFH~4.3|"
+    c.Add "NAV|TF|M|1|U|Charts should be corrected with the latest notices before they are used.|True||NFH~6.1|"
+    ' Engineering Fundamentals (6 more)
+    c.Add "ENG|MC|E|2|U|What does a strainer in a pump suction line do?||Raise the pressure;*Keep debris out of the pump;Measure the flow;Cool the liquid|EPB~3.1|"
+    c.Add "ENG|TF|E|1|U|A ground in an electrical circuit can cause a shock to anyone who touches the equipment.|True||EPB~4.2|"
+    c.Add "ENG|SA|M|4|U|Explain why an electric motor is checked for heat while it runs.|Too much heat shows overload, poor cooling or bearing trouble, and it damages the insulation if it goes on.||EPB~4.4|"
+    c.Add "ENG|MC|M|3|U|Which reading shows a pump is losing suction?||Steady discharge pressure;*Falling discharge pressure and a noisy pump;A cool casing;Rising tank level|EPB~3.4|"
+    c.Add "ENG|TF|M|1|U|A relief valve may be gagged shut during normal operation to stop it leaking.|False||EPB~3.5|"
+    c.Add "ENG|MC|H|4|U|Why is a diesel engine run unloaded for a time before it is shut down?||To fill the fuel tanks;*To let its temperatures fall evenly;To charge the batteries;To test the governor|EPB~5.2|"
+    ' Communications and Security (6 more)
+    c.Add "COM|MC|M|2|U|Which proword means my transmission is ended and I expect a reply?||Out;*Over;Roger;Wilco|CPG~1.4|"
+    c.Add "COM|TF|E|1|U|A user must lock the workstation before leaving it, even for a moment.|True||CPG~4.1|"
+    c.Add "COM|SA|M|4|U|Explain what the need-to-know rule means.|A person sees protected information only when their duties require it, even if they hold the clearance for it.||CPG~3.2|"
+    c.Add "COM|MC|M|2|U|What is the best way to dispose of paper with controlled unclassified information on it?||Put it in the trash;*Shred it in an approved shredder;Tear it in half;Recycle it|CPG~3.4|"
+    c.Add "COM|MC|E|2|U|What does the proword WILCO mean?||*I have received your message, understand it and will comply;Wait for a reply;Say again;I am ending the call|CPG~1.4|"
+    c.Add "COM|TF|M|1|U|Personal devices may be charged from a government computer's USB port.|False||CPG~4.5|"
+    ' Seamanship (10)
+    c.Add "SEA|MC|E|2|U|What is the line called that is thrown to the pier first to pass a heavier mooring line?||Spring line;*Heaving line;Breast line;Painter|SH~2.1|"
+    c.Add "SEA|TF|E|1|U|Line handlers should stand in the bight of a line so they can control it.|False||SH~2.3|"
+    c.Add "SEA|MC|M|2|U|Which knot makes a fixed loop at the end of a line that will not slip?||Clove hitch;*Bowline;Square knot;Half hitch|SH~1.4|"
+    c.Add "SEA|SA|M|4|U|Explain what scope means when anchoring.|The length of anchor chain let out compared with the depth of the water; more scope holds better.||SH~5.2|"
+    c.Add "SEA|MC|M|3|U|What is the main danger when a mooring line under strain parts?||It sinks;*It snaps back and can strike people;It catches fire;It fouls the screw|SH~2.5|"
+    c.Add "SEA|TF|M|1|U|An inherently buoyant life jacket must be worn by everyone working over the side.|True||SH~6.1|"
+    c.Add "SEA|MC|E|2|U|What is the forward end of a ship called?||Stern;*Bow;Beam;Quarter|SH~1.1|"
+    c.Add "SEA|SA|H|6|U|The ship is lowering a small boat at sea.|||SH~7.3|List two checks made before the boat is lowered.~3~U~Any two of: the crew wear life jackets and helmets, the plug is in, the falls and gear are sound, the engine starts.^State who controls the lowering.~3~U~The safety officer or boat officer at the davit, on orders from the bridge."
+    c.Add "SEA|MC|H|4|U|While anchored, the ship's position shows it is moving steadily downwind. What is happening?||Swinging on the anchor;*Dragging the anchor;Riding to a short stay;Veering chain|SH~5.4|"
+    c.Add "SEA|TF|E|1|U|Port is the left side of the ship when facing forward.|True||SH~1.1|"
+    ' Hazardous Materials (10)
+    c.Add "HAZ|MC|E|2|U|Which document gives the hazards, handling and first aid for a hazardous material?||The purchase order;*The safety data sheet;The tag-out record;The ship's plan|HMC~2.1|"
+    c.Add "HAZ|TF|E|1|U|Flammable liquids may be stored in a berthing space if they are in sealed cans.|False||HMC~3.2|"
+    c.Add "HAZ|MC|M|2|U|Why are oxidizers stored apart from flammable materials?||They spoil faster;*Together they can start or feed a fire;They need refrigeration;They are heavier|HMC~3.4|"
+    c.Add "HAZ|SA|M|4|U|List the first three actions on finding a hazardous material spill.|Warn others and leave the area if needed, report the spill, and keep people out until the spill team arrives.||HMC~5.1|"
+    c.Add "HAZ|MC|M|3|U|What should be checked before using personal protective equipment for a chemical?||Its color;*That it is rated for that chemical and in good condition;Its weight;Who used it last|HMC~4.2|"
+    c.Add "HAZ|TF|M|1|U|An unlabeled container of liquid should be treated as hazardous until it is identified.|True||HMC~2.4|"
+    c.Add "HAZ|MC|E|2|U|What does a hazardous material label tell the user?||The price;*The material, its hazards and how to handle it;The shelf it came from;The supplier's address only|HMC~2.2|"
+    c.Add "HAZ|SA|H|6|U|A sailor gets a cleaning chemical splashed in the eyes.|||HMC~6.1|Give the immediate first aid.~3~U~Flush the eyes with clean water at an eyewash for at least 15 minutes, holding the eyelids open.^State what is done next.~3~U~Report it, get medical help, and bring the safety data sheet for the chemical."
+    c.Add "HAZ|MC|H|4|U|Two chemicals in the same locker begin to give off fumes. What is done first?||Mix in water to dilute them;*Leave, warn others and report it;Carry them to the weather deck;Open them to check the labels|HMC~5.3|"
+    c.Add "HAZ|TF|M|1|U|Used rags with oil or solvent on them are kept in a closed metal container.|True||HMC~3.6|"
+End Sub
+
 ' Questions in every other state, and one question's history of versions.
 Private Sub AddWorkflowQuestions()
-    Dim qid As Long, baseId As Long, r As String
+    Dim qid As Long, baseId As Long
     ' Drafts, not yet submitted.
     WriteQuestion "NAV|MC|M|2|U|Which chart projection shows a rhumb line as a straight line?||*Mercator;Gnomonic;Polar;Lambert|NFH~1.5|", "jpatel"
     WriteQuestion "COM|SA|E|3|U|Describe how a garbled message is handled on receipt.|Log the time and circuit, ask for a repeat of the garbled part, and note it in the log.||CPG~2.3|", "ckim"
-    ' Waiting at the DH, the XO and the SM.
+    WriteQuestion "DC|TF|E|1|U|Carbon dioxide extinguishers are safe to use on energized electrical equipment.|True||DCTM~3.4|", "srivera"
+    WriteQuestion "ENG|MC|M|2|U|What does a tachometer measure?||Pressure;Temperature;*Shaft speed;Current|EPB~1.5|", "achen"
+    WriteQuestion "SEA|MC|E|2|U|Which line keeps a ship from moving forward or aft along the pier?||Breast line;*Spring line;Heaving line;Messenger|SH~2.2|", "ckim"
+    WriteQuestion "HAZ|SA|M|4|U|Explain why hazardous materials are issued in the smallest amount needed.|Less material in work spaces means less to spill, burn or store, and less waste to get rid of.||HMC~1.3|", "jpatel"
+
+    ' Waiting at the DH.
     qid = WriteQuestion("NAV|TF|E|1|U|Soundings on most U.S. charts show depths at mean lower low water.|True||NFH~6.4|", "jpatel")
     SubmitAs qid, "jpatel"
+    qid = WriteQuestion("DC|MC|M|2|U|Which agent is used on a Class A fire in bedding and rags?||Dry chemical only;*Water;Carbon dioxide only;Sand|DCTM~3.3|", "achen")
+    SubmitAs qid, "achen"
+    qid = WriteQuestion("SEA|SA|M|4|U|Explain why line handlers stay clear of the snap-back zone.|A line that parts under strain whips back with great force along a path that can be predicted, and can kill or maim.||SH~2.5|", "achen")
+    SubmitAs qid, "achen"
+    qid = WriteQuestion("HAZ|MC|E|2|U|Who may issue hazardous material from a storeroom?||Anyone in the division;*Trained and authorized issuers;Only the commanding officer;The supplier|HMC~1.2|", "srivera")
+    SubmitAs qid, "srivera"
+    ' Waiting at the XO.
     qid = WriteQuestion("COM|MC|M|2|U|Which of these makes the strongest password?||password1;Summer2026;*A long passphrase of unrelated words;The ship's name|CPG~4.3|", "ckim")
     SubmitAs qid, "ckim"
     ApproveAs qid, "dreyes"
+    qid = WriteQuestion("ENG|TF|M|1|U|An electrical safety check is needed before portable equipment is used aboard ship.|True||EPB~4.3|", "srivera")
+    SubmitAs qid, "srivera"
+    ApproveAs qid, "dreyes"
+    qid = WriteQuestion("SEA|MC|M|3|U|What does the order avast mean to line handlers?||Pull harder;*Stop what you are doing;Let go the line;Take in slack|SH~2.4|", "ckim")
+    SubmitAs qid, "ckim"
+    ApproveAs qid, "dreyes"
+    ' Waiting at the SM.
     qid = WriteQuestion("ENG|SA|M|4|U|Explain the purpose of a relief valve.|It opens at a set pressure to protect the system from too much pressure.||EPB~3.5|", "srivera")
     SubmitAs qid, "srivera"
     ApproveAs qid, "dreyes"
     ApproveAs qid, "mhale"
-    ' Rejected by the XO, back with its author.
+    qid = WriteQuestion("NAV|MC|M|2|U|What is the main use of a gyrocompass repeater on the bridge wing?||Steering the ship;*Taking visual bearings;Measuring speed;Plotting depth|NFH~3.3|", "jpatel")
+    SubmitAs qid, "jpatel"
+    ApproveAs qid, "dreyes"
+    ApproveAs qid, "mhale"
+    qid = WriteQuestion("HAZ|TF|E|1|U|Aerosol cans may be thrown in the general trash once they are empty.|False||HMC~7.1|", "jpatel")
+    SubmitAs qid, "jpatel"
+    ApproveAs qid, "dreyes"
+    ApproveAs qid, "mhale"
+
+    ' Rejected by the DH, the XO and the SM, back with their authors.
+    qid = WriteQuestion("SEA|TF|E|1|U|The anchor is let go by the boatswain without an order from the bridge.|False||SH~5.1|", "achen")
+    SubmitAs qid, "achen"
+    RejectAs qid, "dreyes", "A true/false question this easy tells us little. Ask who gives the order instead."
     qid = WriteQuestion("DC|MC|M|2|U|Which extinguishing agent is best for a Class D fire?||Water;Foam;*Dry powder made for metal fires;Carbon dioxide|DCTM~3.5|", "achen")
     SubmitAs qid, "achen"
     ApproveAs qid, "dreyes"
-    ActAs "mhale"
-    r = RejectQuestion(qid, "The correct option names metal fires, which gives the answer away. Reword the options so they read alike.")
-    If Len(r) > 0 Then Err.Raise 5, "modSeedDemo", "Reject: " & r
-    ' A version 2, approved, which retires version 1 (the water question).
+    RejectAs qid, "mhale", "The correct option names metal fires, which gives the answer away. Reword the options so they read alike."
+    qid = WriteQuestion("COM|SA|M|4|U|Explain why messages are numbered on a circuit.|So the receiver can tell when one is missed and ask for it again.||CPG~2.2|", "jpatel")
+    SubmitAs qid, "jpatel"
+    ApproveAs qid, "dreyes"
+    ApproveAs qid, "mhale"
+    RejectAs qid, "tbrooks", "Cite the paragraph that covers message serial numbers, not the general one."
+    ' Rejected by the DH, fixed by its author and sent again: back at the DH.
+    qid = WriteQuestion("HAZ|MC|M|2|U|Where is a safety data sheet kept?||In the supply office only;*Where the material is used and stored;With the purchase order;Nowhere aboard|HMC~2.1|", "srivera")
+    SubmitAs qid, "srivera"
+    RejectAs qid, "dreyes", "The wrong options are too easy to rule out. Make them things a sailor might really believe."
+    ReviseQuestion qid, "srivera", "Where must a copy of the safety data sheet be available to the people using the material?"
+    SubmitAs qid, "srivera"
+
+    ' Versions 2, approved, which retire versions 1.
     baseId = BankQuestionId("DC", "Water is the preferred agent")
     qid = WriteNewVersion(baseId, "srivera", "Water from a fire hose is the preferred agent for a fire in energized electrical equipment.")
     SubmitAs qid, "srivera"
     ApproveChain qid
-    ' A version 2 in draft: version 1 stays in use until it is approved.
+    baseId = BankQuestionId("NAV", "Which publication lists")
+    qid = WriteNewVersion(baseId, "jpatel", "Which publication lists the color, period and range of the lights along a coast?")
+    SubmitAs qid, "jpatel"
+    ApproveChain qid
+    baseId = BankQuestionId("HAZ", "Used rags with oil")
+    qid = WriteNewVersion(baseId, "jpatel", "Used rags with oil or solvent on them are kept in a closed, labeled metal container until disposal.")
+    SubmitAs qid, "jpatel"
+    ApproveChain qid
+    ' A version 2 in draft, and one waiting on the DH: versions 1 stay in use
+    ' until they are approved.
     baseId = BankQuestionId("NAV", "How many minutes of latitude")
     WriteNewVersion baseId, "jpatel", "How many minutes of latitude make one nautical mile at any latitude?"
-    Note "Other questions: 2 drafts, 1 waiting on each of the DH, XO and SM, 1 rejected by the XO, " & _
-        "1 with an approved version 2 (version 1 retired), 1 with a version 2 in draft."
+    baseId = BankQuestionId("ENG", "What does a gauge reading of zero psig")
+    qid = WriteNewVersion(baseId, "achen", "What does a gauge reading of zero psig mean on a system open to the air?")
+    SubmitAs qid, "achen"
+    Note "Other questions: 6 drafts; 5 waiting on the DH (one of them sent back once and fixed), 3 on the XO and 3 on the SM; " & _
+        "1 rejected by each of the DH, XO and SM; 3 approved versions 2 (versions 1 retired); a version 2 in draft and one " & _
+        "waiting on the DH."
+End Sub
+
+Private Sub RejectAs(ByVal qid As Long, ByVal who As String, ByVal reason As String)
+    Dim r As String
+    ActAs who
+    r = RejectQuestion(qid, reason)
+    If Len(r) > 0 Then Err.Raise 5, "modSeedDemo", "Reject question " & qid & " as " & who & ": " & r
 End Sub
 
 ' Write a question as the editor does: its parts, options and references in
@@ -458,19 +607,33 @@ End Function
 ' Start a new version of approved question baseId as author, with new text
 ' and the rest as it stands. Returns the new version's QuestionID.
 Private Function WriteNewVersion(ByVal baseId As Long, ByVal author As String, ByVal newText As String) As Long
+    WriteNewVersion = SaveFrom(baseId, 0, baseId, author, newText)
+End Function
+
+' Change the text of draft or rejected question qid as author, as the
+' editor does, keeping the rest as it stands.
+Private Sub ReviseQuestion(ByVal qid As Long, ByVal author As String, ByVal newText As String)
+    SaveFrom qid, qid, 0, author, newText
+End Sub
+
+' Load question srcId into the working copy and save it with newText as
+' author: as qid (0 for a new row) and, for a new version, baseId. Returns
+' the saved QuestionID.
+Private Function SaveFrom(ByVal srcId As Long, ByVal qid As Long, ByVal baseId As Long, ByVal author As String, _
+        ByVal newText As String) As Long
     Dim rs As DAO.Recordset, topicId As Long, typeName As String, diffId As Long, pts As Double, cls As Variant
-    Dim ans As Variant, problems As String, r As String, qid As Long
+    Dim ans As Variant, problems As String, r As String, savedId As Long
     ActAs author
-    Set rs = CurrentDb.OpenRecordset("SELECT * FROM tblQuestions WHERE QuestionID=" & baseId, dbOpenSnapshot)
+    Set rs = CurrentDb.OpenRecordset("SELECT * FROM tblQuestions WHERE QuestionID=" & srcId, dbOpenSnapshot)
     topicId = rs!TopicID: typeName = QTypeName(rs!QuestionTypeID): diffId = rs!DifficultyID
     pts = rs!TotalPoints: cls = rs!ClassLevelID: ans = rs!ReferenceAnswer
     rs.Close
-    LoadWork baseId
+    LoadWork srcId
     problems = QuestionProblems(topicId, typeName, diffId, pts, cls, newText, True)
-    If Len(problems) > 0 Then Err.Raise 5, "modSeedDemo", "New version: " & problems
-    r = SaveQuestion(0, baseId, topicId, typeName, diffId, pts, cls, newText, ans, qid)
-    If Len(r) > 0 Then Err.Raise 5, "modSeedDemo", "New version: " & r
-    WriteNewVersion = qid
+    If Len(problems) > 0 Then Err.Raise 5, "modSeedDemo", "Question " & srcId & ": " & problems
+    r = SaveQuestion(qid, baseId, topicId, typeName, diffId, pts, cls, newText, ans, savedId)
+    If Len(r) > 0 Then Err.Raise 5, "modSeedDemo", "Save question " & srcId & ": " & r
+    SaveFrom = savedId
 End Function
 
 ' The editor's working copy for one question: options (none for TF or SA),
@@ -562,46 +725,103 @@ End Sub
 ' ---------------------------------------------------------------------------
 
 Private Sub AddExams(ByVal makeDocs As Boolean)
-    Dim basic As Long, refresher As Long, e1 As Long, e2 As Long, e3 As Long, e4 As Long, e5 As Long, r As String
-    basic = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q("Basic Qualification Board"))
-    refresher = DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q("Damage Control Refresher"))
+    Dim basic As Long, refresher As Long, deck As Long, comp As Long, e As Long, s As String
+    basic = TemplateIdOf("Basic Qualification Board")
+    refresher = TemplateIdOf("Damage Control Refresher")
+    deck = TemplateIdOf("Deck and Hazmat Qualification")
+    comp = TemplateIdOf("Comprehensive Board")
 
-    ' E1: the whole way, to its Word document.
-    e1 = Generate(basic, "USS Harborview (demo)")
-    SignOffAll e1, ""
-    ApproveExamChain e1, makeDocs
+    ' Approved, the whole way to their Word documents (oldest first, so the
+    ' Statistics page has them). The second has a question swapped first.
+    e = Generate(basic, "USS Harborview (demo)")
+    SignOffAll e, ""
+    ApproveExamChain e, makeDocs
+    s = "approved E" & e
+    e = Generate(basic, "USS Ridgeline (demo)")
+    SwapOne e, "DC"
+    SignOffAll e, ""
+    ApproveExamChain e, makeDocs
+    s = s & ", E" & e & " (a question swapped)"
+    e = Generate(deck, "USS Bayfield (demo)")
+    SignOffAll e, ""
+    ApproveExamChain e, makeDocs
+    s = s & ", E" & e
+    e = Generate(comp, "Surface Warfare School (demo)")
+    SignOffAll e, ""
+    ApproveExamChain e, makeDocs
+    s = s & ", E" & e & "; "
 
-    ' E2: an SME swaps a question first.
-    e2 = Generate(basic, "USS Ridgeline (demo)")
-    SwapOne e2, "DC"
-    SignOffAll e2, ""
-    ApproveExamChain e2, makeDocs
+    ' Waiting on the DH, the XO and the SM.
+    e = Generate(comp, "USS Kestrel (demo)")
+    SignOffAll e, ""
+    s = s & "waiting on the DH E" & e
+    e = Generate(refresher, "Damage Control School (demo)")
+    SignOffAll e, ""
+    ApproveExamAs e, "dreyes", makeDocs
+    s = s & ", on the XO E" & e
+    e = Generate(deck, "USS Glenmore (demo)")
+    SignOffAll e, ""
+    ApproveExamAs e, "dreyes", makeDocs
+    ApproveExamAs e, "mhale", makeDocs
+    s = s & ", on the SM E" & e
+    ' Sent back by the DH, signed off again by its SMEs and approved by the
+    ' DH: version 2, waiting on the XO.
+    e = Generate(refresher, "Fleet Training Center (demo)")
+    SignOffAll e, ""
+    RejectExamAs e, "dreyes", "The engineering question repeats one from last month's exam. Swap it.", "ENG"
+    SwapOne e, "ENG"
+    SignOffAll e, ""
+    ApproveExamAs e, "dreyes", makeDocs
+    s = s & ", on the XO again E" & e & " (version 2); "
 
-    ' E3: approved by the DH, waiting on the XO.
-    e3 = Generate(refresher, "Damage Control School (demo)")
-    SignOffAll e3, ""
-    ApproveExamAs e3, "dreyes", makeDocs
+    ' Sent back to their SMEs by the DH, the XO and the SM.
+    e = Generate(basic, "USS Cedar Point (demo)")
+    SignOffAll e, ""
+    RejectExamAs e, "dreyes", "Two damage control questions cover the same fire class. Swap one for a question on flooding or " & _
+        "material conditions.", "DC"
+    s = s & "sent back by the DH E" & e
+    e = Generate(deck, "Deck Department Training (demo)")
+    SignOffAll e, ""
+    ApproveExamAs e, "dreyes", makeDocs
+    RejectExamAs e, "mhale", "This board is for new deck seamen. Every topic needs easier questions; send it back to me when " & _
+        "they are in.", ""
+    s = s & ", by the XO E" & e & " (every topic)"
+    e = Generate(basic, "USS Northpoint (demo)")
+    SignOffAll e, ""
+    ApproveExamAs e, "dreyes", makeDocs
+    ApproveExamAs e, "mhale", makeDocs
+    RejectExamAs e, "tbrooks", "The navigation questions are both on buoys. Give the board one on fixes or compass error.", "NAV"
+    s = s & ", by the SM E" & e & "; "
 
-    ' E4: the DH sends its damage control topic back to the SMEs.
-    e4 = Generate(basic, "USS Cedar Point (demo)")
-    SignOffAll e4, ""
-    ActAs "dreyes"
-    r = RejectExam(e4, "Two damage control questions cover the same fire class. Swap one for a question on flooding or " & _
-        "material conditions.", ExamTopicId(e4, "DC"))
-    If Len(r) > 0 Then Err.Raise 5, "modSeedDemo", "Send back exam " & e4 & ": " & r
+    ' Still with their SMEs: one topic signed off, and none yet.
+    e = Generate(refresher, "Engineering Training Unit (demo)")
+    SignOffAll e, "DC"
+    s = s & "with their SMEs E" & e & " (engineering signed off)"
+    e = Generate(comp, "Engineering Duty School (demo)")
+    s = s & " and E" & e & " (nothing signed off)."
 
-    ' E5: still with its SMEs, the engineering topic signed off.
-    e5 = Generate(refresher, "Engineering Training Unit (demo)")
-    SignOffAll e5, "DC"
-
-    Note "Exams: E" & e1 & " and E" & e2 & " approved (E" & e2 & " had a question swapped), E" & e3 & " waiting on the XO, E" & _
-        e4 & " sent back to its SMEs by the DH, E" & e5 & " in SME review with one topic signed off."
+    Note "Exams: " & s
     If makeDocs Then
         Note "Word documents: " & m_docsOK & " made" & IIf(m_docsFailed > 0, ", " & m_docsFailed & " FAILED (see above)", "") & _
             ", in " & ExamDocFolder()
     Else
         Note "Word documents: skipped (-NoDocs). Download a copy on the Exams page makes them."
     End If
+End Sub
+
+Private Function TemplateIdOf(ByVal nm As String) As Long
+    TemplateIdOf = Nz(DLookup("TemplateID", "tblTemplates", "TemplateName=" & Q(nm)), 0)
+    If TemplateIdOf = 0 Then Err.Raise 5, "modSeedDemo", "No template " & nm & "."
+End Function
+
+' Send exam examId back to its SMEs as who: topic code's topic, or every
+' topic when code is "".
+Private Sub RejectExamAs(ByVal examId As Long, ByVal who As String, ByVal reason As String, ByVal code As String)
+    Dim r As String, etId As Long
+    If Len(code) > 0 Then etId = ExamTopicId(examId, code)
+    ActAs who
+    r = RejectExam(examId, reason, etId)
+    If Len(r) > 0 Then Err.Raise 5, "modSeedDemo", "Send back exam " & examId & " as " & who & ": " & r
 End Sub
 
 ' Generate an exam as the DH, letting every topic take questions given
@@ -737,11 +957,12 @@ Private Sub SpreadDates()
         rs.MoveNext
     Loop
     rs.Close
-    ' The exams, oldest first.
+    ' The exams, oldest first: 38 days back for the first to 1 for the last, after the bank.
+    n = DCount("*", "tblExams")
     Set rs = db.OpenRecordset("SELECT ExamID FROM tblExams ORDER BY ExamID", dbOpenSnapshot)
     i = 0
     Do While Not rs.EOF
-        ShiftExam rs!ExamID, Nz(Choose(i + 1, 30, 21, 12, 6, 2), 1)
+        ShiftExam rs!ExamID, 38 - Int(37 * i / IIf(n > 1, n - 1, 1))
         i = i + 1
         rs.MoveNext
     Loop
@@ -794,6 +1015,22 @@ Private Sub Summarize()
     Loop
     rs.Close
     Note "Exams by status: " & s & "."
+    Note "Waiting by step: questions " & ByStep("tblQuestions", QStatusID(QS_REVIEW)) & "; exams " & _
+        ByStep("tblExams", ExamStatusID(ES_REVIEW)) & "."
     Note "Open SME reviews: " & DCount("*", "tblTasks", "TaskStatus=" & Q(TS_OPEN)) & ". Audit rows: " & DCount("*", "tblAuditTrail") & _
         ". Error log rows: " & DCount("*", "error_log") & "."
 End Sub
+
+' How many rows of tbl in status statusId wait at each step, as "DH 5, XO 3".
+Private Function ByStep(ByVal tbl As String, ByVal statusId As Long) As String
+    Dim rs As DAO.Recordset, s As String
+    Set rs = CurrentDb.OpenRecordset("SELECT r.RoleCode, r.ChainOrder, Count(*) AS n FROM " & tbl & " AS x INNER JOIN tblRoles AS r " & _
+        "ON x.CurrentStepRoleID=r.RoleID WHERE x.StatusID=" & statusId & " GROUP BY r.RoleCode, r.ChainOrder ORDER BY r.ChainOrder", _
+        dbOpenSnapshot)
+    Do While Not rs.EOF
+        s = s & IIf(Len(s) > 0, ", ", "") & rs!RoleCode & " " & rs!n
+        rs.MoveNext
+    Loop
+    rs.Close
+    ByStep = IIf(Len(s) > 0, s, "none")
+End Function

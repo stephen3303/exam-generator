@@ -10,6 +10,10 @@
 #   -OwnerFirst, -OwnerLast, -OwnerRank
 #                         your name, used only when there is no Personnel file yet and
 #                         this makes one (in access\Personnel, with you as its admin)
+#   -Personnel <file>     the Personnel file to use. Default: Personnel\Personnel_be.accdb
+#                         beside the data file when there is one (the web's Database
+#                         Files folder), else the usual place (a Personnel folder
+#                         beside the data file's folder, made there when missing)
 #   -DemoPassword <text>  every made-up person's app password (default ExamDemo-2026)
 #   -NoDocs               skip Word (the documents are then made by Download a copy)
 #   -NoLineNumbers        load the code without line numbers
@@ -25,6 +29,7 @@ param(
     [string]$OwnerFirst = 'Site',
     [string]$OwnerLast = 'Owner',
     [string]$OwnerRank = '',
+    [string]$Personnel = '',
     [string]$DemoPassword = 'ExamDemo-2026',
     [switch]$NoDocs,
     [switch]$NoLineNumbers
@@ -37,6 +42,16 @@ if (-not (Test-Path $BackEnd)) { throw "No data file at $BackEnd. Make one first
 $BackEnd = (Resolve-Path $BackEnd).Path
 $lock = [IO.Path]::ChangeExtension($BackEnd, '.laccdb')
 if (Test-Path $lock) { throw "The data file is open ($lock exists). Close every Access window and try again." }
+if (-not $Personnel) {
+    $beside = Join-Path (Split-Path -Parent $BackEnd) 'Personnel\Personnel_be.accdb'
+    if (Test-Path $beside) { $Personnel = $beside }
+}
+if ($Personnel) {
+    if (-not (Test-Path $Personnel)) { throw "No Personnel file at $Personnel." }
+    $Personnel = (Resolve-Path $Personnel).Path
+    $plock = [IO.Path]::ChangeExtension($Personnel, '.laccdb')
+    if (Test-Path $plock) { throw "The Personnel file is open ($plock exists). Stop the web server and close every Access window, then try again." }
+}
 if ($DemoPassword.Length -lt 8) { throw 'Use at least 8 characters for -DemoPassword.' }
 
 # The seed works on a copy beside the data file and only takes its place once it
@@ -85,8 +100,9 @@ try {
 
     Write-Host "Seeding $BackEnd (this takes a few minutes; Word runs hidden for the documents)..."
     $a1 = [string]$copy; $a2 = [string]$OwnerUser; $a3 = [string]$OwnerFirst; $a4 = [string]$OwnerLast
-    $a5 = [string]$OwnerRank; $a6 = [string]$DemoPassword; $a7 = [bool](-not $NoDocs)
-    $result = [string]$acc.Run('SeedDemoRun', [ref]$a1, [ref]$a2, [ref]$a3, [ref]$a4, [ref]$a5, [ref]$a6, [ref]$a7)
+    $a5 = [string]$OwnerRank; $a6 = [string]$DemoPassword; $a7 = [bool](-not $NoDocs); $a8 = [string]$Personnel
+    if ($Personnel) { Write-Host "Personnel file: $Personnel" }
+    $result = [string]$acc.Run('SeedDemoRun', [ref]$a1, [ref]$a2, [ref]$a3, [ref]$a4, [ref]$a5, [ref]$a6, [ref]$a7, [ref]$a8)
     $result -split "`r?`n" | Where-Object { $_ } | ForEach-Object { Write-Host $_ }
     $failed = -not $result.StartsWith('OK')
 }
