@@ -120,7 +120,7 @@ The numbers below assume a new data file, so the exams are E1 to E13.
 
 ## The Word documents
 
-They go to `Exam documents`, next to the data file. Open E1's to E4's and check the cover page, the topics, the questions with their portion marks, and the answer key with the parts.
+They go to `Exam documents`, next to the data file. Open E1's to E4's and check the cover page, the topics, and the questions and their parts with their portion marks. The documents carry no answer key: reference answers stay in the app.
 
 If a document fails, the approval still stands and the report prints a `FAILED:` line with Word's message. Open Word once by hand and close it before the seed, so a first-run prompt doesn't stall it.
 
