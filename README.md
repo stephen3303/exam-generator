@@ -1,5 +1,7 @@
 # Exam Generator
 
+> **Retired (2026-11-18).** The Access edition is no longer developed. The Exam Generator now runs only as the web app in [navy-web-apps](https://github.com/stephen3303/navy-web-apps) (`apps/examgen/`), which has new roles (Basic User, Question Admin, Exam User, Exam Admin, Admin) with one approval each, cites only the shared Reference library and allows questions with no knowledge area. When the web app first opens a data file it backs the file up, then moves it to the new roles. After that, this Access edition no longer matches the file. Don't run it on a file the web app has opened. The code stays here for reference only.
+
 A Microsoft Access app that keeps an approved question bank and builds inspection exams from it: questions are written, checked by subject matter experts and approved; exams are drawn from templates, reviewed topic by topic and approved.
 
 The front end is built in code with the [access-modern-ui](https://github.com/stephen3303/access-modern-ui) kit, so every form has the kit's look and palettes. It is a build output: edit the files in `access\`, never the built `.accdb`.
